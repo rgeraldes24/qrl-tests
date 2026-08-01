@@ -60,6 +60,11 @@ func newApp(networks controller) *cli.App {
 				Flags: []cli.Flag{
 					enclaveName,
 					&cli.StringFlag{
+						Name:  "profile",
+						Usage: "built-in network profile: single, multi, lifecycle, chaos, or sync",
+						Value: string(devnet.ProfileSingle),
+					},
+					&cli.StringFlag{
 						Name:     "execution-image",
 						Usage:    "execution image reference",
 						Required: true,
@@ -92,6 +97,7 @@ func newApp(networks controller) *cli.App {
 						EnclaveName:    command.String("enclave-name"),
 						ExecutionImage: command.String("execution-image"),
 						Parameters:     parameters,
+						Profile:        devnet.Profile(command.String("profile")),
 					}); err != nil {
 						return err
 					}

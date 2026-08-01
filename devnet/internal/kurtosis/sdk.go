@@ -9,17 +9,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"strconv"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
+	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/starlark_run_config"
 	"github.com/kurtosis-tech/kurtosis/api/golang/engine/lib/kurtosis_context"
 )
 
 type Service struct {
-	PublicIP    string
-	PublicPorts map[string]uint16
+	Name         string
+	UUID         string
+	PrivateIP    string
+	PrivatePorts map[string]uint16
+	PublicIP     string
+	PublicPorts  map[string]uint16
+	Labels       map[string]string
 }
 
 func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
@@ -85,14 +92,61 @@ func (client *SDKClient) Service(ctx context.Context, enclaveName, serviceName s
 	if err != nil {
 		return Service{}, err
 	}
-	ports := make(map[string]uint16, len(serviceContext.GetPublicPorts()))
+	return service(serviceContext), nil
+}
+
+func (client *SDKClient) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
+	enclave, err := client.context.GetEnclaveContext(ctx, enclaveName)
+	if err != nil {
+		return nil, err
+	}
+	identifiers, err := enclave.GetServices()
+	if err != nil {
+		return nil, err
+	}
+	wanted := make(map[string]bool, len(identifiers))
+	for name := range identifiers {
+		wanted[string(name)] = true
+	}
+	contexts, err := enclave.GetServiceContexts(wanted)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]Service, len(contexts))
+	for name, context := range contexts {
+		result[string(name)] = service(context)
+	}
+	return result, nil
+}
+
+type serviceContext interface {
+	GetServiceName() services.ServiceName
+	GetServiceUUID() services.ServiceUUID
+	GetPrivateIPAddress() string
+	GetPrivatePorts() map[string]*services.PortSpec
+	GetMaybePublicIPAddress() string
+	GetPublicPorts() map[string]*services.PortSpec
+	GetLabels() map[string]string
+}
+
+func service(serviceContext serviceContext) Service {
+	publicPorts := make(map[string]uint16, len(serviceContext.GetPublicPorts()))
 	for id, port := range serviceContext.GetPublicPorts() {
-		ports[id] = port.GetNumber()
+		publicPorts[id] = port.GetNumber()
+	}
+	privatePorts := make(map[string]uint16, len(serviceContext.GetPrivatePorts()))
+	for id, port := range serviceContext.GetPrivatePorts() {
+		privatePorts[id] = port.GetNumber()
 	}
 	return Service{
-		PublicIP:    serviceContext.GetMaybePublicIPAddress(),
-		PublicPorts: ports,
-	}, nil
+		Name:         string(serviceContext.GetServiceName()),
+		UUID:         string(serviceContext.GetServiceUUID()),
+		PrivateIP:    serviceContext.GetPrivateIPAddress(),
+		PrivatePorts: privatePorts,
+		PublicIP:     serviceContext.GetMaybePublicIPAddress(),
+		PublicPorts:  publicPorts,
+		Labels:       maps.Clone(serviceContext.GetLabels()),
+	}
 }
 
 func (client *SDKClient) DestroyEnclave(ctx context.Context, name string) error {

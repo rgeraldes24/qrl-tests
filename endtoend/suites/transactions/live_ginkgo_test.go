@@ -5,9 +5,11 @@ package transactions
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
@@ -26,16 +28,19 @@ var _ = ginkgo.Describe(
 	ginkgo.ContinueOnFailure,
 	ginkgo.Label("e2e", "live", "transactions", "assertoor", "mutates-chain"),
 	func() {
-		var session *endtoendlive.Session
+		var sessions []*endtoendlive.Session
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			session, err = endtoendlive.Open(ctx, false)
+			sessions, err = endtoendlive.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(session.Close)
+			for _, session := range sessions {
+				ginkgo.DeferCleanup(session.Close)
+			}
 		})
 
 		ginkgo.It("funds a deterministic wallet and verifies its receipt and balance", func(ctx ginkgo.SpecContext) {
+			session := sessions[0]
 			recipient := patternedAddress(0x61)
 			before, err := session.Client.BalanceAt(ctx, recipient, nil)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -49,23 +54,77 @@ var _ = ginkgo.Describe(
 			after, err := session.Client.BalanceAt(ctx, recipient, nil)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(after).To(gomega.Equal(new(big.Int).Add(before, amount)))
-		}, ginkgo.SpecTimeout(transactionTimeout))
+		}, ginkgo.SpecTimeout(transactionTimeout), ginkgo.Label("assertoor:dev:fund-wallet"))
 
-		ginkgo.It("includes a transaction with 64 KiB of deterministic calldata", func(ctx ginkgo.SpecContext) {
-			data := make([]byte, 64*1024)
-			for index := range data {
-				data[index] = byte(index)
-			}
-			recipient := patternedAddress(0x71)
-			tx := signTransaction(ctx, session, recipient, new(big.Int), data)
-			receipt := submitAndWait(ctx, session, tx)
-			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-
-			stored, pending, err := session.Client.TransactionByHash(ctx, tx.Hash())
+		ginkgo.It("sustains deterministic large-calldata transactions and remains finalized", func(ctx ginkgo.SpecContext) {
+			session := sessions[0]
+			beacon, err := consensus.New(session.Participant.ConsensusURL)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Expect(pending).To(gomega.BeFalse())
-			gomega.Expect(bytes.Equal(stored.Data(), data)).To(gomega.BeTrue())
-		}, ginkgo.SpecTimeout(transactionTimeout))
+			startFinalized, err := beacon.FinalizedEpoch(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			transactions := make([]*types.Transaction, 16)
+			for transactionIndex := range transactions {
+				dataSize := 1024
+				if transactionIndex == 0 {
+					dataSize = 64 * 1024
+				}
+				data := make([]byte, dataSize)
+				for index := range data {
+					data[index] = byte(index + transactionIndex)
+				}
+				recipient := patternedAddress(byte(0x71 + transactionIndex))
+				transactions[transactionIndex] = signTransaction(ctx, session, recipient, new(big.Int), data)
+				gomega.Expect(session.Client.SendTransaction(ctx, transactions[transactionIndex])).To(gomega.Succeed())
+			}
+
+			for index, transaction := range transactions {
+				receipt := waitForReceipt(ctx, session, transaction)
+				gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+				stored, pending, err := session.Client.TransactionByHash(ctx, transaction.Hash())
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(pending).To(gomega.BeFalse())
+				gomega.Expect(bytes.Equal(stored.Data(), transaction.Data())).To(gomega.BeTrue(), "transaction %d calldata", index)
+			}
+			gomega.Eventually(func() uint64 {
+				finalized, _ := beacon.FinalizedEpoch(ctx)
+				return finalized
+			}).WithContext(ctx).WithTimeout(10 * time.Minute).WithPolling(time.Second).Should(
+				gomega.BeNumerically(">=", startFinalized+2),
+			)
+			for _, observer := range sessions {
+				progress, err := observer.Client.SyncProgress(ctx)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(progress).To(gomega.BeNil())
+			}
+		}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label("assertoor:stable:big-calldata-tx-test"))
+
+		ginkgo.It("accepts QRL transactions through every execution client", func(ctx ginkgo.SpecContext) {
+			for nodeIndex, session := range sessions {
+				transactions := make([]*types.Transaction, 10)
+				for index := range transactions {
+					recipient := patternedAddress(byte(0x80 + nodeIndex*16 + index))
+					transactions[index] = signTransaction(ctx, session, recipient, big.NewInt(int64(index+1)), nil)
+					gomega.Expect(session.Client.SendTransaction(ctx, transactions[index])).To(gomega.Succeed())
+				}
+				for _, transaction := range transactions {
+					receipt := waitForReceipt(ctx, session, transaction)
+					gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+					for _, observer := range sessions {
+						gomega.Eventually(func() error {
+							_, pending, err := observer.Client.TransactionByHash(ctx, transaction.Hash())
+							if err != nil {
+								return err
+							}
+							if pending {
+								return fmt.Errorf("transaction %s is still pending", transaction.Hash())
+							}
+							return nil
+						}).WithContext(ctx).WithTimeout(transactionTimeout).WithPolling(time.Second).Should(gomega.Succeed())
+					}
+				}
+			}
+		}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label("assertoor:stable:eoa-transactions-test"))
 	},
 )
 
@@ -115,6 +174,12 @@ func submitAndWait(ctx context.Context, session *endtoendlive.Session, tx *types
 	ginkgo.GinkgoHelper()
 
 	gomega.Expect(session.Client.SendTransaction(ctx, tx)).To(gomega.Succeed())
+	return waitForReceipt(ctx, session, tx)
+}
+
+func waitForReceipt(ctx context.Context, session *endtoendlive.Session, tx *types.Transaction) *types.Receipt {
+	ginkgo.GinkgoHelper()
+
 	var receipt *types.Receipt
 	gomega.Eventually(func() error {
 		var err error

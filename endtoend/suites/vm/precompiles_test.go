@@ -40,7 +40,13 @@ var _ = ginkgo.Describe(
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "live", "precompile"),
+	ginkgo.Label(
+		"e2e",
+		"live",
+		"precompile",
+		"assertoor",
+		"assertoor:stable:all-opcodes-test",
+	),
 	func() {
 		var (
 			session *endtoendlive.Session

@@ -22,6 +22,7 @@ var unsafeDevelopmentWalletSeed string
 
 type Session struct {
 	Environment     devnet.Environment
+	Participant     devnet.Participant
 	Client          *qrlclient.Client
 	WebSocketClient *qrlclient.Client
 	Wallet          qrlwallet.Wallet
@@ -34,16 +35,53 @@ func Open(ctx context.Context, withWebSocket bool) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := qrlclient.DialContext(ctx, environment.RPCURL)
+	return open(ctx, environment, environment.Participants[0], withWebSocket)
+}
+
+func OpenAll(ctx context.Context, withWebSocket bool) ([]*Session, error) {
+	environment, err := devnet.Inspect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sessions := make([]*Session, 0, len(environment.Participants))
+	for _, participant := range environment.Participants {
+		session, err := open(ctx, environment, participant, withWebSocket)
+		if err != nil {
+			for _, opened := range sessions {
+				opened.Close()
+			}
+			return nil, fmt.Errorf("open participant %d: %w", participant.Index, err)
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, nil
+}
+
+func OpenParticipant(ctx context.Context, index int, withWebSocket bool) (*Session, error) {
+	environment, err := devnet.Inspect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, participant := range environment.Participants {
+		if participant.Index == index {
+			return open(ctx, environment, participant, withWebSocket)
+		}
+	}
+	return nil, fmt.Errorf("participant %d not found", index)
+}
+
+func open(ctx context.Context, environment devnet.Environment, participant devnet.Participant, withWebSocket bool) (*Session, error) {
+	client, err := qrlclient.DialContext(ctx, participant.RPCURL)
 	if err != nil {
 		return nil, fmt.Errorf("dial HTTP RPC: %w", err)
 	}
 	session := &Session{
 		Environment: environment,
+		Participant: participant,
 		Client:      client,
 	}
 	if withWebSocket {
-		session.WebSocketClient, err = qrlclient.DialContext(ctx, environment.WebSocketURL)
+		session.WebSocketClient, err = qrlclient.DialContext(ctx, participant.WebSocketURL)
 		if err != nil {
 			session.Close()
 			return nil, fmt.Errorf("dial WebSocket RPC: %w", err)

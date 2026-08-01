@@ -71,3 +71,35 @@ func TestInvalidCustomParameters(t *testing.T) {
 		})
 	}
 }
+
+func TestBuiltInProfiles(t *testing.T) {
+	address := "Q" + strings.Repeat("d", 128)
+	for _, test := range []struct {
+		profile      Profile
+		participants int
+		keymanager   bool
+	}{
+		{ProfileSingle, 1, false},
+		{ProfileMulti, 4, false},
+		{ProfileLifecycle, 1, true},
+		{ProfileChaos, 4, false},
+		{ProfileSync, 2, false},
+	} {
+		payload, err := effectiveParametersForProfile(address, "image", nil, test.profile)
+		require.NoError(t, err)
+		var parameters struct {
+			Participants []struct {
+				ValidatorCount int `json:"validator_count"`
+			} `json:"participants"`
+			Keymanager bool `json:"keymanager_enabled"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
+		require.Len(t, parameters.Participants, test.participants)
+		require.Equal(t, test.keymanager, parameters.Keymanager)
+		totalValidators := 0
+		for _, participant := range parameters.Participants {
+			totalValidators += participant.ValidatorCount
+		}
+		require.Equal(t, 64, totalValidators)
+	}
+}

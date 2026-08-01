@@ -82,6 +82,7 @@ func TestRun(t *testing.T) {
 					EnclaveName:    enclaveName,
 					ExecutionImage: "local/go-qrl:test",
 					Parameters:     test.parameters,
+					Profile:        devnet.ProfileSingle,
 				}, networks.start)
 			}
 		})

@@ -36,7 +36,7 @@ var _ = ginkgo.Describe(
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "live", "vm", "mutates-chain"),
+	ginkgo.Label("e2e", "live", "vm", "mutates-chain", "assertoor", "assertoor:stable:all-opcodes-test"),
 	func() {
 		var suite *liveSuite
 

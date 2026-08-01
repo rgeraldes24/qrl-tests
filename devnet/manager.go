@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v7"
@@ -20,6 +23,7 @@ type kurtosisClient interface {
 	EnclaveExists(context.Context, string) (bool, error)
 	CreateAndRunRemotePackage(context.Context, string, string, string) error
 	Service(context.Context, string, string) (kurtosis.Service, error)
+	Services(context.Context, string) (map[string]kurtosis.Service, error)
 	DestroyEnclave(context.Context, string) error
 }
 
@@ -33,16 +37,39 @@ const (
 )
 
 type Environment struct {
+	EnclaveName  string
+	Participants []Participant
+
+	// Primary participant aliases retained for the existing single-node suites.
 	RPCURL       string
 	GraphQLURL   string
 	WebSocketURL string
 	ConsensusURL string
 }
 
+type Participant struct {
+	Index                int
+	ExecutionServiceName string
+	ExecutionServiceID   string
+	ExecutionPrivateIP   string
+	ConsensusServiceName string
+	ConsensusServiceID   string
+	ConsensusPrivateIP   string
+	ValidatorServiceName string
+	ValidatorServiceID   string
+	RPCURL               string
+	GraphQLURL           string
+	WebSocketURL         string
+	EngineURL            string
+	ConsensusURL         string
+	ValidatorURL         string
+}
+
 type StartOptions struct {
 	EnclaveName    string
 	ExecutionImage string
 	Parameters     []byte
+	Profile        Profile
 }
 
 type Manager struct {
@@ -68,7 +95,12 @@ func Inspect(ctx context.Context) (Environment, error) {
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) error {
-	parameters, err := effectiveParameters(DevelopmentWalletAddress, options.ExecutionImage, options.Parameters)
+	parameters, err := effectiveParametersForProfile(
+		DevelopmentWalletAddress,
+		options.ExecutionImage,
+		options.Parameters,
+		options.Profile,
+	)
 	if err != nil {
 		return fmt.Errorf("prepare qrl-package parameters: %w", err)
 	}
@@ -153,32 +185,99 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 }
 
 func resolveEnvironment(ctx context.Context, client kurtosisClient, name string) (Environment, error) {
-	execution, err := client.Service(ctx, name, executionServiceName)
+	services, err := client.Services(ctx, name)
 	if err != nil {
 		return Environment{}, err
 	}
-	rpcURL, err := execution.PublicEndpoint(rpcPortID, "http")
-	if err != nil {
-		return Environment{}, fmt.Errorf("execution service %q: %w", executionServiceName, err)
-	}
-	webSocketURL, err := execution.PublicEndpoint(webSocketPortID, "ws")
-	if err != nil {
-		return Environment{}, fmt.Errorf("execution service %q: %w", executionServiceName, err)
-	}
-	consensus, err := client.Service(ctx, name, consensusServiceName)
+	participants, err := participantsFromServices(services)
 	if err != nil {
 		return Environment{}, err
 	}
-	consensusURL, err := consensus.PublicEndpoint(consensusHTTPPortID, "http")
-	if err != nil {
-		return Environment{}, fmt.Errorf("consensus service %q: %w", consensusServiceName, err)
-	}
+	primary := participants[0]
 	return Environment{
-		RPCURL:       rpcURL,
-		GraphQLURL:   rpcURL + graphQLPath,
-		WebSocketURL: webSocketURL,
-		ConsensusURL: consensusURL,
+		EnclaveName:  name,
+		Participants: participants,
+		RPCURL:       primary.RPCURL,
+		GraphQLURL:   primary.GraphQLURL,
+		WebSocketURL: primary.WebSocketURL,
+		ConsensusURL: primary.ConsensusURL,
 	}, nil
+}
+
+func participantsFromServices(services map[string]kurtosis.Service) ([]Participant, error) {
+	byIndex := make(map[int]*Participant)
+	for name, service := range services {
+		clientType := service.Labels["qrl-package.client-type"]
+		if clientType != "execution" && clientType != "beacon" && clientType != "validator" {
+			continue
+		}
+		index, err := serviceIndex(name)
+		if err != nil {
+			return nil, err
+		}
+		participant := byIndex[index]
+		if participant == nil {
+			participant = &Participant{Index: index}
+			byIndex[index] = participant
+		}
+		switch clientType {
+		case "execution":
+			participant.ExecutionServiceName = name
+			participant.ExecutionServiceID = service.UUID
+			participant.ExecutionPrivateIP = service.PrivateIP
+			participant.RPCURL, err = service.PublicEndpoint(rpcPortID, "http")
+			if err != nil {
+				return nil, fmt.Errorf("execution service %q: %w", name, err)
+			}
+			participant.GraphQLURL = participant.RPCURL + graphQLPath
+			participant.WebSocketURL, err = service.PublicEndpoint(webSocketPortID, "ws")
+			if err != nil {
+				return nil, fmt.Errorf("execution service %q: %w", name, err)
+			}
+			participant.EngineURL = optionalPublicEndpoint(service, "engine-rpc", "http")
+		case "beacon":
+			participant.ConsensusServiceName = name
+			participant.ConsensusServiceID = service.UUID
+			participant.ConsensusPrivateIP = service.PrivateIP
+			participant.ConsensusURL, err = service.PublicEndpoint(consensusHTTPPortID, "http")
+			if err != nil {
+				return nil, fmt.Errorf("consensus service %q: %w", name, err)
+			}
+		case "validator":
+			participant.ValidatorServiceName = name
+			participant.ValidatorServiceID = service.UUID
+			participant.ValidatorURL = optionalPublicEndpoint(service, "http-validator", "http")
+		}
+	}
+	if len(byIndex) == 0 {
+		return nil, errors.New("no qrl-package participants found")
+	}
+	participants := make([]Participant, 0, len(byIndex))
+	for _, participant := range byIndex {
+		if participant.RPCURL == "" || participant.ConsensusURL == "" {
+			return nil, fmt.Errorf("participant %d is missing an execution or consensus endpoint", participant.Index)
+		}
+		participants = append(participants, *participant)
+	}
+	sort.Slice(participants, func(i, j int) bool { return participants[i].Index < participants[j].Index })
+	return participants, nil
+}
+
+func serviceIndex(name string) (int, error) {
+	parts := strings.Split(name, "-")
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("qrl-package service %q has no participant index", name)
+	}
+	index, err := strconv.Atoi(parts[1])
+	if err != nil || index < 1 {
+		return 0, fmt.Errorf("qrl-package service %q has invalid participant index", name)
+	}
+	return index, nil
+}
+
+func optionalPublicEndpoint(service kurtosis.Service, portID, scheme string) string {
+	endpoint, _ := service.PublicEndpoint(portID, scheme)
+	return endpoint
 }
 
 func retryUntil(ctx context.Context, operation func() error) error {

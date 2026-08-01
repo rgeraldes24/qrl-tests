@@ -11,8 +11,8 @@ make network-start
 make network-stop
 ```
 
-`network-start` runs the pinned qrl-package with the configured client images
-and waits for readiness. It does not build client images or run tests.
+`network-start` builds the local go-qrl and Clef images, runs the pinned
+qrl-package, and waits for readiness. It does not run the test suites.
 
 ## Configuration
 
@@ -20,6 +20,7 @@ and waits for readiness. It does not build client images or run tests.
 | --- | --- | --- |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` (CLI default) | Kurtosis enclave |
 | `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Tag for the locally built execution image |
+| `DEVNET_PROFILE` | `single` | Built-in `single`, `multi`, `lifecycle`, `chaos`, or `sync` profile |
 | `DEVNET_START_TIMEOUT` | `30m` (CLI default) | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package JSON parameters |
 
@@ -38,7 +39,7 @@ from different source trees also need different `DEVNET_EXECUTION_IMAGE` tags.
 
 ## Custom parameters
 
-`DEVNET_PARAMS_FILE` replaces the built-in single-node profile with a complete
+`DEVNET_PARAMS_FILE` replaces the selected built-in profile with a complete
 qrl-package JSON argument object. Two exact JSON string tokens are substituted:
 
 ```text
@@ -87,11 +88,15 @@ Start the network with the custom parameters:
 DEVNET_PARAMS_FILE=devnet-params.json make network-start
 ```
 
-The controller expects execution service `el-1-gqrl-qrysm` with public `rpc`
-and `ws` ports, and consensus service `cl-1-qrysm-gqrl` with a public `http`
-port. The reported GraphQL URL is live only if the profile enables GraphQL on
-the RPC port (the built-in profile passes `--graphql`). Readiness requires
-advancing blocks and a funded development wallet.
+The controller discovers every execution, consensus, and validator participant
+from qrl-package service labels. Existing consumers can use the primary-node
+endpoint aliases, while multi-node suites use `Environment.Participants`.
+The reported GraphQL URL is live only if the profile enables GraphQL on the RPC
+port. Readiness requires advancing blocks and a funded development wallet.
+
+Built-in profiles always allocate 64 genesis validators. `multi` and `chaos`
+split them across four client pairs, `sync` splits them across two, and
+`lifecycle` enables the validator keymanager API for validator-operation tests.
 
 ## Consumers
 

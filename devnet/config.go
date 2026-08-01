@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"strconv"
 	"strings"
 )
 
@@ -24,12 +26,10 @@ const (
 	genesisImage      = "qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a"
 	remoteSignerImage = "local/go-qrl-clef:devnet"
 
-	executionServiceName = "el-1-gqrl-qrysm"
-	consensusServiceName = "cl-1-qrysm-gqrl"
-	rpcPortID            = "rpc"
-	webSocketPortID      = "ws"
-	consensusHTTPPortID  = "http"
-	graphQLPath          = "/graphql"
+	rpcPortID           = "rpc"
+	webSocketPortID     = "ws"
+	consensusHTTPPortID = "http"
+	graphQLPath         = "/graphql"
 )
 
 type parameterShape struct {
@@ -46,23 +46,31 @@ type packageParameters struct {
 	Participants  []participant   `json:"participants"`
 	NetworkParams networkParams   `json:"network_params"`
 	GenesisParams generatorParams `json:"qrl_genesis_generator_params"`
+	Keymanager    bool            `json:"keymanager_enabled,omitempty"`
 }
 
 type participant struct {
-	ELImage           string   `json:"el_image"`
-	ELExtraParams     []string `json:"el_extra_params"`
-	CLImage           string   `json:"cl_image"`
-	CLExtraParams     []string `json:"cl_extra_params"`
-	VCImage           string   `json:"vc_image"`
-	UseRemoteSigner   bool     `json:"use_remote_signer"`
-	RemoteSignerType  string   `json:"remote_signer_type"`
-	RemoteSignerImage string   `json:"remote_signer_image"`
+	ELImage           string            `json:"el_image"`
+	ELExtraParams     []string          `json:"el_extra_params"`
+	CLImage           string            `json:"cl_image"`
+	CLExtraParams     []string          `json:"cl_extra_params"`
+	VCImage           string            `json:"vc_image"`
+	UseRemoteSigner   bool              `json:"use_remote_signer"`
+	RemoteSignerType  string            `json:"remote_signer_type"`
+	RemoteSignerImage string            `json:"remote_signer_image"`
+	ValidatorCount    int               `json:"validator_count"`
+	ELExtraLabels     map[string]string `json:"el_extra_labels,omitempty"`
+	CLExtraLabels     map[string]string `json:"cl_extra_labels,omitempty"`
+	VCExtraLabels     map[string]string `json:"vc_extra_labels,omitempty"`
 }
 
 type networkParams struct {
 	NetworkID               string             `json:"network_id"`
 	SecondsPerSlot          int                `json:"seconds_per_slot"`
+	SlotsPerEpoch           int                `json:"slots_per_epoch"`
 	ExecutionFollowDistance int                `json:"execution_follow_distance"`
+	WithdrawabilityDelay    int                `json:"min_validator_withdrawability_delay"`
+	ShardCommitteePeriod    int                `json:"shard_committee_period"`
 	PrefundedAccounts       map[string]account `json:"prefunded_accounts"`
 	WithdrawalAddress       string             `json:"withdrawal_address"`
 	LightKDFEnabled         bool               `json:"light_kdf_enabled"`
@@ -77,14 +85,38 @@ type generatorParams struct {
 }
 
 func effectiveParameters(address, executionImage string, custom []byte) (string, error) {
+	return effectiveParametersForProfile(address, executionImage, custom, ProfileSingle)
+}
+
+func effectiveParametersForProfile(address, executionImage string, custom []byte, profile Profile) (string, error) {
 	if strings.TrimSpace(executionImage) == "" {
 		return "", errors.New("execution image is empty")
 	}
 	if custom != nil {
 		return renderCustomParameters(custom, address, executionImage)
 	}
-	payload, err := json.Marshal(packageParameters{
-		Participants: []participant{{
+	profile, err := normalizeProfile(profile)
+	if err != nil {
+		return "", err
+	}
+	participantCount := 1
+	keymanager := false
+	switch profile {
+	case ProfileMulti, ProfileChaos:
+		participantCount = 4
+	case ProfileSync:
+		participantCount = 2
+	case ProfileLifecycle:
+		keymanager = true
+	}
+	participants := make([]participant, participantCount)
+	validatorsPerParticipant := 64 / participantCount
+	for index := range participants {
+		labels := map[string]string{
+			"qrl-tests.participant": strconv.Itoa(index + 1),
+			"qrl-tests.partition":   strconv.Itoa(index%2 + 1),
+		}
+		participants[index] = participant{
 			ELImage:           executionImage,
 			ELExtraParams:     []string{"--graphql", "--graphql.vhosts=*"},
 			CLImage:           consensusImage,
@@ -93,21 +125,54 @@ func effectiveParameters(address, executionImage string, custom []byte) (string,
 			UseRemoteSigner:   true,
 			RemoteSignerType:  "clef",
 			RemoteSignerImage: remoteSignerImage,
-		}},
+			ValidatorCount:    validatorsPerParticipant,
+			ELExtraLabels:     maps.Clone(labels),
+			CLExtraLabels:     maps.Clone(labels),
+			VCExtraLabels:     maps.Clone(labels),
+		}
+	}
+	payload, err := json.Marshal(packageParameters{
+		Participants: participants,
 		NetworkParams: networkParams{
 			NetworkID:               defaultNetworkID,
 			SecondsPerSlot:          5,
+			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
+			WithdrawabilityDelay:    2,
+			ShardCommitteePeriod:    2,
 			PrefundedAccounts:       map[string]account{address: {Balance: prefundBalance}},
 			WithdrawalAddress:       address,
 			LightKDFEnabled:         true,
 		},
 		GenesisParams: generatorParams{Image: genesisImage},
+		Keymanager:    keymanager,
 	})
 	if err != nil {
 		return "", err
 	}
 	return string(payload), nil
+}
+
+type Profile string
+
+const (
+	ProfileSingle    Profile = "single"
+	ProfileMulti     Profile = "multi"
+	ProfileLifecycle Profile = "lifecycle"
+	ProfileChaos     Profile = "chaos"
+	ProfileSync      Profile = "sync"
+)
+
+func normalizeProfile(profile Profile) (Profile, error) {
+	if profile == "" {
+		return ProfileSingle, nil
+	}
+	switch profile {
+	case ProfileSingle, ProfileMulti, ProfileLifecycle, ProfileChaos, ProfileSync:
+		return profile, nil
+	default:
+		return "", fmt.Errorf("unknown development-network profile %q", profile)
+	}
 }
 
 func renderCustomParameters(payload []byte, address, executionImage string) (string, error) {

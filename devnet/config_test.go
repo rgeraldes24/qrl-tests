@@ -77,13 +77,12 @@ func TestBuiltInProfiles(t *testing.T) {
 	for _, test := range []struct {
 		profile      Profile
 		participants int
-		keymanager   bool
 	}{
-		{ProfileSingle, 1, false},
-		{ProfileMulti, 4, false},
-		{ProfileLifecycle, 1, true},
-		{ProfileChaos, 4, false},
-		{ProfileSync, 2, false},
+		{ProfileSingle, 1},
+		{ProfileMulti, 4},
+		{ProfileLifecycle, 1},
+		{ProfileChaos, 4},
+		{ProfileSync, 2},
 	} {
 		payload, err := effectiveParametersForProfile(address, "image", nil, test.profile)
 		require.NoError(t, err)
@@ -91,11 +90,9 @@ func TestBuiltInProfiles(t *testing.T) {
 			Participants []struct {
 				ValidatorCount int `json:"validator_count"`
 			} `json:"participants"`
-			Keymanager bool `json:"keymanager_enabled"`
 		}
 		require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
 		require.Len(t, parameters.Participants, test.participants)
-		require.Equal(t, test.keymanager, parameters.Keymanager)
 		totalValidators := 0
 		for _, participant := range parameters.Participants {
 			totalValidators += participant.ValidatorCount

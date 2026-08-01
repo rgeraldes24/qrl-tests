@@ -96,7 +96,7 @@ port. Readiness requires advancing blocks and a funded development wallet.
 
 Built-in profiles always allocate 64 genesis validators. `multi` and `chaos`
 split them across four client pairs, `sync` splits them across two, and
-`lifecycle` enables the validator keymanager API for validator-operation tests.
+`lifecycle` provides a dedicated single-client lane for validator operations.
 
 ## Consumers
 

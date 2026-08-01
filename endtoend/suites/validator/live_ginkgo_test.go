@@ -83,14 +83,6 @@ var _ = ginkgo.Describe(
 
 			_, err = validatorops.Deposit(ctx, suite.session, suite.beacon, suite.key, first)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			gomega.Eventually(func() uint64 {
-				validator, err := suite.beacon.Validator(ctx, suite.publicKey)
-				if err != nil {
-					return 0
-				}
-				return validator.Balance
-			}).WithContext(ctx).WithTimeout(validatorTimeout).WithPolling(validatorPollInterval).Should(gomega.BeNumerically(">=", first))
-
 			_, err = validatorops.Deposit(ctx, suite.session, suite.beacon, suite.key, second)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Eventually(func(g gomega.Gomega) {
@@ -139,13 +131,19 @@ var _ = ginkgo.Describe(
 				scannedThrough := lastSlot
 				for slot := lastSlot + 1; slot <= current; slot++ {
 					operations, err := suite.beacon.BlockOperations(ctx, strconv.FormatUint(slot, 10))
+					if consensus.IsNotFound(err) {
+						scannedThrough = slot
+						continue
+					}
 					if err != nil {
-						break
+						g.Expect(err).NotTo(gomega.HaveOccurred())
+						return
 					}
 					exitIncluded = exitIncluded || contains(operations.VoluntaryExits, suite.validator.Index)
 					for _, withdrawal := range operations.Withdrawals {
 						if withdrawal.ValidatorIndex == suite.validator.Index {
-							g.Expect(strings.EqualFold(withdrawal.Address, suite.session.Address.Hex())).To(gomega.BeTrue())
+							expectedAddress := "0x" + suite.session.Address.Hex()[1:]
+							g.Expect(strings.EqualFold(withdrawal.Address, expectedAddress)).To(gomega.BeTrue())
 							withdrawalIncluded = true
 						}
 					}

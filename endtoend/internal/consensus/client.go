@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,23 @@ import (
 type Client struct {
 	baseURL *url.URL
 	http    *http.Client
+}
+
+type responseError struct {
+	method     string
+	path       string
+	status     string
+	statusCode int
+	body       string
+}
+
+func (err *responseError) Error() string {
+	return fmt.Sprintf("%s %s returned %s: %s", err.method, err.path, err.status, err.body)
+}
+
+func IsNotFound(err error) bool {
+	var responseErr *responseError
+	return errors.As(err, &responseErr) && responseErr.statusCode == http.StatusNotFound
 }
 
 type SyncStatus struct {
@@ -543,7 +561,10 @@ func (client *Client) do(ctx context.Context, method, path string, body io.Reade
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return fmt.Errorf("%s %s returned %s: %s", method, path, response.Status, strings.TrimSpace(string(body)))
+		return &responseError{
+			method: method, path: path, status: response.Status,
+			statusCode: response.StatusCode, body: strings.TrimSpace(string(body)),
+		}
 	}
 	if result == nil {
 		return nil

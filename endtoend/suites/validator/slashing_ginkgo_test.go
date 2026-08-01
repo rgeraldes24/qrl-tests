@@ -87,8 +87,13 @@ func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain vali
 		scannedThrough := lastSlot
 		for slot := lastSlot + 1; slot <= current; slot++ {
 			operations, err := beacon.BlockOperations(ctx, strconv.FormatUint(slot, 10))
+			if consensus.IsNotFound(err) {
+				scannedThrough = slot
+				continue
+			}
 			if err != nil {
-				break
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				return
 			}
 			indices := operations.AttesterSlashings
 			if proposer {

@@ -46,7 +46,6 @@ type packageParameters struct {
 	Participants  []participant   `json:"participants"`
 	NetworkParams networkParams   `json:"network_params"`
 	GenesisParams generatorParams `json:"qrl_genesis_generator_params"`
-	Keymanager    bool            `json:"keymanager_enabled,omitempty"`
 }
 
 type participant struct {
@@ -100,14 +99,11 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 		return "", err
 	}
 	participantCount := 1
-	keymanager := false
 	switch profile {
 	case ProfileMulti, ProfileChaos:
 		participantCount = 4
 	case ProfileSync:
 		participantCount = 2
-	case ProfileLifecycle:
-		keymanager = true
 	}
 	participants := make([]participant, participantCount)
 	validatorsPerParticipant := 64 / participantCount
@@ -145,7 +141,6 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 			LightKDFEnabled:         true,
 		},
 		GenesisParams: generatorParams{Image: genesisImage},
-		Keymanager:    keymanager,
 	})
 	if err != nil {
 		return "", err

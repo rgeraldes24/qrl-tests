@@ -84,14 +84,21 @@ func TestBuiltInProfiles(t *testing.T) {
 		{ProfileLifecycle, 1, 64},
 		{ProfileChaos, 4, 64},
 		{ProfileSync, 2, 64},
-		{ProfileOperations, 4, 512},
+		{ProfileOperations, 5, 812},
+		{ProfileCold, 1, 64},
+		{ProfileOptimistic, 2, 64},
 	} {
 		payload, err := effectiveParametersForProfile(address, "image", nil, test.profile)
 		require.NoError(t, err)
 		var parameters struct {
 			Participants []struct {
-				ValidatorCount int `json:"validator_count"`
+				ValidatorCount int      `json:"validator_count"`
+				CLExtraParams  []string `json:"cl_extra_params"`
+				VCExtraParams  []string `json:"vc_extra_params"`
 			} `json:"participants"`
+			Network struct {
+				PreregisteredValidators int `json:"preregistered_validator_count"`
+			} `json:"network_params"`
 		}
 		require.NoError(t, json.Unmarshal([]byte(payload), &parameters))
 		require.Len(t, parameters.Participants, test.participants)
@@ -100,5 +107,22 @@ func TestBuiltInProfiles(t *testing.T) {
 			totalValidators += participant.ValidatorCount
 		}
 		require.Equal(t, test.validators, totalValidators)
+		if test.profile == ProfileSync {
+			require.Contains(t, parameters.Participants[1].CLExtraParams, "--force-clear-db")
+			require.Equal(t, []string{"--enable-doppelganger", "--force-clear-db"}, parameters.Participants[1].VCExtraParams)
+		}
+		if test.profile == ProfileChaos {
+			require.Empty(t, parameters.Participants[0].CLExtraParams)
+		}
+		if test.profile == ProfileCold {
+			require.Contains(t, parameters.Participants[0].CLExtraParams, "--slots-per-archive-point=16")
+		}
+		if test.profile == ProfileOptimistic {
+			require.Contains(t, parameters.Participants[1].CLExtraParams, "--startup-optimistic")
+		}
+		if test.profile == ProfileOperations {
+			require.Equal(t, 512, parameters.Network.PreregisteredValidators)
+			require.Equal(t, 300, parameters.Participants[4].ValidatorCount)
+		}
 	}
 }

@@ -29,6 +29,7 @@ const (
 	rpcPortID           = "rpc"
 	webSocketPortID     = "ws"
 	consensusHTTPPortID = "http"
+	metricsPortID       = "metrics"
 	graphQLPath         = "/graphql"
 )
 
@@ -54,6 +55,7 @@ type participant struct {
 	CLImage           string            `json:"cl_image"`
 	CLExtraParams     []string          `json:"cl_extra_params"`
 	VCImage           string            `json:"vc_image"`
+	VCExtraParams     []string          `json:"vc_extra_params"`
 	UseRemoteSigner   bool              `json:"use_remote_signer"`
 	RemoteSignerType  string            `json:"remote_signer_type"`
 	RemoteSignerImage string            `json:"remote_signer_image"`
@@ -65,6 +67,7 @@ type participant struct {
 
 type networkParams struct {
 	NetworkID               string             `json:"network_id"`
+	PreregisteredValidators int                `json:"preregistered_validator_count,omitempty"`
 	SecondsPerSlot          int                `json:"seconds_per_slot"`
 	SlotsPerEpoch           int                `json:"slots_per_epoch"`
 	ExecutionFollowDistance int                `json:"execution_follow_distance"`
@@ -100,17 +103,23 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 	}
 	participantCount := 1
 	switch profile {
-	case ProfileMulti, ProfileChaos, ProfileOperations:
+	case ProfileMulti, ProfileChaos:
 		participantCount = 4
-	case ProfileSync:
+	case ProfileOperations:
+		participantCount = 5
+	case ProfileSync, ProfileOptimistic:
 		participantCount = 2
 	}
-	totalValidators := 64
-	if profile == ProfileOperations {
-		totalValidators = 512
-	}
 	participants := make([]participant, participantCount)
-	validatorsPerParticipant := totalValidators / participantCount
+	validatorCounts := make([]int, participantCount)
+	for index := range validatorCounts {
+		validatorCounts[index] = 64 / participantCount
+	}
+	preregisteredValidators := 0
+	if profile == ProfileOperations {
+		copy(validatorCounts, []int{128, 128, 128, 128, 300})
+		preregisteredValidators = 512
+	}
 	for index := range participants {
 		labels := map[string]string{
 			"qrl-tests.participant": strconv.Itoa(index + 1),
@@ -122,19 +131,34 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 			CLImage:           consensusImage,
 			CLExtraParams:     []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"},
 			VCImage:           validatorImage,
+			VCExtraParams:     []string{},
 			UseRemoteSigner:   true,
 			RemoteSignerType:  "clef",
 			RemoteSignerImage: remoteSignerImage,
-			ValidatorCount:    validatorsPerParticipant,
+			ValidatorCount:    validatorCounts[index],
 			ELExtraLabels:     maps.Clone(labels),
 			CLExtraLabels:     maps.Clone(labels),
 			VCExtraLabels:     maps.Clone(labels),
+		}
+		if profile == ProfileChaos {
+			participants[index].CLExtraParams = []string{}
+		}
+		if profile == ProfileSync && index == 1 {
+			participants[index].CLExtraParams = append(participants[index].CLExtraParams, "--force-clear-db")
+			participants[index].VCExtraParams = []string{"--enable-doppelganger", "--force-clear-db"}
+		}
+		if profile == ProfileCold {
+			participants[index].CLExtraParams = append(participants[index].CLExtraParams, "--slots-per-archive-point=16")
+		}
+		if profile == ProfileOptimistic && index == 1 {
+			participants[index].CLExtraParams = append(participants[index].CLExtraParams, "--startup-optimistic")
 		}
 	}
 	payload, err := json.Marshal(packageParameters{
 		Participants: participants,
 		NetworkParams: networkParams{
 			NetworkID:               defaultNetworkID,
+			PreregisteredValidators: preregisteredValidators,
 			SecondsPerSlot:          5,
 			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
@@ -161,6 +185,8 @@ const (
 	ProfileChaos      Profile = "chaos"
 	ProfileSync       Profile = "sync"
 	ProfileOperations Profile = "operations"
+	ProfileCold       Profile = "cold"
+	ProfileOptimistic Profile = "optimistic"
 )
 
 func normalizeProfile(profile Profile) (Profile, error) {
@@ -168,7 +194,8 @@ func normalizeProfile(profile Profile) (Profile, error) {
 		return ProfileSingle, nil
 	}
 	switch profile {
-	case ProfileSingle, ProfileMulti, ProfileLifecycle, ProfileChaos, ProfileSync, ProfileOperations:
+	case ProfileSingle, ProfileMulti, ProfileLifecycle, ProfileChaos, ProfileSync, ProfileOperations,
+		ProfileCold, ProfileOptimistic:
 		return profile, nil
 	default:
 		return "", fmt.Errorf("unknown development-network profile %q", profile)

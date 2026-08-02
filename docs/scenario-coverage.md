@@ -39,6 +39,12 @@ implemented behavior to an executable Ginkgo label.
 | `resilience` | Implemented | Native client stop, restart, outage, and catch-up behavior |
 | `validator` | Implemented | Deposit, top-up, activation, voluntary exit, execution withdrawal, and slashings |
 | `partition` | Implemented | Partition, finality stall, competing heads, healing, convergence, and renewed finality |
+| `beaconapi` | Implemented | Beacon node, state, configuration, pool, and signature-verification APIs |
+| `validatorapi` | Implemented | Attester, proposer, sync-committee duty, and liveness APIs |
+| `protocol` | Implemented | Genesis, peer, metrics, execution-data, fee-recipient, sync participation, and signature invariants |
+| `sync` | Implemented | Fresh database sync and doppelganger protection |
+| `coldstate` | Implemented | Historical validator assignments after archival |
+| `optimistic` | Implemented | Native optimistic import and execution-validation recovery |
 
 ## Source Scenario Inventory
 
@@ -46,20 +52,20 @@ implemented behavior to an executable Ginkgo label.
 | --- | --- | --- |
 | `api-compatibility/gloas-api-check.yaml` | Unsupported | Gloas/ePBS API surface is not supported |
 | `dev/block-proposal-with-blobs-check.yaml` | Unsupported | Blob transactions are not supported |
-| `dev/dev-deposits.yaml` | Full | `endtoend/suites/validator` submits the configured two distinct deposits and verifies their consensus balances |
+| `dev/dev-deposits.yaml` | Full | `endtoend/suites/crosslayer/validator` submits the configured two distinct deposits and verifies their consensus balances |
 | `dev/execution-spec-tests-dependencies.yaml` | Unsupported | Ethereum execution-spec tooling assumes EVM32/Ethereum protocol behavior |
 | `dev/execution-spec-tests-execute.yaml` | Unsupported | Ethereum execution-spec tooling assumes EVM32/Ethereum protocol behavior |
-| `dev/fund-wallet.yaml` | Equivalent | `endtoend/suites/transactions` verifies a deterministic transfer, receipt, and resulting balance |
-| `dev/generate-attestations.yaml` | Equivalent | `endtoend/suites/network` verifies every active validator participates across three epochs; source fault injection is unsupported |
+| `dev/fund-wallet.yaml` | Equivalent | `endtoend/suites/crosslayer/transactions` verifies a deterministic transfer, receipt, and resulting balance |
+| `dev/generate-attestations.yaml` | Equivalent | `endtoend/suites/crosslayer/network` verifies every active validator participates across three epochs; source fault injection is unsupported |
 | `dev/shell-test.yaml` | Unsupported | Arbitrary shell execution is not a protocol scenario |
-| `dev/synchronized-check.yaml` | Full | `endtoend/suites/network` verifies every execution and consensus client is synchronized |
-| `dev/two-way-network-split-non-finality.yaml` | Full | `endtoend/suites/partition` stalls and restores finality across a balanced split |
-| `dev/two-way-network-split-reorg-trigger.yaml` | Failing | Competing heads form, but the current topology does not reconverge within the recovery budget |
-| `dev/validator-lifecycle-test.yaml` | Partial | Supported lifecycle operations plus exit and slashing proposer matrices are covered; deposit-bearing beacon blocks and BLS changes are not part of QRL, while the 300-validator finality-loss workload remains open |
+| `dev/synchronized-check.yaml` | Full | `endtoend/suites/crosslayer/network` verifies every execution and consensus client is synchronized |
+| `dev/two-way-network-split-non-finality.yaml` | Full | `endtoend/suites/crosslayer/partition` stalls and restores finality across a balanced split |
+| `dev/two-way-network-split-reorg-trigger.yaml` | Full | Competing heads form, then every node converges on the same newer finalized checkpoint after healing |
+| `dev/validator-lifecycle-test.yaml` | Equivalent | Supported lifecycle operations, 300-validator deposit churn, partial and full withdrawals, proposer matrices, and finality recovery are covered; BLS credential changes are not part of QRL |
 | `dev/validator-proposer-slashing-test.yaml` | Equivalent | The operations lane submits 50 proposer slashings through every consensus client and observes inclusion by every proposer pair |
-| `dev/validator-slashing-single.yaml` | Full | `endtoend/suites/validator` submits one proposer slashing and verifies inclusion and state transition |
+| `dev/validator-slashing-single.yaml` | Full | `endtoend/suites/crosslayer/validator` submits one proposer slashing and verifies inclusion and state transition |
 | `dev/validator-withdrawal-test-v2.yaml` | Unsupported | QRL withdrawal credentials are direct 64-byte Q-addresses; the source scenario specifically tests BLS-to-execution credential changes |
-| `dev/wait-for-slot.yaml` | Full | `endtoend/suites/network` verifies slot and execution-block progression |
+| `dev/wait-for-slot.yaml` | Full | `endtoend/suites/crosslayer/network` verifies slot and execution-block progression |
 | `fusaka-dev/kurtosis/analyze-cgc.yaml` | Unsupported | Fusaka CGC behavior is not supported |
 | `fusaka-dev/kurtosis/cgc-validation-test.yaml` | Unsupported | Fusaka CGC behavior is not supported |
 | `fusaka-dev/kurtosis/ethconfig-test-with-rpc-call.yaml` | Unsupported | EIP-7910/Fusaka behavior is not supported |
@@ -106,18 +112,18 @@ implemented behavior to an executable Ginkgo label.
 | `pectra-dev/kurtosis/fillup-withdrawal-queue.yaml` | Unsupported | EIP-7002 is not supported |
 | `pectra-dev/kurtosis/massive-deposit-0x02.yaml` | Unsupported | Pectra 0x02 credential behavior is not supported |
 | `pectra-dev/kurtosis/massive-deposit.yaml` | Unsupported | Pectra-specific deposit behavior is not supported |
-| `pectra-dev/kurtosis/topup-deposits.yaml` | Equivalent | `endtoend/suites/validator` deposits twice for the same validator and verifies balance and activation |
+| `pectra-dev/kurtosis/topup-deposits.yaml` | Equivalent | `endtoend/suites/crosslayer/validator` deposits twice for the same validator and verifies balance and activation |
 | `pectra-dev/kurtosis/voluntary-exits.yaml` | Full | The operations lane signs, submits, includes, and applies exactly 64 voluntary exits |
 | `pectra-dev/validator-lifecycle-test-v3.yaml` | Unsupported | Pectra lifecycle and request queues are not supported |
 | `stable/all-opcodes-test.yaml` | Equivalent | The QRL-native VM suite covers QRVM/VM64 opcodes and precompiles, plus mined deployment, state-changing execution, and terminal receipt status |
 | `stable/big-calldata-tx-test.yaml` | Full | The full lane submits 1000 transactions with 1000-byte calldata at no more than 10 workload transactions per block and verifies finality |
 | `stable/blob-transactions-test.yaml` | Unsupported | Blob transactions are not supported |
-| `stable/block-proposal-check.yaml` | Full | `endtoend/suites/network` observes a proposal from every validator client pair |
+| `stable/block-proposal-check.yaml` | Full | `endtoend/suites/crosslayer/network` observes a proposal from every validator client pair |
 | `stable/dencun-opcodes-test.yaml` | Unsupported | Dencun opcodes are not supported |
 | `stable/eoa-transactions-test.yaml` | Equivalent | The full lane sustains 10 dynamic-fee transactions per block through every execution client until every validator pair proposes a transaction-bearing block; legacy transactions are unsupported |
 | `stable/kurtosis/validator-exit-test.yaml` | Equivalent | The operations lane distributes 64 exits through every consensus client and observes inclusion by every proposer pair |
 | `stable/kurtosis/validator-slashing-test.yaml` | Equivalent | The operations lane submits 50 proposer and 50 attester slashings through every consensus client and observes both types from every proposer pair |
-| `stable/kurtosis/validator-withdrawal-test.yaml` | Equivalent | `endtoend/suites/validator` verifies QRL direct-address withdrawal and execution balance transfer |
+| `stable/kurtosis/validator-withdrawal-test.yaml` | Equivalent | `endtoend/suites/crosslayer/validator` verifies QRL direct-address withdrawal and execution balance transfer |
 | `stable/mev-block-proposal-check.yaml` | Unsupported | MEV builder/relay flow is not part of the current QRL network |
 | `stable/stability-check.yaml` | Full | The network lane enforces synchronization, finality, target/head participation, reorg, and fork budgets |
 | `stable/validator-lifecycle-test-v2.yaml` | Equivalent | The operations lane runs the ten-validator mixed lifecycle with QRL direct-address withdrawals; BLS credential changes are not part of QRL |

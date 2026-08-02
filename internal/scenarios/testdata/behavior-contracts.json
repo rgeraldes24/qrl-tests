@@ -38,22 +38,22 @@
   },
   {
     "scenario": "dev/two-way-network-split-reorg-trigger.yaml",
-    "status": "Failing",
+    "status": "Full",
     "behaviors": [
       {"id": "partition.competing-heads", "status": "Covered", "label": "behavior:partition:competing-heads"},
-      {"id": "partition.reorg-recovery", "status": "Failing", "label": "behavior:partition:reorg-recovery", "reason": "the current client topology does not reconverge within the scenario budget after healing"}
+      {"id": "partition.reorg-recovery", "status": "Covered", "label": "behavior:partition:reorg-recovery"}
     ]
   },
   {
     "scenario": "dev/validator-lifecycle-test.yaml",
-    "status": "Partial",
+    "status": "Equivalent",
     "behaviors": [
       {"id": "validator.deposit-topup-activate", "status": "Covered", "label": "behavior:validator:deposit-topup-activate"},
       {"id": "validator.exit-withdraw", "status": "Covered", "label": "behavior:validator:exit-withdraw"},
       {"id": "validator.proposer-slashing", "status": "Covered", "label": "behavior:validator:proposer-slashing"},
       {"id": "validator.attester-slashing", "status": "Covered", "label": "behavior:validator:attester-slashing"},
-      {"id": "validator.mass-deposit-churn", "status": "Missing", "reason": "the 300-validator finality-loss and recovery workload is not implemented"},
-      {"id": "validator.deposit-proposer-matrix", "status": "Unsupported", "reason": "QRL advances deposits through execution data and does not carry deposit objects in proposer beacon blocks"},
+      {"id": "validator.mass-deposit-churn", "status": "Covered", "label": "behavior:validator:mass-deposit-churn"},
+      {"id": "validator.deposit-proposer-matrix", "status": "Covered", "label": "behavior:validator:deposit-proposer-matrix"},
       {"id": "validator.exit-proposer-matrix", "status": "Covered", "label": "behavior:validator:exit-proposer-matrix"},
       {"id": "validator.slashing-proposer-matrix", "status": "Covered", "label": "behavior:validator:slashing-proposer-matrix"},
       {"id": "validator.bls-credential-change", "status": "Unsupported", "reason": "QRL withdrawal credentials are direct Q-addresses"}

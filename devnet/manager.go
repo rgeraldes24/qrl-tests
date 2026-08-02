@@ -62,7 +62,9 @@ type Participant struct {
 	WebSocketURL         string
 	EngineURL            string
 	ConsensusURL         string
+	ConsensusMetricsURL  string
 	ValidatorURL         string
+	ValidatorMetricsURL  string
 }
 
 type StartOptions struct {
@@ -158,6 +160,22 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 	return environment, nil
 }
 
+func (manager *Manager) ConsensusEndpoint(ctx context.Context, enclaveName, serviceName string) (string, error) {
+	client, err := manager.newClient()
+	if err != nil {
+		return "", err
+	}
+	service, err := client.Service(ctx, enclaveName, serviceName)
+	if err != nil {
+		return "", err
+	}
+	endpoint, err := service.PublicEndpoint(consensusHTTPPortID, "http")
+	if err != nil {
+		return "", fmt.Errorf("consensus service %q: %w", serviceName, err)
+	}
+	return endpoint, nil
+}
+
 func (manager *Manager) Stop(ctx context.Context, name string) error {
 	client, err := manager.newClient()
 	if err != nil {
@@ -243,10 +261,12 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			if err != nil {
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
+			participant.ConsensusMetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		case "validator":
 			participant.ValidatorServiceName = name
 			participant.ValidatorServiceID = service.UUID
 			participant.ValidatorURL = optionalPublicEndpoint(service, "http-validator", "http")
+			participant.ValidatorMetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		}
 	}
 	if len(byIndex) == 0 {

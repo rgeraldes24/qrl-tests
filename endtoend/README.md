@@ -22,25 +22,53 @@ The repository exposes profile-oriented lanes:
 | Lane | Network profile | Coverage |
 | --- | --- | --- |
 | `make e2e-core` | `single` | Client APIs, ABI, console, signing, Engine, transactions, and VM |
+| `make e2e-consensus` | `single` or `multi` | Beacon/validator APIs, signatures, protocol state, peers, metrics, and fee recipients |
 | `make e2e-validator` | `lifecycle` | Deposits, activation, exits, withdrawals, and slashings |
 | `make e2e-validator-operations` | `operations` | Multi-client deposit, exit, and slashing workloads |
 | `make e2e-chaos` | `chaos` | Multi-client health, native partitions, outages, restart, and catch-up |
 | `make e2e-scenarios` | `multi` | Full QRL workloads, network scenarios, Engine checks, and restart recovery |
+| `make e2e-sync` | `sync` | Fresh EL/CL database sync and validator doppelganger protection |
+| `make e2e-cold` | `cold` | Historical validator assignments across archived state boundaries |
+| `make e2e-optimistic` | `optimistic` | Optimistic consensus sync while the execution client is unavailable, then recovery |
 
 Start the network with the corresponding `DEVNET_PROFILE` before running a
 lane. The scenario coverage inventory is executable: repository tests
 fail if a supported source scenario lacks a matching Ginkgo coverage label.
 
+Suites are also grouped by protocol boundary:
+
+| Domain | Contents | Command |
+| --- | --- | --- |
+| Execution | ABI, JSON-RPC, GraphQL, console, VM, and precompiles | `make e2e-execution` |
+| Consensus | Beacon and validator APIs, signatures, protocol invariants, sync, and historical state | `make e2e-consensus` |
+| Cross-layer | Engine, transactions, validators, partitions, and recovery | `make e2e-crosslayer` |
+| Signer | Clef and node-to-Clef integration | `make e2e-signer` |
+
+Run every implemented domain with `make e2e-all`.
+
 ## Adding a suite
 
-Add suites under `suites/<suite>`. Live bootstrap files use the `e2e` build tag
-and open `internal/live.Session` for endpoints, clients, the development wallet,
-and chain ID. Keep network lifecycle management outside the suites.
+Add suites under `suites/<domain>/<suite>`. Live bootstrap files use the `e2e`
+build tag and open `internal/live.Session` for endpoints, execution clients, the
+development wallet, and chain ID. Keep network lifecycle management outside the
+suites.
 
-The [network](suites/network/README.md),
-[transactions](suites/transactions/README.md), [ABI](suites/abi/README.md), [API](suites/api/README.md),
-[console](suites/console/README.md), [Clef](suites/clef/README.md),
-[external signer](suites/externalsigner/README.md),
-[Engine](suites/engine/README.md), [validator](suites/validator/README.md),
-[partition](suites/partition/README.md), and [VM/precompile](suites/vm/README.md)
-suites document their focused commands and coverage.
+The [ABI](suites/execution/abi/README.md),
+[API](suites/execution/api/README.md),
+[console](suites/execution/console/README.md),
+[VM/precompile](suites/execution/vm/README.md),
+[Clef](suites/signer/clef/README.md),
+[external signer](suites/signer/externalsigner/README.md),
+[beacon API](suites/consensus/beaconapi/README.md),
+[validator API](suites/consensus/validatorapi/README.md),
+[consensus protocol](suites/consensus/protocol/README.md),
+[fresh sync](suites/consensus/sync/README.md),
+[cold state](suites/consensus/coldstate/README.md),
+[optimistic sync](suites/consensus/optimistic/README.md),
+[Engine](suites/crosslayer/engine/README.md),
+[network](suites/crosslayer/network/README.md),
+[transactions](suites/crosslayer/transactions/README.md),
+[validator](suites/crosslayer/validator/README.md),
+[partition](suites/crosslayer/partition/README.md), and
+[resilience](suites/crosslayer/resilience/README.md) suites document their
+focused commands and coverage.

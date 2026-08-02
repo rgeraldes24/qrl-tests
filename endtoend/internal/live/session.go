@@ -21,13 +21,13 @@ import (
 var unsafeDevelopmentWalletSeed string
 
 type Session struct {
-	Environment     devnet.Environment
-	Participant     devnet.Participant
-	Client          *qrlclient.Client
-	WebSocketClient *qrlclient.Client
-	Wallet          qrlwallet.Wallet
-	Address         common.Address
-	ChainID         *big.Int
+	Environment        devnet.Environment
+	Participant        devnet.Participant
+	Execution          *qrlclient.Client
+	ExecutionWebSocket *qrlclient.Client
+	Wallet             qrlwallet.Wallet
+	Address            common.Address
+	ChainID            *big.Int
 }
 
 func Open(ctx context.Context, withWebSocket bool) (*Session, error) {
@@ -78,10 +78,10 @@ func open(ctx context.Context, environment devnet.Environment, participant devne
 	session := &Session{
 		Environment: environment,
 		Participant: participant,
-		Client:      client,
+		Execution:   client,
 	}
 	if withWebSocket {
-		session.WebSocketClient, err = qrlclient.DialContext(ctx, participant.WebSocketURL)
+		session.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.WebSocketURL)
 		if err != nil {
 			session.Close()
 			return nil, fmt.Errorf("dial WebSocket RPC: %w", err)
@@ -102,10 +102,10 @@ func open(ctx context.Context, environment devnet.Environment, participant devne
 }
 
 func (session *Session) Close() {
-	if session.WebSocketClient != nil {
-		session.WebSocketClient.Close()
+	if session.ExecutionWebSocket != nil {
+		session.ExecutionWebSocket.Close()
 	}
-	if session.Client != nil {
-		session.Client.Close()
+	if session.Execution != nil {
+		session.Execution.Close()
 	}
 }

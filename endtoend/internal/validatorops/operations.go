@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	fastssz "github.com/prysmaticlabs/fastssz"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/qrysm/beacon-chain/core/signing"
@@ -116,7 +116,11 @@ func sign(key ml_dsa_87.MLDSA87Key, object fastssz.HashRoot, domainType [4]byte,
 	if err != nil {
 		return nil, err
 	}
-	return key.Sign(root[:]).Marshal(), nil
+	signature := key.Sign(root[:]).Marshal()
+	if err := signing.VerifySigningRoot(object, key.PublicKey().Marshal(), signature, domain); err != nil {
+		return nil, fmt.Errorf("verify generated validator signature: %w", err)
+	}
+	return signature, nil
 }
 
 func signedHeaderJSON(header *qrysmpb.BeaconBlockHeader, signature []byte) map[string]any {

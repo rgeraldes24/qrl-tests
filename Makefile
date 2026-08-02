@@ -1,4 +1,4 @@
-.PHONY: test fmt e2e-compile network-image clef-image network-start network-stop e2e-test e2e-core e2e-validator e2e-validator-operations e2e-chaos e2e-scenarios
+.PHONY: test fmt e2e-compile network-image clef-image network-start network-stop e2e-test e2e-execution e2e-consensus e2e-crosslayer e2e-signer e2e-all e2e-core e2e-validator e2e-validator-operations e2e-chaos e2e-scenarios e2e-sync e2e-cold e2e-optimistic
 
 GO ?= go
 GO_QRL_SOURCE_DIR ?=
@@ -56,6 +56,7 @@ e2e-test:
 	@test -n "$(strip $(E2E_PACKAGES))" || { echo "E2E_PACKAGES must name at least one suite package" >&2; exit 2; }
 	@mkdir -p "$(E2E_REPORT_DIR)"
 	DEVNET_ENCLAVE_NAME="$(DEVNET_ENCLAVE_NAME)" \
+	DEVNET_PROFILE="$(DEVNET_PROFILE)" \
 	GO_QRL_SOURCE_DIR="$(GO_QRL_SOURCE_DIR)" \
 	$(GO) tool ginkgo \
 		--tags=e2e \
@@ -72,23 +73,52 @@ e2e-test:
 		$(strip $(E2E_PACKAGES)) \
 		-- -test.run='^TestE2E$$'
 
-e2e-core: E2E_PACKAGES=./endtoend/suites/abi ./endtoend/suites/api ./endtoend/suites/clef ./endtoend/suites/console ./endtoend/suites/engine ./endtoend/suites/externalsigner ./endtoend/suites/network ./endtoend/suites/transactions ./endtoend/suites/vm
+e2e-execution: E2E_PACKAGES=./endtoend/suites/execution/...
+e2e-execution: e2e-test
+
+e2e-consensus: E2E_PACKAGES=./endtoend/suites/consensus/beaconapi ./endtoend/suites/consensus/validatorapi ./endtoend/suites/consensus/protocol
+e2e-consensus: e2e-test
+
+e2e-crosslayer: E2E_PACKAGES=./endtoend/suites/crosslayer/...
+e2e-crosslayer: E2E_SUITE_TIMEOUT=3h
+e2e-crosslayer: e2e-test
+
+e2e-signer: E2E_PACKAGES=./endtoend/suites/signer/...
+e2e-signer: e2e-test
+
+e2e-all: E2E_PACKAGES=./endtoend/suites/...
+e2e-all: E2E_SUITE_TIMEOUT=4h
+e2e-all: e2e-test
+
+e2e-core: E2E_PACKAGES=./endtoend/suites/execution/... ./endtoend/suites/signer/... ./endtoend/suites/crosslayer/engine ./endtoend/suites/crosslayer/network ./endtoend/suites/crosslayer/transactions
 e2e-core: e2e-test
 
-e2e-validator: E2E_PACKAGES=./endtoend/suites/validator
+e2e-validator: E2E_PACKAGES=./endtoend/suites/crosslayer/validator
 e2e-validator: E2E_SUITE_TIMEOUT=90m
 e2e-validator: e2e-test
 
-e2e-validator-operations: E2E_PACKAGES=./endtoend/suites/validator
+e2e-validator-operations: E2E_PACKAGES=./endtoend/suites/crosslayer/validator
 e2e-validator-operations: E2E_SUITE_TIMEOUT=4h
 e2e-validator-operations: E2E_LABEL_FILTER=profile-operations
 e2e-validator-operations: e2e-test
 
-e2e-chaos: E2E_PACKAGES=./endtoend/suites/network ./endtoend/suites/resilience ./endtoend/suites/partition
+e2e-chaos: E2E_PACKAGES=./endtoend/suites/crosslayer/network ./endtoend/suites/crosslayer/resilience ./endtoend/suites/crosslayer/partition
 e2e-chaos: E2E_SUITE_TIMEOUT=90m
 e2e-chaos: e2e-test
 
-e2e-scenarios: E2E_PACKAGES=./endtoend/suites/engine ./endtoend/suites/network ./endtoend/suites/transactions ./endtoend/suites/validator ./endtoend/suites/vm ./endtoend/suites/resilience ./endtoend/suites/partition
+e2e-scenarios: E2E_PACKAGES=./endtoend/suites/crosslayer/... ./endtoend/suites/execution/vm
 e2e-scenarios: E2E_SUITE_TIMEOUT=3h
 e2e-scenarios: E2E_LABEL_FILTER=scenario && !profile-operations
 e2e-scenarios: e2e-test
+
+e2e-sync: E2E_PACKAGES=./endtoend/suites/consensus/sync
+e2e-sync: E2E_SUITE_TIMEOUT=45m
+e2e-sync: e2e-test
+
+e2e-cold: E2E_PACKAGES=./endtoend/suites/consensus/coldstate
+e2e-cold: E2E_SUITE_TIMEOUT=45m
+e2e-cold: e2e-test
+
+e2e-optimistic: E2E_PACKAGES=./endtoend/suites/consensus/optimistic
+e2e-optimistic: E2E_SUITE_TIMEOUT=45m
+e2e-optimistic: e2e-test

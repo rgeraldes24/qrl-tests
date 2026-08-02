@@ -43,11 +43,34 @@ make e2e-validator-operations
 make network-stop
 ```
 
+Run consensus API and protocol checks against the current network:
+
+```bash
+make e2e-consensus
+```
+
+Fresh-database sync, cold-state lookup, and optimistic-sync coverage use
+dedicated network profiles:
+
+```bash
+DEVNET_PROFILE=sync make network-start
+DEVNET_PROFILE=sync make e2e-sync
+make network-stop
+
+DEVNET_PROFILE=cold make network-start
+DEVNET_PROFILE=cold make e2e-cold
+make network-stop
+
+DEVNET_PROFILE=optimistic make network-start
+DEVNET_PROFILE=optimistic make e2e-optimistic
+make network-stop
+```
+
 Select suites with `E2E_PACKAGES`:
 
 ```bash
-make e2e-test E2E_PACKAGES=./endtoend/suites/network
-make e2e-test E2E_PACKAGES='./endtoend/suites/api ./endtoend/suites/console'
+make e2e-test E2E_PACKAGES=./endtoend/suites/crosslayer/network
+make e2e-test E2E_PACKAGES='./endtoend/suites/execution/api ./endtoend/suites/execution/console'
 ```
 
 Network configuration is documented in [`devnet/README.md`](devnet/README.md).

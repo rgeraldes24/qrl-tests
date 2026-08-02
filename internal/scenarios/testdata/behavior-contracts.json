@@ -1,0 +1,189 @@
+[
+  {
+    "scenario": "dev/dev-deposits.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "validator.deposit-distinct", "status": "Covered", "label": "behavior:validator:deposit-distinct"}
+    ]
+  },
+  {
+    "scenario": "dev/fund-wallet.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "transactions.fund-wallet", "status": "Covered", "label": "behavior:transactions:fund-wallet"}
+    ]
+  },
+  {
+    "scenario": "dev/generate-attestations.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "network.validator-liveness", "status": "Covered", "label": "behavior:network:validator-liveness"},
+      {"id": "network.attestation-fault-injection", "status": "Unsupported", "reason": "the default QRL profile does not expose attestation fault injection"}
+    ]
+  },
+  {
+    "scenario": "dev/synchronized-check.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "network.clients-synchronized", "status": "Covered", "label": "behavior:network:clients-synchronized"}
+    ]
+  },
+  {
+    "scenario": "dev/two-way-network-split-non-finality.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "partition.finality-stall", "status": "Covered", "label": "behavior:partition:finality-stall"},
+      {"id": "partition.finality-recovery", "status": "Covered", "label": "behavior:partition:finality-recovery"}
+    ]
+  },
+  {
+    "scenario": "dev/two-way-network-split-reorg-trigger.yaml",
+    "status": "Failing",
+    "behaviors": [
+      {"id": "partition.competing-heads", "status": "Covered", "label": "behavior:partition:competing-heads"},
+      {"id": "partition.reorg-recovery", "status": "Failing", "label": "behavior:partition:reorg-recovery", "reason": "the current client topology does not reconverge within the scenario budget after healing"}
+    ]
+  },
+  {
+    "scenario": "dev/validator-lifecycle-test.yaml",
+    "status": "Partial",
+    "behaviors": [
+      {"id": "validator.deposit-topup-activate", "status": "Covered", "label": "behavior:validator:deposit-topup-activate"},
+      {"id": "validator.exit-withdraw", "status": "Covered", "label": "behavior:validator:exit-withdraw"},
+      {"id": "validator.proposer-slashing", "status": "Covered", "label": "behavior:validator:proposer-slashing"},
+      {"id": "validator.attester-slashing", "status": "Covered", "label": "behavior:validator:attester-slashing"},
+      {"id": "validator.mass-deposit-churn", "status": "Missing", "reason": "the 300-validator finality-loss and recovery workload is not implemented"},
+      {"id": "validator.deposit-proposer-matrix", "status": "Unsupported", "reason": "QRL advances deposits through execution data and does not carry deposit objects in proposer beacon blocks"},
+      {"id": "validator.exit-proposer-matrix", "status": "Covered", "label": "behavior:validator:exit-proposer-matrix"},
+      {"id": "validator.slashing-proposer-matrix", "status": "Covered", "label": "behavior:validator:slashing-proposer-matrix"},
+      {"id": "validator.bls-credential-change", "status": "Unsupported", "reason": "QRL withdrawal credentials are direct Q-addresses"}
+    ]
+  },
+  {
+    "scenario": "dev/validator-proposer-slashing-test.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "validator.proposer-slashing", "status": "Covered", "label": "behavior:validator:proposer-slashing"},
+      {"id": "validator.proposer-slashing-matrix", "status": "Covered", "label": "behavior:validator:proposer-slashing-matrix"},
+      {"id": "validator.operation-submission-matrix", "status": "Covered", "label": "behavior:validator:operation-submission-matrix"}
+    ]
+  },
+  {
+    "scenario": "dev/validator-slashing-single.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "validator.proposer-slashing", "status": "Covered", "label": "behavior:validator:proposer-slashing"}
+    ]
+  },
+  {
+    "scenario": "dev/wait-for-slot.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "network.slot-progress", "status": "Covered", "label": "behavior:network:slot-progress"}
+    ]
+  },
+  {
+    "scenario": "pectra-dev/kurtosis/topup-deposits.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "validator.deposit-topup-activate", "status": "Covered", "label": "behavior:validator:deposit-topup-activate"}
+    ]
+  },
+  {
+    "scenario": "pectra-dev/kurtosis/voluntary-exits.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "validator.voluntary-exit", "status": "Covered", "label": "behavior:validator:voluntary-exit"},
+      {"id": "validator.voluntary-exit-64", "status": "Covered", "label": "behavior:validator:voluntary-exit-64"}
+    ]
+  },
+  {
+    "scenario": "stable/all-opcodes-test.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "vm.vm64-opcodes", "status": "Covered", "label": "behavior:vm:vm64-opcodes"},
+      {"id": "vm.precompiles", "status": "Covered", "label": "behavior:vm:precompiles"},
+      {"id": "vm.mined-opcode-contract", "status": "Covered", "label": "behavior:vm:mined-opcode-path"},
+      {"id": "vm.mined-terminal-status", "status": "Covered", "label": "behavior:vm:mined-terminal-status"}
+    ]
+  },
+  {
+    "scenario": "stable/big-calldata-tx-test.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "transactions.calldata-boundary", "status": "Covered", "label": "behavior:transactions:calldata-boundary"},
+      {"id": "transactions.big-calldata-1000", "status": "Covered", "label": "behavior:transactions:big-calldata-1000"},
+      {"id": "transactions.finality-under-load", "status": "Covered", "label": "behavior:transactions:finality-under-load"}
+    ]
+  },
+  {
+    "scenario": "stable/block-proposal-check.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "network.proposer-coverage", "status": "Covered", "label": "behavior:network:proposer-coverage"}
+    ]
+  },
+  {
+    "scenario": "stable/eoa-transactions-test.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "transactions.all-execution-clients", "status": "Covered", "label": "behavior:transactions:all-execution-clients"},
+      {"id": "transactions.network-wide-inclusion", "status": "Covered", "label": "behavior:transactions:network-wide-inclusion"},
+      {"id": "transactions.sustained-10-per-block", "status": "Covered", "label": "behavior:transactions:sustained-10-per-block"},
+      {"id": "transactions.proposer-inclusion-matrix", "status": "Covered", "label": "behavior:transactions:proposer-inclusion-matrix"},
+      {"id": "transactions.legacy-type", "status": "Unsupported", "reason": "QRL does not support Ethereum legacy transactions"}
+    ]
+  },
+  {
+    "scenario": "stable/kurtosis/validator-exit-test.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "validator.voluntary-exit", "status": "Covered", "label": "behavior:validator:voluntary-exit"},
+      {"id": "validator.voluntary-exit-64", "status": "Covered", "label": "behavior:validator:voluntary-exit-64"},
+      {"id": "validator.operation-submission-matrix", "status": "Covered", "label": "behavior:validator:operation-submission-matrix"},
+      {"id": "validator.exit-proposer-matrix", "status": "Covered", "label": "behavior:validator:exit-proposer-matrix"}
+    ]
+  },
+  {
+    "scenario": "stable/kurtosis/validator-slashing-test.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "validator.proposer-slashing", "status": "Covered", "label": "behavior:validator:proposer-slashing"},
+      {"id": "validator.attester-slashing", "status": "Covered", "label": "behavior:validator:attester-slashing"},
+      {"id": "validator.proposer-slashing-matrix", "status": "Covered", "label": "behavior:validator:proposer-slashing-matrix"},
+      {"id": "validator.attester-slashing-matrix", "status": "Covered", "label": "behavior:validator:attester-slashing-matrix"},
+      {"id": "validator.operation-submission-matrix", "status": "Covered", "label": "behavior:validator:operation-submission-matrix"},
+      {"id": "validator.slashing-proposer-matrix", "status": "Covered", "label": "behavior:validator:slashing-proposer-matrix"}
+    ]
+  },
+  {
+    "scenario": "stable/kurtosis/validator-withdrawal-test.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "validator.exit-withdraw", "status": "Covered", "label": "behavior:validator:exit-withdraw"}
+    ]
+  },
+  {
+    "scenario": "stable/stability-check.yaml",
+    "status": "Full",
+    "behaviors": [
+      {"id": "network.clients-synchronized", "status": "Covered", "label": "behavior:network:clients-synchronized"},
+      {"id": "network.finality", "status": "Covered", "label": "behavior:network:finality"},
+      {"id": "network.attestation-thresholds", "status": "Covered", "label": "behavior:network:attestation-thresholds"},
+      {"id": "network.reorg-budget", "status": "Covered", "label": "behavior:network:reorg-budget"},
+      {"id": "network.fork-budget", "status": "Covered", "label": "behavior:network:fork-budget"}
+    ]
+  },
+  {
+    "scenario": "stable/validator-lifecycle-test-v2.yaml",
+    "status": "Equivalent",
+    "behaviors": [
+      {"id": "validator.deposit-topup-activate", "status": "Covered", "label": "behavior:validator:deposit-topup-activate"},
+      {"id": "validator.proposer-slashing", "status": "Covered", "label": "behavior:validator:proposer-slashing"},
+      {"id": "validator.attester-slashing", "status": "Covered", "label": "behavior:validator:attester-slashing"},
+      {"id": "validator.exit-withdraw", "status": "Covered", "label": "behavior:validator:exit-withdraw"},
+      {"id": "validator.lifecycle-matrix", "status": "Covered", "label": "behavior:validator:lifecycle-matrix"},
+      {"id": "validator.bls-credential-change", "status": "Unsupported", "reason": "QRL withdrawal credentials are direct Q-addresses"}
+    ]
+  }
+]

@@ -61,7 +61,7 @@ func newApp(networks controller) *cli.App {
 					enclaveName,
 					&cli.StringFlag{
 						Name:  "profile",
-						Usage: "built-in network profile: single, multi, lifecycle, chaos, or sync",
+						Usage: "built-in network profile: single, multi, lifecycle, chaos, sync, or operations",
 						Value: string(devnet.ProfileSingle),
 					},
 					&cli.StringFlag{

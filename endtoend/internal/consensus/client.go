@@ -53,6 +53,12 @@ type ValidatorLiveness struct {
 	IsLive bool
 }
 
+type ValidatorParticipation struct {
+	PreviousActive uint64
+	PreviousTarget uint64
+	PreviousHead   uint64
+}
+
 type ExecutionPayload struct {
 	ParentHash   string
 	FeeRecipient string
@@ -102,7 +108,6 @@ type DepositContract struct {
 }
 
 type BlockOperations struct {
-	Deposits          int
 	VoluntaryExits    []uint64
 	ProposerSlashings []uint64
 	AttesterSlashings []uint64
@@ -151,6 +156,10 @@ func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
 }
 
 func (client *Client) Head(ctx context.Context) (Head, error) {
+	return client.Header(ctx, "head")
+}
+
+func (client *Client) Header(ctx context.Context, blockID string) (Head, error) {
 	var response struct {
 		Data struct {
 			Root   string `json:"root"`
@@ -161,7 +170,7 @@ func (client *Client) Head(ctx context.Context) (Head, error) {
 			} `json:"header"`
 		} `json:"data"`
 	}
-	if err := client.get(ctx, "/qrl/v1/beacon/headers/head", &response); err != nil {
+	if err := client.get(ctx, "/qrl/v1/beacon/headers/"+url.PathEscape(blockID), &response); err != nil {
 		return Head{}, err
 	}
 	slot, err := decimal("head slot", response.Data.Header.Message.Slot)
@@ -169,6 +178,32 @@ func (client *Client) Head(ctx context.Context) (Head, error) {
 		return Head{}, err
 	}
 	return Head{Slot: slot, Root: response.Data.Root}, nil
+}
+
+func (client *Client) ValidatorParticipation(ctx context.Context) (ValidatorParticipation, error) {
+	var response struct {
+		Participation struct {
+			PreviousActive string `json:"previousEpochActiveShor"`
+			PreviousTarget string `json:"previousEpochTargetAttestingShor"`
+			PreviousHead   string `json:"previousEpochHeadAttestingShor"`
+		} `json:"participation"`
+	}
+	if err := client.get(ctx, "/qrl/v1alpha1/validators/participation", &response); err != nil {
+		return ValidatorParticipation{}, err
+	}
+	active, err := decimal("previous active balance", response.Participation.PreviousActive)
+	if err != nil {
+		return ValidatorParticipation{}, err
+	}
+	target, err := decimal("previous target-attesting balance", response.Participation.PreviousTarget)
+	if err != nil {
+		return ValidatorParticipation{}, err
+	}
+	head, err := decimal("previous head-attesting balance", response.Participation.PreviousHead)
+	if err != nil {
+		return ValidatorParticipation{}, err
+	}
+	return ValidatorParticipation{PreviousActive: active, PreviousTarget: target, PreviousHead: head}, nil
 }
 
 func (client *Client) FinalizedEpoch(ctx context.Context) (uint64, error) {
@@ -453,7 +488,6 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 		Data struct {
 			Message struct {
 				Body struct {
-					Deposits       []json.RawMessage `json:"deposits"`
 					VoluntaryExits []struct {
 						Message struct {
 							ValidatorIndex string `json:"validator_index"`
@@ -487,7 +521,7 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 		return BlockOperations{}, err
 	}
 	body := response.Data.Message.Body
-	result := BlockOperations{Deposits: len(body.Deposits)}
+	result := BlockOperations{}
 	for _, item := range body.VoluntaryExits {
 		value, err := decimal("voluntary exit validator index", item.Message.ValidatorIndex)
 		if err != nil {

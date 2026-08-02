@@ -23,7 +23,7 @@ const (
 var _ = ginkgo.Describe(
 	"Engine and cross-layer consistency",
 	ginkgo.Ordered,
-	ginkgo.Label("e2e", "live", "engine", "cross-layer", "assertoor"),
+	ginkgo.Label("e2e", "live", "engine", "cross-layer", "scenario"),
 	func() {
 		var session *endtoendlive.Session
 		var beacon *consensus.Client

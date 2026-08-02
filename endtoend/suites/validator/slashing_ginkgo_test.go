@@ -20,7 +20,7 @@ var _ = ginkgo.Describe(
 	"Validator slashings",
 	ginkgo.Serial,
 	ginkgo.Ordered,
-	ginkgo.Label("e2e", "live", "validator", "slashing", "mutates-chain", "assertoor"),
+	ginkgo.Label("e2e", "live", "validator", "slashing", "mutates-chain", "scenario"),
 	func() {
 		var session *endtoendlive.Session
 		var beacon *consensus.Client
@@ -40,20 +40,22 @@ var _ = ginkgo.Describe(
 		ginkgo.It("includes a proposer slashing and marks the validator slashed", func(ctx ginkgo.SpecContext) {
 			assertSlashing(ctx, beacon, chain, 62, "/qrl/v1/beacon/pool/proposer_slashings", true)
 		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
-			"assertoor:dev:validator-proposer-slashing-test",
-			"assertoor:dev:validator-slashing-single",
-			"assertoor:stable:kurtosis:validator-slashing-test",
-			"assertoor:dev:validator-lifecycle-test",
-			"assertoor:stable:validator-lifecycle-test-v2",
+			"scenario:dev:validator-proposer-slashing-test",
+			"scenario:dev:validator-slashing-single",
+			"scenario:stable:kurtosis:validator-slashing-test",
+			"scenario:dev:validator-lifecycle-test",
+			"scenario:stable:validator-lifecycle-test-v2",
+			"behavior:validator:proposer-slashing",
 		))
 
 		ginkgo.It("includes an attester slashing and marks the validator slashed", func(ctx ginkgo.SpecContext) {
 			assertSlashing(ctx, beacon, chain, 63, "/qrl/v1/beacon/pool/attester_slashings", false)
 		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
-			"assertoor:dev:validator-proposer-slashing-test",
-			"assertoor:stable:kurtosis:validator-slashing-test",
-			"assertoor:dev:validator-lifecycle-test",
-			"assertoor:stable:validator-lifecycle-test-v2",
+			"scenario:dev:validator-proposer-slashing-test",
+			"scenario:stable:kurtosis:validator-slashing-test",
+			"scenario:dev:validator-lifecycle-test",
+			"scenario:stable:validator-lifecycle-test-v2",
+			"behavior:validator:attester-slashing",
 		))
 	},
 )

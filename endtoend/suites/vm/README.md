@@ -23,6 +23,9 @@ network. It does not depend on Hyperion output.
 - Exact full-width address, account, block, fee, randomness, and transaction
   context opcode results, including historical `BLOCKHASH`.
 - `LOG0` through `LOG4` with full-width log data and ordered topic values.
+- Mined deployment and state-changing execution for `PUSH0`, `CODESIZE`,
+  `PC`, `MSTORE8`, `MSIZE`, and `JUMPI`, plus mined receipt status for
+  `STOP`, `RETURN`, `REVERT`, and `INVALID`.
 - Every registered precompile with independently specified output and gas
   vectors, defined empty-input behavior, and an out-of-gas call. SHA-256 and
   identity gas are checked at 63, 64, and 65 bytes. Deposit-root uses a static

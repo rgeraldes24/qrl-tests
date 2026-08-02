@@ -1,4 +1,4 @@
-.PHONY: test fmt e2e-compile network-image clef-image network-start network-stop e2e-test e2e-core e2e-validator e2e-chaos e2e-assertoor
+.PHONY: test fmt e2e-compile network-image clef-image network-start network-stop e2e-test e2e-core e2e-validator e2e-validator-operations e2e-chaos e2e-scenarios
 
 GO ?= go
 GO_QRL_SOURCE_DIR ?=
@@ -10,6 +10,7 @@ DEVNET_START_TIMEOUT ?=
 E2E_PACKAGES ?= ./endtoend/suites/...
 E2E_SUITE_TIMEOUT ?= 45m
 E2E_REPORT_DIR ?= reports
+E2E_LABEL_FILTER ?= !scenario-full
 override DEVNET_PARAMS_FILE := $(if $(strip $(DEVNET_PARAMS_FILE)),$(abspath $(DEVNET_PARAMS_FILE)))
 
 test:
@@ -67,6 +68,7 @@ e2e-test:
 		--output-dir="$(abspath $(E2E_REPORT_DIR))" \
 		--junit-report=junit.xml \
 		--json-report=report.json \
+		$(if $(strip $(E2E_LABEL_FILTER)),--label-filter='$(E2E_LABEL_FILTER)') \
 		$(strip $(E2E_PACKAGES)) \
 		-- -test.run='^TestE2E$$'
 
@@ -77,10 +79,16 @@ e2e-validator: E2E_PACKAGES=./endtoend/suites/validator
 e2e-validator: E2E_SUITE_TIMEOUT=90m
 e2e-validator: e2e-test
 
+e2e-validator-operations: E2E_PACKAGES=./endtoend/suites/validator
+e2e-validator-operations: E2E_SUITE_TIMEOUT=4h
+e2e-validator-operations: E2E_LABEL_FILTER=profile-operations
+e2e-validator-operations: e2e-test
+
 e2e-chaos: E2E_PACKAGES=./endtoend/suites/network ./endtoend/suites/resilience ./endtoend/suites/partition
 e2e-chaos: E2E_SUITE_TIMEOUT=90m
 e2e-chaos: e2e-test
 
-e2e-assertoor: E2E_PACKAGES=./endtoend/suites/engine ./endtoend/suites/network ./endtoend/suites/transactions ./endtoend/suites/validator ./endtoend/suites/vm ./endtoend/suites/resilience ./endtoend/suites/partition
-e2e-assertoor: E2E_SUITE_TIMEOUT=3h
-e2e-assertoor: e2e-test
+e2e-scenarios: E2E_PACKAGES=./endtoend/suites/engine ./endtoend/suites/network ./endtoend/suites/transactions ./endtoend/suites/validator ./endtoend/suites/vm ./endtoend/suites/resilience ./endtoend/suites/partition
+e2e-scenarios: E2E_SUITE_TIMEOUT=3h
+e2e-scenarios: E2E_LABEL_FILTER=scenario && !profile-operations
+e2e-scenarios: e2e-test

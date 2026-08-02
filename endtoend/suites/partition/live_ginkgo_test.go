@@ -27,7 +27,7 @@ var _ = ginkgo.Describe(
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "live", "partition", "multi-node", "mutates-network", "assertoor"),
+	ginkgo.Label("e2e", "live", "partition", "multi-node", "mutates-network", "scenario"),
 	func() {
 		var suite *liveSuite
 
@@ -77,8 +77,10 @@ var _ = ginkgo.Describe(
 			gomega.Expect(suite.partition.Clear(ctx)).To(gomega.Succeed())
 			suite.awaitConvergenceAndFinality(ctx, startFinalized)
 		}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label(
-			"assertoor:dev:two-way-network-split-non-finality",
-			"assertoor:dev:validator-lifecycle-test",
+			"scenario:dev:two-way-network-split-non-finality",
+			"scenario:dev:validator-lifecycle-test",
+			"behavior:partition:finality-stall",
+			"behavior:partition:finality-recovery",
 		))
 
 		ginkgo.It("converges after competing heads form across a split", func(ctx ginkgo.SpecContext) {
@@ -98,7 +100,11 @@ var _ = ginkgo.Describe(
 
 			gomega.Expect(suite.partition.Clear(ctx)).To(gomega.Succeed())
 			suite.awaitConvergenceAndFinality(ctx, startFinalized)
-		}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label("assertoor:dev:two-way-network-split-reorg-trigger"))
+		}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label(
+			"scenario:dev:two-way-network-split-reorg-trigger",
+			"behavior:partition:competing-heads",
+			"behavior:partition:reorg-recovery",
+		))
 	},
 )
 

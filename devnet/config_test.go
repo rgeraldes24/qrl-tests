@@ -77,12 +77,14 @@ func TestBuiltInProfiles(t *testing.T) {
 	for _, test := range []struct {
 		profile      Profile
 		participants int
+		validators   int
 	}{
-		{ProfileSingle, 1},
-		{ProfileMulti, 4},
-		{ProfileLifecycle, 1},
-		{ProfileChaos, 4},
-		{ProfileSync, 2},
+		{ProfileSingle, 1, 64},
+		{ProfileMulti, 4, 64},
+		{ProfileLifecycle, 1, 64},
+		{ProfileChaos, 4, 64},
+		{ProfileSync, 2, 64},
+		{ProfileOperations, 4, 512},
 	} {
 		payload, err := effectiveParametersForProfile(address, "image", nil, test.profile)
 		require.NoError(t, err)
@@ -97,6 +99,6 @@ func TestBuiltInProfiles(t *testing.T) {
 		for _, participant := range parameters.Participants {
 			totalValidators += participant.ValidatorCount
 		}
-		require.Equal(t, 64, totalValidators)
+		require.Equal(t, test.validators, totalValidators)
 	}
 }

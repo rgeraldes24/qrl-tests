@@ -23,11 +23,12 @@ The repository exposes profile-oriented lanes:
 | --- | --- | --- |
 | `make e2e-core` | `single` | Client APIs, ABI, console, signing, Engine, transactions, and VM |
 | `make e2e-validator` | `lifecycle` | Deposits, activation, exits, withdrawals, and slashings |
+| `make e2e-validator-operations` | `operations` | Multi-client deposit, exit, and slashing workloads |
 | `make e2e-chaos` | `chaos` | Multi-client health, native partitions, outages, restart, and catch-up |
-| `make e2e-assertoor` | `chaos` | Every supported scenario in the pinned Assertoor inventory, plus Engine and restart recovery |
+| `make e2e-scenarios` | `multi` | Full QRL workloads, network scenarios, Engine checks, and restart recovery |
 
 Start the network with the corresponding `DEVNET_PROFILE` before running a
-lane. The Assertoor compatibility inventory is executable: repository tests
+lane. The scenario coverage inventory is executable: repository tests
 fail if a supported source scenario lacks a matching Ginkgo coverage label.
 
 ## Adding a suite

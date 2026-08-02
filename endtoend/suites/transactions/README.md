@@ -1,6 +1,6 @@
 # Transaction suite
 
-This suite implements the supported Assertoor transaction scenarios directly
+This suite implements QRL transaction workloads directly
 as Ginkgo specs:
 
 - fund a deterministic address and verify its balance and receipt;

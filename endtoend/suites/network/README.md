@@ -1,6 +1,6 @@
 # Network suite
 
-This read-only suite covers the supported Assertoor health scenarios with
+This read-only suite covers QRL health scenarios with
 native Ginkgo specs:
 
 - execution and consensus synchronization;

@@ -44,8 +44,9 @@ var _ = ginkgo.Describe(
 		"e2e",
 		"live",
 		"precompile",
-		"assertoor",
-		"assertoor:stable:all-opcodes-test",
+		"scenario",
+		"scenario:stable:all-opcodes-test",
+		"behavior:vm:precompiles",
 	),
 	func() {
 		var (

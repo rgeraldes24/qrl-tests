@@ -5,11 +5,11 @@ consensus clients. It starts a pinned Kurtosis development network and runs
 QRL-native Ginkgo suites through public RPC, REST, GraphQL, WebSocket, console,
 and signer interfaces.
 
-The suites cover the supported intent from the Assertoor scenario catalog
-without embedding Assertoor or maintaining a second YAML runner. Ethereum-only
-features such as blobs, Pectra/Fusaka/Gloas/Verkle behavior, EIP-7702, MEV
-builders, and Spamoor are explicitly excluded. See
-[`docs/assertoor-compatibility.md`](docs/assertoor-compatibility.md).
+The suites cover QRL network health, workloads, lifecycle operations, failure
+recovery, and protocol boundaries without maintaining a second YAML runner.
+Unsupported protocol families such as blobs, Pectra/Fusaka/Gloas/Verkle
+behavior, EIP-7702, and MEV builders are explicitly excluded. See
+[`docs/scenario-coverage.md`](docs/scenario-coverage.md).
 
 ## Run
 
@@ -23,6 +23,23 @@ make test
 make e2e-compile
 make network-start
 make e2e-test
+make network-stop
+```
+
+Normal runs exclude long `scenario-full` workloads. Run the full QRL network
+scenarios against a multi-client network with:
+
+```bash
+DEVNET_PROFILE=multi make network-start
+make e2e-scenarios
+make network-stop
+```
+
+Run destructive validator operation workloads on a fresh, larger network:
+
+```bash
+DEVNET_PROFILE=operations make network-start
+make e2e-validator-operations
 make network-stop
 ```
 

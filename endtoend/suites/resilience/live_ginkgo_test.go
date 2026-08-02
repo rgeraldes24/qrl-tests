@@ -29,7 +29,7 @@ var _ = ginkgo.Describe(
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "live", "resilience", "multi-node", "mutates-network", "assertoor"),
+	ginkgo.Label("e2e", "live", "resilience", "multi-node", "mutates-network", "scenario"),
 	func() {
 		var suite *liveSuite
 

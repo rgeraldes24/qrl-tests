@@ -1,4 +1,4 @@
-# Assertoor commit 89366be6cb211522249a6d9424adb47631864432.
+# Pinned source scenario inventory at commit 89366be6cb211522249a6d9424adb47631864432.
 api-compatibility/gloas-api-check.yaml
 dev/block-proposal-with-blobs-check.yaml
 dev/dev-deposits.yaml

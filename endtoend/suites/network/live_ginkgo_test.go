@@ -18,6 +18,8 @@ import (
 const (
 	pollInterval    = time.Second
 	progressTimeout = 10 * time.Minute
+	minimumTarget   = 98.0
+	minimumHead     = 80.0
 )
 
 type node struct {
@@ -34,7 +36,7 @@ var _ = ginkgo.Describe(
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "live", "network", "assertoor"),
+	ginkgo.Label("e2e", "live", "network", "scenario"),
 	func() {
 		var suite *liveSuite
 
@@ -61,7 +63,10 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				gomega.Expect(status.Syncing || status.Optimistic || status.ELOffline).To(gomega.BeFalse())
 			}
-		}, ginkgo.Label("assertoor:dev:synchronized-check"))
+		}, ginkgo.Label(
+			"scenario:dev:synchronized-check",
+			"behavior:network:clients-synchronized",
+		))
 
 		ginkgo.It("observes new execution and consensus blocks on every client pair", func(ctx ginkgo.SpecContext) {
 			for _, current := range suite.nodes {
@@ -80,7 +85,10 @@ var _ = ginkgo.Describe(
 					g.Expect(slot).To(gomega.BeNumerically(">=", startSlot+2))
 				}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 			}
-		}, ginkgo.Label("assertoor:dev:wait-for-slot"))
+		}, ginkgo.Label(
+			"scenario:dev:wait-for-slot",
+			"behavior:network:slot-progress",
+		))
 
 		ginkgo.It("observes proposals from every validator pair", func(ctx ginkgo.SpecContext) {
 			expected := make(map[string]struct{}, len(suite.nodes))
@@ -104,7 +112,10 @@ var _ = ginkgo.Describe(
 					g.Expect(observed).To(gomega.HaveKey(name))
 				}
 			}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
-		}, ginkgo.Label("assertoor:stable:block-proposal-check"))
+		}, ginkgo.Label(
+			"scenario:stable:block-proposal-check",
+			"behavior:network:proposer-coverage",
+		))
 
 		ginkgo.It("finalizes two new epochs without excessive finality lag", func(ctx ginkgo.SpecContext) {
 			type baseline struct {
@@ -132,7 +143,10 @@ var _ = ginkgo.Describe(
 					g.Expect(headEpoch - finalized).To(gomega.BeNumerically("<=", 3))
 				}
 			}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
-		}, ginkgo.Label("assertoor:stable:stability-check"))
+		}, ginkgo.Label(
+			"scenario:stable:stability-check",
+			"behavior:network:finality",
+		))
 
 		ginkgo.It("observes every active validator participating", func(ctx ginkgo.SpecContext) {
 			beacon := suite.nodes[0].consensus
@@ -167,41 +181,132 @@ var _ = ginkgo.Describe(
 					fmt.Sprintf("validator %d did not participate between epochs %d and %d", index, firstEpoch, lastEpoch),
 				)
 			}
-		}, ginkgo.Label("assertoor:dev:generate-attestations"))
+		}, ginkgo.Label(
+			"scenario:dev:generate-attestations",
+			"behavior:network:validator-liveness",
+		))
+
+		ginkgo.It("maintains target and head participation thresholds", func(ctx ginkgo.SpecContext) {
+			beacon := suite.nodes[0].consensus
+			slotsPerEpoch, err := beacon.SpecUint(ctx, "SLOTS_PER_EPOCH")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Eventually(func(g gomega.Gomega) {
+				head, err := beacon.HeadSlot(ctx)
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				currentEpoch := head / slotsPerEpoch
+				g.Expect(currentEpoch).To(gomega.BeNumerically(">=", 3))
+			}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
+
+			participation, err := beacon.ValidatorParticipation(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(participation.PreviousActive).NotTo(gomega.BeZero())
+			targetPercent := 100 * float64(participation.PreviousTarget) / float64(participation.PreviousActive)
+			headPercent := 100 * float64(participation.PreviousHead) / float64(participation.PreviousActive)
+			gomega.Expect(targetPercent).To(gomega.BeNumerically(">=", minimumTarget))
+			gomega.Expect(headPercent).To(gomega.BeNumerically(">=", minimumHead))
+		}, ginkgo.Label(
+			"scenario:stable:stability-check",
+			"behavior:network:attestation-thresholds",
+		))
 
 		ginkgo.It("keeps client heads converged for one epoch", func(ctx ginkgo.SpecContext) {
 			slotsPerEpoch, err := suite.nodes[0].consensus.SpecUint(ctx, "SLOTS_PER_EPOCH")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			start, err := suite.nodes[0].consensus.Head(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			roots := make(map[int]map[uint64]string, len(suite.nodes))
-
-			gomega.Eventually(func(g gomega.Gomega) {
-				var expectedRoot string
-				for _, current := range suite.nodes {
-					head, err := current.consensus.Head(ctx)
-					g.Expect(err).NotTo(gomega.HaveOccurred())
-					if roots[current.session.Participant.Index] == nil {
-						roots[current.session.Participant.Index] = make(map[uint64]string)
-					}
-					if previous := roots[current.session.Participant.Index][head.Slot]; previous != "" {
-						g.Expect(head.Root).To(gomega.Equal(previous), "head root changed at an observed slot")
-					}
-					roots[current.session.Participant.Index][head.Slot] = head.Root
-					if expectedRoot == "" {
-						expectedRoot = head.Root
-					} else {
-						g.Expect(head.Root).To(gomega.Equal(expectedRoot))
-					}
-					g.Expect(head.Slot).To(gomega.BeNumerically(">=", start.Slot))
-				}
-				head, err := suite.nodes[0].consensus.HeadSlot(ctx)
-				g.Expect(err).NotTo(gomega.HaveOccurred())
-				g.Expect(head).To(gomega.BeNumerically(">=", start.Slot+slotsPerEpoch))
-			}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(2 * time.Second).Should(gomega.Succeed())
-		}, ginkgo.Label("assertoor:stable:stability-check"))
+			forks, forkDistance, reorgs := suite.observeCanonicalHistory(ctx, slotsPerEpoch)
+			gomega.Expect(reorgs).To(gomega.BeNumerically("<=", 2))
+			gomega.Expect(forks).To(gomega.BeNumerically("<=", 3))
+			gomega.Expect(forkDistance).To(gomega.BeNumerically("<=", 3))
+		}, ginkgo.Label(
+			"scenario:stable:stability-check",
+			"behavior:network:reorg-budget",
+			"behavior:network:fork-budget",
+		))
 	},
 )
+
+func (suite *liveSuite) observeCanonicalHistory(ctx ginkgo.SpecContext, slotCount uint64) (int, int, int) {
+	ginkgo.GinkgoHelper()
+
+	start := minimumHeadSlot(ctx, suite.nodes)
+	nextSlot := start + 1
+	endSlot := start + slotCount
+	observed := make(map[uint64]map[int]string)
+	forkCount := 0
+	forkDistance := 0
+	currentForkDistance := 0
+
+	gomega.Eventually(func(g gomega.Gomega) {
+		minimum := minimumHeadSlotWithGomega(ctx, suite.nodes, g)
+		for nextSlot <= minimum && nextSlot <= endSlot {
+			roots := make(map[int]string, len(suite.nodes))
+			distinct := make(map[string]struct{})
+			for _, current := range suite.nodes {
+				header, err := current.consensus.Header(ctx, fmt.Sprint(nextSlot))
+				if consensus.IsNotFound(err) {
+					continue
+				}
+				g.Expect(err).NotTo(gomega.HaveOccurred())
+				roots[current.session.Participant.Index] = header.Root
+				distinct[header.Root] = struct{}{}
+			}
+			if len(roots) > 0 {
+				observed[nextSlot] = roots
+			}
+			if len(roots) > 0 && (len(roots) != len(suite.nodes) || len(distinct) > 1) {
+				forkCount++
+				currentForkDistance++
+				if currentForkDistance > forkDistance {
+					forkDistance = currentForkDistance
+				}
+			} else {
+				currentForkDistance = 0
+			}
+			nextSlot++
+		}
+		g.Expect(nextSlot).To(gomega.BeNumerically(">", endSlot))
+	}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
+
+	reorgedSlots := make(map[uint64]struct{})
+	for slot, roots := range observed {
+		for _, current := range suite.nodes {
+			previous, ok := roots[current.session.Participant.Index]
+			if !ok {
+				continue
+			}
+			header, err := current.consensus.Header(ctx, fmt.Sprint(slot))
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			if header.Root != previous {
+				reorgedSlots[slot] = struct{}{}
+			}
+		}
+	}
+	return forkCount, forkDistance, len(reorgedSlots)
+}
+
+func minimumHeadSlot(ctx ginkgo.SpecContext, nodes []node) uint64 {
+	ginkgo.GinkgoHelper()
+	minimum := ^uint64(0)
+	for _, current := range nodes {
+		head, err := current.consensus.HeadSlot(ctx)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		if head < minimum {
+			minimum = head
+		}
+	}
+	return minimum
+}
+
+func minimumHeadSlotWithGomega(ctx ginkgo.SpecContext, nodes []node, g gomega.Gomega) uint64 {
+	minimum := ^uint64(0)
+	for _, current := range nodes {
+		head, err := current.consensus.HeadSlot(ctx)
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		if head < minimum {
+			minimum = head
+		}
+	}
+	return minimum
+}
 
 func decodeGraffiti(value string) string {
 	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))

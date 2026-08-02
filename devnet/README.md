@@ -20,7 +20,7 @@ qrl-package, and waits for readiness. It does not run the test suites.
 | --- | --- | --- |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` (CLI default) | Kurtosis enclave |
 | `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Tag for the locally built execution image |
-| `DEVNET_PROFILE` | `single` | Built-in `single`, `multi`, `lifecycle`, `chaos`, or `sync` profile |
+| `DEVNET_PROFILE` | `single` | Built-in `single`, `multi`, `lifecycle`, `chaos`, `sync`, or `operations` profile |
 | `DEVNET_START_TIMEOUT` | `30m` (CLI default) | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package JSON parameters |
 
@@ -94,9 +94,11 @@ endpoint aliases, while multi-node suites use `Environment.Participants`.
 The reported GraphQL URL is live only if the profile enables GraphQL on the RPC
 port. Readiness requires advancing blocks and a funded development wallet.
 
-Built-in profiles always allocate 64 genesis validators. `multi` and `chaos`
+Most built-in profiles allocate 64 genesis validators. `multi` and `chaos`
 split them across four client pairs, `sync` splits them across two, and
-`lifecycle` provides a dedicated single-client lane for validator operations.
+`lifecycle` provides a dedicated single-client lane. The destructive
+`operations` profile allocates 512 validators across four client pairs so exit
+and slashing workloads retain enough active stake to keep finalizing.
 
 ## Consumers
 

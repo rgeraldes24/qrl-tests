@@ -100,13 +100,17 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 	}
 	participantCount := 1
 	switch profile {
-	case ProfileMulti, ProfileChaos:
+	case ProfileMulti, ProfileChaos, ProfileOperations:
 		participantCount = 4
 	case ProfileSync:
 		participantCount = 2
 	}
+	totalValidators := 64
+	if profile == ProfileOperations {
+		totalValidators = 512
+	}
 	participants := make([]participant, participantCount)
-	validatorsPerParticipant := 64 / participantCount
+	validatorsPerParticipant := totalValidators / participantCount
 	for index := range participants {
 		labels := map[string]string{
 			"qrl-tests.participant": strconv.Itoa(index + 1),
@@ -151,11 +155,12 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 type Profile string
 
 const (
-	ProfileSingle    Profile = "single"
-	ProfileMulti     Profile = "multi"
-	ProfileLifecycle Profile = "lifecycle"
-	ProfileChaos     Profile = "chaos"
-	ProfileSync      Profile = "sync"
+	ProfileSingle     Profile = "single"
+	ProfileMulti      Profile = "multi"
+	ProfileLifecycle  Profile = "lifecycle"
+	ProfileChaos      Profile = "chaos"
+	ProfileSync       Profile = "sync"
+	ProfileOperations Profile = "operations"
 )
 
 func normalizeProfile(profile Profile) (Profile, error) {
@@ -163,7 +168,7 @@ func normalizeProfile(profile Profile) (Profile, error) {
 		return ProfileSingle, nil
 	}
 	switch profile {
-	case ProfileSingle, ProfileMulti, ProfileLifecycle, ProfileChaos, ProfileSync:
+	case ProfileSingle, ProfileMulti, ProfileLifecycle, ProfileChaos, ProfileSync, ProfileOperations:
 		return profile, nil
 	default:
 		return "", fmt.Errorf("unknown development-network profile %q", profile)

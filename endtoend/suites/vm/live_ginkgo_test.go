@@ -36,7 +36,10 @@ var _ = ginkgo.Describe(
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "live", "vm", "mutates-chain", "assertoor", "assertoor:stable:all-opcodes-test"),
+	ginkgo.Label(
+		"e2e", "live", "vm", "mutates-chain", "scenario",
+		"scenario:stable:all-opcodes-test", "behavior:vm:vm64-opcodes",
+	),
 	func() {
 		var suite *liveSuite
 
@@ -252,6 +255,49 @@ var _ = ginkgo.Describe(
 				)
 			}
 		}, ginkgo.SpecTimeout(liveSpecTimeout))
+
+		ginkgo.It("mines structural opcode state changes", func(ctx ginkgo.SpecContext) {
+			runtime, expectedPC := minedStructuralCode()
+			contract := suite.deployRuntime(ctx, runtime)
+			receipt := suite.mineCall(ctx, contract)
+			gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+
+			for slot, want := range []*big.Int{
+				big.NewInt(1),
+				big.NewInt(int64(len(runtime))),
+				big.NewInt(int64(expectedPC)),
+				big.NewInt(qrvm.WordBytes),
+				big.NewInt(1),
+			} {
+				key := common.Hash{}
+				key[len(key)-1] = byte(slot)
+				value, err := suite.session.Client.StorageAt(ctx, contract, key, nil)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				gomega.Expect(new(big.Int).SetBytes(value)).To(gomega.Equal(want))
+			}
+		}, ginkgo.SpecTimeout(liveSpecTimeout), ginkgo.Label(
+			"behavior:vm:mined-opcode-path",
+		))
+
+		ginkgo.It("records mined terminal opcode status", func(ctx ginkgo.SpecContext) {
+			for _, test := range []struct {
+				name    string
+				runtime []byte
+				status  uint64
+			}{
+				{"STOP", []byte{byte(qrvm.STOP)}, types.ReceiptStatusSuccessful},
+				{"RETURN", []byte{byte(qrvm.PUSH0), byte(qrvm.PUSH0), byte(qrvm.RETURN)}, types.ReceiptStatusSuccessful},
+				{"REVERT", []byte{byte(qrvm.PUSH0), byte(qrvm.PUSH0), byte(qrvm.REVERT)}, types.ReceiptStatusFailed},
+				{"INVALID", []byte{byte(qrvm.INVALID)}, types.ReceiptStatusFailed},
+			} {
+				ginkgo.By(test.name)
+				contract := suite.deployRuntime(ctx, test.runtime)
+				receipt := suite.mineCall(ctx, contract)
+				gomega.Expect(receipt.Status).To(gomega.Equal(test.status))
+			}
+		}, ginkgo.SpecTimeout(liveSpecTimeout), ginkgo.Label(
+			"behavior:vm:mined-terminal-status",
+		))
 
 		ginkgo.It("copies calldata across 64-byte word boundaries", func(ctx ginkgo.SpecContext) {
 			for _, size := range []int{63, 64, 65} {
@@ -626,5 +672,56 @@ func (suite *liveSuite) mineLog(ctx context.Context, data []byte, topics []commo
 	receipt, err := bind.WaitMined(ctx, suite.session.Client, tx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+	return receipt
+}
+
+func (suite *liveSuite) deployRuntime(ctx context.Context, runtime []byte) common.Address {
+	ginkgo.GinkgoHelper()
+
+	auth, err := bind.NewKeyedTransactorWithChainID(suite.session.Wallet, suite.session.ChainID)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	auth.Context = ctx
+	auth.NoSend = true
+	_, tx, _, err := bind.DeployContract(
+		auth,
+		abi.ABI{},
+		runtimeInitCode(runtime),
+		suite.session.Client,
+	)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(suite.session.Client.SendTransaction(ctx, tx)).To(gomega.Succeed())
+	receipt, err := bind.WaitMined(ctx, suite.session.Client, tx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+	gomega.Expect(receipt.ContractAddress).NotTo(gomega.Equal(common.Address{}))
+	return receipt.ContractAddress
+}
+
+func (suite *liveSuite) mineCall(ctx context.Context, target common.Address) *types.Receipt {
+	ginkgo.GinkgoHelper()
+
+	nonce, err := suite.session.Client.PendingNonceAt(ctx, suite.session.Address)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	feeCap, err := suite.session.Client.SuggestGasPrice(ctx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	tipCap, err := suite.session.Client.SuggestGasTipCap(ctx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	feeCap = new(big.Int).Mul(feeCap, big.NewInt(4))
+	if feeCap.Cmp(tipCap) < 0 {
+		feeCap.Set(tipCap)
+	}
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   suite.session.ChainID,
+		Nonce:     nonce,
+		GasTipCap: tipCap,
+		GasFeeCap: feeCap,
+		Gas:       1_000_000,
+		To:        &target,
+	})
+	signed, err := types.SignTx(tx, types.LatestSignerForChainID(suite.session.ChainID), suite.session.Wallet)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(suite.session.Client.SendTransaction(ctx, signed)).To(gomega.Succeed())
+	receipt, err := bind.WaitMined(ctx, suite.session.Client, signed)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return receipt
 }

@@ -35,7 +35,7 @@ var _ = ginkgo.Describe(
 	"Validator lifecycle",
 	ginkgo.Serial,
 	ginkgo.Ordered,
-	ginkgo.Label("e2e", "live", "validator", "mutates-chain", "assertoor"),
+	ginkgo.Label("e2e", "live", "validator", "mutates-chain", "scenario"),
 	func() {
 		var suite liveSuite
 
@@ -73,7 +73,10 @@ var _ = ginkgo.Describe(
 					g.Expect(validator.Balance).To(gomega.BeNumerically(">=", maximum))
 				}
 			}).WithContext(ctx).WithTimeout(validatorTimeout).WithPolling(validatorPollInterval).Should(gomega.Succeed())
-		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label("assertoor:dev:dev-deposits"))
+		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
+			"scenario:dev:dev-deposits",
+			"behavior:validator:deposit-distinct",
+		))
 
 		ginkgo.It("submits a deposit and top-up and activates the validator", func(ctx ginkgo.SpecContext) {
 			maximum, err := suite.beacon.SpecUint(ctx, "MAX_EFFECTIVE_BALANCE")
@@ -94,9 +97,10 @@ var _ = ginkgo.Describe(
 				suite.validator = validator
 			}).WithContext(ctx).WithTimeout(validatorTimeout).WithPolling(validatorPollInterval).Should(gomega.Succeed())
 		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
-			"assertoor:pectra-dev:kurtosis:topup-deposits",
-			"assertoor:stable:validator-lifecycle-test-v2",
-			"assertoor:dev:validator-lifecycle-test",
+			"scenario:pectra-dev:kurtosis:topup-deposits",
+			"scenario:stable:validator-lifecycle-test-v2",
+			"scenario:dev:validator-lifecycle-test",
+			"behavior:validator:deposit-topup-activate",
 		))
 
 		ginkgo.It("exits the validator and transfers its withdrawal to execution", func(ctx ginkgo.SpecContext) {
@@ -160,10 +164,12 @@ var _ = ginkgo.Describe(
 				g.Expect(balance.Cmp(balanceBefore)).To(gomega.BeNumerically(">", 0))
 			}).WithContext(ctx).WithTimeout(validatorTimeout).WithPolling(validatorPollInterval).Should(gomega.Succeed())
 		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
-			"assertoor:stable:kurtosis:validator-exit-test",
-			"assertoor:pectra-dev:kurtosis:voluntary-exits",
-			"assertoor:stable:kurtosis:validator-withdrawal-test",
-			"assertoor:stable:validator-lifecycle-test-v2",
+			"scenario:stable:kurtosis:validator-exit-test",
+			"scenario:pectra-dev:kurtosis:voluntary-exits",
+			"scenario:stable:kurtosis:validator-withdrawal-test",
+			"scenario:stable:validator-lifecycle-test-v2",
+			"behavior:validator:voluntary-exit",
+			"behavior:validator:exit-withdraw",
 		))
 	},
 )

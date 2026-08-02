@@ -5,8 +5,11 @@ package transactions
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math/big"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensus"
@@ -21,12 +24,19 @@ import (
 
 const transactionTimeout = 3 * time.Minute
 
+const (
+	fullCalldataTransactionCount = 1000
+	fullTransactionsPerBlock     = 10
+	fullCalldataSize             = 1000
+	fullWorkloadTimeout          = 45 * time.Minute
+)
+
 var _ = ginkgo.Describe(
 	"QRL transaction scenarios",
 	ginkgo.Serial,
 	ginkgo.Ordered,
 	ginkgo.ContinueOnFailure,
-	ginkgo.Label("e2e", "live", "transactions", "assertoor", "mutates-chain"),
+	ginkgo.Label("e2e", "live", "transactions", "scenario", "mutates-chain"),
 	func() {
 		var sessions []*endtoendlive.Session
 
@@ -54,7 +64,10 @@ var _ = ginkgo.Describe(
 			after, err := session.Client.BalanceAt(ctx, recipient, nil)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(after).To(gomega.Equal(new(big.Int).Add(before, amount)))
-		}, ginkgo.SpecTimeout(transactionTimeout), ginkgo.Label("assertoor:dev:fund-wallet"))
+		}, ginkgo.SpecTimeout(transactionTimeout), ginkgo.Label(
+			"scenario:dev:fund-wallet",
+			"behavior:transactions:fund-wallet",
+		))
 
 		ginkgo.It("sustains deterministic large-calldata transactions and remains finalized", func(ctx ginkgo.SpecContext) {
 			session := sessions[0]
@@ -97,7 +110,11 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				gomega.Expect(progress).To(gomega.BeNil())
 			}
-		}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label("assertoor:stable:big-calldata-tx-test"))
+		}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label(
+			"scenario:stable:big-calldata-tx-test",
+			"behavior:transactions:calldata-boundary",
+			"behavior:transactions:finality-under-load",
+		))
 
 		ginkgo.It("accepts QRL transactions through every execution client", func(ctx ginkgo.SpecContext) {
 			for nodeIndex, session := range sessions {
@@ -124,9 +141,142 @@ var _ = ginkgo.Describe(
 					}
 				}
 			}
-		}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label("assertoor:stable:eoa-transactions-test"))
+		}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label(
+			"scenario:stable:eoa-transactions-test",
+			"behavior:transactions:all-execution-clients",
+			"behavior:transactions:network-wide-inclusion",
+		))
+
+		ginkgo.It("runs the complete 1000-transaction calldata workload", func(ctx ginkgo.SpecContext) {
+			session := sessions[0]
+			beacon, err := consensus.New(session.Participant.ConsensusURL)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			startFinalized, err := beacon.FinalizedEpoch(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			data := make([]byte, fullCalldataSize)
+			recipient := patternedAddress(0xa1)
+			parameters := loadTransactionParameters(ctx, session, recipient, new(big.Int), data)
+			nonce, err := session.Client.PendingNonceAt(ctx, session.Address)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			includedByBlock := make(map[uint64]int)
+
+			for batch := 0; batch < fullCalldataTransactionCount/fullTransactionsPerBlock; batch++ {
+				transactions := make([]*types.Transaction, fullTransactionsPerBlock)
+				for index := range transactions {
+					sequence := batch*fullTransactionsPerBlock + index
+					to := patternedAddress(byte(0xa1 + sequence))
+					transactions[index] = signTransactionAt(
+						session,
+						nonce+uint64(sequence),
+						to,
+						new(big.Int),
+						data,
+						parameters,
+					)
+					gomega.Expect(session.Client.SendTransaction(ctx, transactions[index])).To(gomega.Succeed())
+				}
+				for _, transaction := range transactions {
+					receipt := waitForReceipt(ctx, session, transaction)
+					gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+					gomega.Expect(receipt.BlockNumber).NotTo(gomega.BeNil())
+					includedByBlock[receipt.BlockNumber.Uint64()]++
+				}
+			}
+
+			total := 0
+			for block, count := range includedByBlock {
+				gomega.Expect(count).To(
+					gomega.BeNumerically("<=", fullTransactionsPerBlock),
+					fmt.Sprintf("execution block %d exceeded the workload limit", block),
+				)
+				total += count
+			}
+			gomega.Expect(total).To(gomega.Equal(fullCalldataTransactionCount))
+			awaitFinalizedEpoch(ctx, beacon, startFinalized+2)
+		}, ginkgo.SpecTimeout(fullWorkloadTimeout), ginkgo.Label(
+			"scenario-full",
+			"scenario:stable:big-calldata-tx-test",
+			"behavior:transactions:big-calldata-1000",
+		))
+
+		ginkgo.It("sustains ten transactions per block through every client and proposer", func(ctx ginkgo.SpecContext) {
+			beacon, err := consensus.New(sessions[0].Participant.ConsensusURL)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			expectedProposers := make(map[string]struct{}, len(sessions))
+			for _, session := range sessions {
+				name := strings.TrimPrefix(session.Participant.ValidatorServiceName, "vc-")
+				gomega.Expect(name).NotTo(gomega.BeEmpty())
+				expectedProposers[name] = struct{}{}
+			}
+			observedProposers := make(map[string]struct{}, len(expectedProposers))
+			usedClients := make(map[int]struct{}, len(sessions))
+			lastSlot, err := beacon.HeadSlot(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+			for batch := 0; batch < 64 && len(observedProposers) < len(expectedProposers); batch++ {
+				session := sessions[batch%len(sessions)]
+				usedClients[session.Participant.Index] = struct{}{}
+				nonce, err := session.Client.PendingNonceAt(ctx, session.Address)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				to := patternedAddress(byte(0xc0 + batch))
+				parameters := loadTransactionParameters(ctx, session, to, big.NewInt(1), nil)
+				transactions := make([]*types.Transaction, fullTransactionsPerBlock)
+				blocks := make(map[uint64]int)
+
+				for index := range transactions {
+					transactions[index] = signTransactionAt(
+						session,
+						nonce+uint64(index),
+						patternedAddress(byte(0xd0+batch+index)),
+						big.NewInt(int64(index+1)),
+						nil,
+						parameters,
+					)
+					gomega.Expect(session.Client.SendTransaction(ctx, transactions[index])).To(gomega.Succeed())
+				}
+				for _, transaction := range transactions {
+					receipt := waitForReceipt(ctx, session, transaction)
+					gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+					blocks[receipt.BlockNumber.Uint64()]++
+				}
+
+				currentSlot, err := beacon.HeadSlot(ctx)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				for slot := lastSlot + 1; slot <= currentSlot; slot++ {
+					payload, err := beacon.BlockExecutionPayload(ctx, strconv.FormatUint(slot, 10))
+					if consensus.IsNotFound(err) {
+						continue
+					}
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					if blocks[payload.BlockNumber] != fullTransactionsPerBlock {
+						continue
+					}
+					graffiti, err := beacon.BlockGraffiti(ctx, strconv.FormatUint(slot, 10))
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					observedProposers[decodeGraffiti(graffiti)] = struct{}{}
+				}
+				lastSlot = currentSlot
+			}
+
+			gomega.Expect(usedClients).To(gomega.HaveLen(len(sessions)))
+			for proposer := range expectedProposers {
+				gomega.Expect(observedProposers).To(gomega.HaveKey(proposer))
+			}
+		}, ginkgo.SpecTimeout(fullWorkloadTimeout), ginkgo.Label(
+			"scenario-full",
+			"scenario:stable:eoa-transactions-test",
+			"behavior:transactions:sustained-10-per-block",
+			"behavior:transactions:proposer-inclusion-matrix",
+		))
 	},
 )
+
+type transactionParameters struct {
+	feeCap *big.Int
+	tipCap *big.Int
+	gas    uint64
+}
 
 func signTransaction(
 	ctx context.Context,
@@ -139,6 +289,19 @@ func signTransaction(
 
 	nonce, err := session.Client.PendingNonceAt(ctx, session.Address)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	parameters := loadTransactionParameters(ctx, session, to, value, data)
+	return signTransactionAt(session, nonce, to, value, data, parameters)
+}
+
+func loadTransactionParameters(
+	ctx context.Context,
+	session *endtoendlive.Session,
+	to common.Address,
+	value *big.Int,
+	data []byte,
+) transactionParameters {
+	ginkgo.GinkgoHelper()
+
 	feeCap, err := session.Client.SuggestGasPrice(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	tipCap, err := session.Client.SuggestGasTipCap(ctx)
@@ -154,13 +317,25 @@ func signTransaction(
 		Data:  data,
 	})
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return transactionParameters{feeCap: feeCap, tipCap: tipCap, gas: gas + gas/5}
+}
+
+func signTransactionAt(
+	session *endtoendlive.Session,
+	nonce uint64,
+	to common.Address,
+	value *big.Int,
+	data []byte,
+	parameters transactionParameters,
+) *types.Transaction {
+	ginkgo.GinkgoHelper()
 
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   session.ChainID,
 		Nonce:     nonce,
-		GasTipCap: tipCap,
-		GasFeeCap: feeCap,
-		Gas:       gas + gas/5,
+		GasTipCap: new(big.Int).Set(parameters.tipCap),
+		GasFeeCap: new(big.Int).Set(parameters.feeCap),
+		Gas:       parameters.gas,
 		To:        &to,
 		Value:     value,
 		Data:      data,
@@ -168,6 +343,24 @@ func signTransaction(
 	signed, err := types.SignTx(tx, types.LatestSignerForChainID(session.ChainID), session.Wallet)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return signed
+}
+
+func awaitFinalizedEpoch(ctx context.Context, beacon *consensus.Client, target uint64) {
+	ginkgo.GinkgoHelper()
+	gomega.Eventually(func() uint64 {
+		finalized, _ := beacon.FinalizedEpoch(ctx)
+		return finalized
+	}).WithContext(ctx).WithTimeout(10 * time.Minute).WithPolling(time.Second).Should(
+		gomega.BeNumerically(">=", target),
+	)
+}
+
+func decodeGraffiti(value string) string {
+	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(decoded), "\x00")
 }
 
 func submitAndWait(ctx context.Context, session *endtoendlive.Session, tx *types.Transaction) *types.Receipt {

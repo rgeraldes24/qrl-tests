@@ -4,61 +4,61 @@
 package consensus
 
 type SyncStatus struct {
-	HeadSlot   uint64
-	Syncing    bool
-	Optimistic bool
-	ELOffline  bool
+	HeadSlot   uint64 `json:"head_slot,string"`
+	Syncing    bool   `json:"is_syncing"`
+	Optimistic bool   `json:"is_optimistic"`
+	ELOffline  bool   `json:"el_offline"`
 }
 
 type Head struct {
-	Slot uint64
-	Root string
+	Slot uint64 `json:"slot,string"`
+	Root string `json:"root"`
 }
 
 type Checkpoint struct {
-	Epoch uint64
-	Root  string
+	Epoch uint64 `json:"epoch,string"`
+	Root  string `json:"root"`
 }
 
 type ValidatorLiveness struct {
-	Index  uint64
-	IsLive bool
+	Index  uint64 `json:"index,string"`
+	IsLive bool   `json:"is_live"`
 }
 
 type ValidatorParticipation struct {
-	PreviousActive uint64
-	PreviousTarget uint64
-	PreviousHead   uint64
+	PreviousActive uint64 `json:"previousEpochActiveShor,string"`
+	PreviousTarget uint64 `json:"previousEpochTargetAttestingShor,string"`
+	PreviousHead   uint64 `json:"previousEpochHeadAttestingShor,string"`
 }
 
 type ExecutionPayload struct {
-	ParentHash   string
-	FeeRecipient string
-	BlockNumber  uint64
-	GasLimit     uint64
-	GasUsed      uint64
-	BlockHash    string
-	Transactions []string
-	Withdrawals  []Withdrawal
+	ParentHash   string       `json:"parent_hash"`
+	FeeRecipient string       `json:"fee_recipient"`
+	BlockNumber  uint64       `json:"block_number,string"`
+	GasLimit     uint64       `json:"gas_limit,string"`
+	GasUsed      uint64       `json:"gas_used,string"`
+	BlockHash    string       `json:"block_hash"`
+	Transactions []string     `json:"transactions"`
+	Withdrawals  []Withdrawal `json:"withdrawals"`
 }
 
 type Withdrawal struct {
-	Index          uint64
-	ValidatorIndex uint64
-	Address        string
-	Amount         uint64
+	Index          uint64 `json:"index,string"`
+	ValidatorIndex uint64 `json:"validator_index,string"`
+	Address        string `json:"address"`
+	Amount         uint64 `json:"amount,string"`
 }
 
 type Genesis struct {
-	Time           uint64
-	ValidatorsRoot string
-	ForkVersion    string
+	Time           uint64 `json:"genesis_time,string"`
+	ValidatorsRoot string `json:"genesis_validators_root"`
+	ForkVersion    string `json:"genesis_fork_version"`
 }
 
 type Fork struct {
-	PreviousVersion string
-	CurrentVersion  string
-	Epoch           uint64
+	PreviousVersion string `json:"previous_version"`
+	CurrentVersion  string `json:"current_version"`
+	Epoch           uint64 `json:"epoch,string"`
 }
 
 type Validator struct {
@@ -75,8 +75,8 @@ type Validator struct {
 }
 
 type DepositContract struct {
-	ChainID uint64
-	Address string
+	ChainID uint64 `json:"chain_id,string"`
+	Address string `json:"address"`
 }
 
 type BlockOperations struct {
@@ -88,26 +88,16 @@ type BlockOperations struct {
 }
 
 type Deposit struct {
-	PublicKey             string
-	WithdrawalCredentials string
-	Amount                uint64
-	Signature             string
+	PublicKey             string `json:"pubkey"`
+	WithdrawalCredentials string `json:"withdrawal_credentials"`
+	Amount                uint64 `json:"amount,string"`
+	Signature             string `json:"signature"`
 }
 
 type ExecutionDataVote struct {
-	DepositRoot  string
-	DepositCount uint64
-	BlockHash    string
-}
-
-type BlockConsensusData struct {
-	Slot                    uint64
-	ProposerIndex           uint64
-	ParentRoot              string
-	StateRoot               string
-	ExecutionData           ExecutionDataVote
-	SyncCommitteeBits       string
-	SyncCommitteeSignatures []string
+	DepositRoot  string `json:"deposit_root"`
+	DepositCount uint64 `json:"deposit_count,string"`
+	BlockHash    string `json:"block_hash"`
 }
 
 type ValidatorAssignment struct {

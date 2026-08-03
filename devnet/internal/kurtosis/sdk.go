@@ -21,13 +21,11 @@ import (
 )
 
 type Service struct {
-	Name         string
-	UUID         string
-	PrivateIP    string
-	PrivatePorts map[string]uint16
-	PublicIP     string
-	PublicPorts  map[string]uint16
-	Labels       map[string]string
+	UUID        string
+	PrivateIP   string
+	PublicIP    string
+	PublicPorts map[string]uint16
+	Labels      map[string]string
 }
 
 func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
@@ -113,10 +111,8 @@ func (client *SDKClient) enclave(ctx context.Context, name string) (*enclaves.En
 }
 
 type serviceContext interface {
-	GetServiceName() services.ServiceName
 	GetServiceUUID() services.ServiceUUID
 	GetPrivateIPAddress() string
-	GetPrivatePorts() map[string]*services.PortSpec
 	GetMaybePublicIPAddress() string
 	GetPublicPorts() map[string]*services.PortSpec
 	GetLabels() map[string]string
@@ -127,18 +123,12 @@ func service(serviceContext serviceContext) Service {
 	for id, port := range serviceContext.GetPublicPorts() {
 		publicPorts[id] = port.GetNumber()
 	}
-	privatePorts := make(map[string]uint16, len(serviceContext.GetPrivatePorts()))
-	for id, port := range serviceContext.GetPrivatePorts() {
-		privatePorts[id] = port.GetNumber()
-	}
 	return Service{
-		Name:         string(serviceContext.GetServiceName()),
-		UUID:         string(serviceContext.GetServiceUUID()),
-		PrivateIP:    serviceContext.GetPrivateIPAddress(),
-		PrivatePorts: privatePorts,
-		PublicIP:     serviceContext.GetMaybePublicIPAddress(),
-		PublicPorts:  publicPorts,
-		Labels:       maps.Clone(serviceContext.GetLabels()),
+		UUID:        string(serviceContext.GetServiceUUID()),
+		PrivateIP:   serviceContext.GetPrivateIPAddress(),
+		PublicIP:    serviceContext.GetMaybePublicIPAddress(),
+		PublicPorts: publicPorts,
+		Labels:      maps.Clone(serviceContext.GetLabels()),
 	}
 }
 

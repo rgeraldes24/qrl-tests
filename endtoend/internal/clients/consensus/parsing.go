@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 )
@@ -25,46 +26,55 @@ func decimalSlice(name string, values []string) ([]uint64, error) {
 	return result, nil
 }
 
-func parseValidator(
-	indexValue,
-	balanceValue,
-	status,
-	publicKey,
-	withdrawal,
-	effectiveBalanceValue string,
-	slashed bool,
-	activationEpochValue,
-	exitEpochValue,
-	withdrawableEpochValue string,
-) (Validator, error) {
-	index, err := decimal("validator index", indexValue)
-	if err != nil {
-		return Validator{}, err
+type quotedUint64s []uint64
+
+func (values *quotedUint64s) UnmarshalJSON(input []byte) error {
+	var encoded []string
+	if err := json.Unmarshal(input, &encoded); err != nil {
+		return err
 	}
-	balance, err := decimal("validator balance", balanceValue)
+	parsed, err := decimalSlice("quoted integer", encoded)
 	if err != nil {
-		return Validator{}, err
+		return err
 	}
-	effectiveBalance, err := decimal("validator effective balance", effectiveBalanceValue)
-	if err != nil {
-		return Validator{}, err
+	*values = parsed
+	return nil
+}
+
+func (value *IndexedAttestation) UnmarshalJSON(input []byte) error {
+	var decoded struct {
+		AttestingIndices quotedUint64s   `json:"attesting_indices"`
+		Data             AttestationData `json:"data"`
+		Signatures       []string        `json:"signatures"`
 	}
-	activationEpoch, err := decimal("validator activation epoch", activationEpochValue)
-	if err != nil {
-		return Validator{}, err
+	if err := json.Unmarshal(input, &decoded); err != nil {
+		return err
 	}
-	exitEpoch, err := decimal("validator exit epoch", exitEpochValue)
-	if err != nil {
-		return Validator{}, err
+	*value = IndexedAttestation{
+		AttestingIndices: decoded.AttestingIndices,
+		Data:             decoded.Data,
+		Signatures:       decoded.Signatures,
 	}
-	withdrawableEpoch, err := decimal("validator withdrawable epoch", withdrawableEpochValue)
-	if err != nil {
-		return Validator{}, err
+	return nil
+}
+
+func (value *ValidatorAssignment) UnmarshalJSON(input []byte) error {
+	var decoded struct {
+		BeaconCommittee quotedUint64s `json:"beaconCommittees"`
+		CommitteeIndex  uint64        `json:"committeeIndex,string"`
+		AttesterSlot    uint64        `json:"attesterSlot,string"`
+		ProposerSlots   quotedUint64s `json:"proposerSlots"`
+		ValidatorIndex  uint64        `json:"validatorIndex,string"`
 	}
-	return Validator{
-		Index: index, Balance: balance, Status: status,
-		PublicKey: publicKey, Withdrawal: withdrawal,
-		EffectiveBalance: effectiveBalance, Slashed: slashed,
-		ActivationEpoch: activationEpoch, ExitEpoch: exitEpoch, WithdrawableEpoch: withdrawableEpoch,
-	}, nil
+	if err := json.Unmarshal(input, &decoded); err != nil {
+		return err
+	}
+	*value = ValidatorAssignment{
+		ValidatorIndex:  decoded.ValidatorIndex,
+		CommitteeIndex:  decoded.CommitteeIndex,
+		AttesterSlot:    decoded.AttesterSlot,
+		ProposerSlots:   decoded.ProposerSlots,
+		BeaconCommittee: decoded.BeaconCommittee,
+	}
+	return nil
 }

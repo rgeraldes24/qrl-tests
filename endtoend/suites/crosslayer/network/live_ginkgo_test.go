@@ -3,7 +3,7 @@
 package network
 
 import (
-	"encoding/hex"
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -103,9 +103,9 @@ var _ = ginkgo.Describe(
 				head, err := suite.nodes[0].consensus.Head(ctx)
 				g.Expect(err).NotTo(gomega.HaveOccurred())
 				if head.Slot != lastSlot {
-					graffiti, err := suite.nodes[0].consensus.BlockGraffiti(ctx, "head")
+					graffiti, err := suite.nodes[0].consensus.BlockGraffitiText(ctx, "head")
 					g.Expect(err).NotTo(gomega.HaveOccurred())
-					observed[decodeGraffiti(graffiti)] = struct{}{}
+					observed[graffiti] = struct{}{}
 					lastSlot = head.Slot
 				}
 				for name := range expected {
@@ -227,7 +227,9 @@ var _ = ginkgo.Describe(
 func (suite *liveSuite) observeCanonicalHistory(ctx ginkgo.SpecContext, slotCount uint64) (int, int, int) {
 	ginkgo.GinkgoHelper()
 
-	start := minimumHeadSlot(ctx, suite.nodes)
+	start, err := minimumHeadSlot(ctx, suite.nodes)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
 	nextSlot := start + 1
 	endSlot := start + slotCount
 	observed := make(map[uint64]map[int]string)
@@ -236,7 +238,8 @@ func (suite *liveSuite) observeCanonicalHistory(ctx ginkgo.SpecContext, slotCoun
 	currentForkDistance := 0
 
 	gomega.Eventually(func(g gomega.Gomega) {
-		minimum := minimumHeadSlotWithGomega(ctx, suite.nodes, g)
+		minimum, err := minimumHeadSlot(ctx, suite.nodes)
+		g.Expect(err).NotTo(gomega.HaveOccurred())
 		for nextSlot <= minimum && nextSlot <= endSlot {
 			roots := make(map[int]string, len(suite.nodes))
 			distinct := make(map[string]struct{})
@@ -283,35 +286,16 @@ func (suite *liveSuite) observeCanonicalHistory(ctx ginkgo.SpecContext, slotCoun
 	return forkCount, forkDistance, len(reorgedSlots)
 }
 
-func minimumHeadSlot(ctx ginkgo.SpecContext, nodes []node) uint64 {
-	ginkgo.GinkgoHelper()
+func minimumHeadSlot(ctx context.Context, nodes []node) (uint64, error) {
 	minimum := ^uint64(0)
 	for _, current := range nodes {
 		head, err := current.consensus.HeadSlot(ctx)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		if err != nil {
+			return 0, err
+		}
 		if head < minimum {
 			minimum = head
 		}
 	}
-	return minimum
-}
-
-func minimumHeadSlotWithGomega(ctx ginkgo.SpecContext, nodes []node, g gomega.Gomega) uint64 {
-	minimum := ^uint64(0)
-	for _, current := range nodes {
-		head, err := current.consensus.HeadSlot(ctx)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		if head < minimum {
-			minimum = head
-		}
-	}
-	return minimum
-}
-
-func decodeGraffiti(value string) string {
-	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimRight(string(decoded), "\x00")
+	return minimum, nil
 }

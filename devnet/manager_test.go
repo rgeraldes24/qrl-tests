@@ -56,7 +56,7 @@ func TestParticipantsFromServices(t *testing.T) {
 		"cl-1-qrysm-gqrl": service("cl-1-qrysm-gqrl", "beacon", 4201, 0, 0, 0, 4301),
 		"el-1-gqrl-qrysm": service("el-1-gqrl-qrysm", "execution", 3201, 3301, 3401, 0),
 		"vc-1-gqrl-qrysm": service("vc-1-gqrl-qrysm", "validator", 0, 0, 0, 5201, 5301),
-		"prometheus":      {Name: "prometheus", Labels: map[string]string{"qrl-package.client-type": "utility"}},
+		"prometheus":      {Labels: map[string]string{"qrl-package.client-type": "utility"}},
 	}
 
 	participants, err := participantsFromServices(services)
@@ -121,7 +121,7 @@ func service(name, clientType string, rpc, ws, engine, validator uint16, metrics
 		}
 	}
 	return kurtosis.Service{
-		Name: name, UUID: name + "-id", PrivateIP: "10.0.0." + name[3:4], PublicIP: "127.0.0.1", PublicPorts: ports,
+		UUID: name + "-id", PrivateIP: "10.0.0." + name[3:4], PublicIP: "127.0.0.1", PublicPorts: ports,
 		Labels: map[string]string{"qrl-package.client-type": clientType},
 	}
 }

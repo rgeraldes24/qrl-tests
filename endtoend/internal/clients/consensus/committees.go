@@ -10,7 +10,7 @@ import (
 )
 
 type committeeWire struct {
-	Validators []string `json:"validators"`
+	Validators quotedUint64s `json:"validators"`
 }
 
 func (client *Client) Committee(ctx context.Context, stateID string, slot, index uint64) ([]uint64, error) {
@@ -27,7 +27,7 @@ func (client *Client) Committee(ctx context.Context, stateID string, slot, index
 	if len(response.Data) != 1 {
 		return nil, fmt.Errorf("expected one committee, got %d", len(response.Data))
 	}
-	return decimalSlice("committee validator", response.Data[0].Validators)
+	return response.Data[0].Validators, nil
 }
 
 func (client *Client) SyncCommittee(ctx context.Context, stateID string) ([]uint64, error) {
@@ -36,5 +36,5 @@ func (client *Client) SyncCommittee(ctx context.Context, stateID string) ([]uint
 	if err := client.get(ctx, path, &response); err != nil {
 		return nil, err
 	}
-	return decimalSlice("sync committee validator", response.Data.Validators)
+	return response.Data.Validators, nil
 }

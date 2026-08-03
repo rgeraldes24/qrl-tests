@@ -52,4 +52,4 @@ networks. Backend-specific scenarios are selected from declared capabilities;
 Docker-only partition tests are omitted on Kubernetes.
 
 See [development network configuration](devnet/README.md), [suite ownership](endtoend/README.md),
-[scenario coverage](docs/scenario-coverage.md), and [test ownership](docs/ownership.md).
+[scenario coverage](endtoend/coverage/README.md), and [test ownership](docs/ownership.md).

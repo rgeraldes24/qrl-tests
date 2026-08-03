@@ -152,28 +152,27 @@ var _ = ginkgo.Describe(
 					continue
 				}
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
-				data, err := block.ConsensusData()
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				body := block.Message.Body
+				data := body.ExecutionData
 				produced++
 				period := slot / votingPeriod
 				if vote, found := votes[period]; found {
-					gomega.Expect(data.ExecutionData).To(gomega.Equal(vote))
+					gomega.Expect(data).To(gomega.Equal(vote))
 				} else {
-					gomega.Expect(data.ExecutionData.DepositRoot).To(gomega.MatchRegexp(`^0x[0-9a-fA-F]{64}$`))
-					gomega.Expect(data.ExecutionData.BlockHash).To(gomega.MatchRegexp(`^0x[0-9a-fA-F]{64}$`))
-					votes[period] = data.ExecutionData
+					gomega.Expect(data.DepositRoot).To(gomega.MatchRegexp(`^0x[0-9a-fA-F]{64}$`))
+					gomega.Expect(data.BlockHash).To(gomega.MatchRegexp(`^0x[0-9a-fA-F]{64}$`))
+					votes[period] = data
 				}
 
-				bitsBytes, err := hexutil.Decode(data.SyncCommitteeBits)
+				bitsBytes, err := hexutil.Decode(body.SyncAggregate.Bits)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				setBits := 0
 				for _, value := range bitsBytes {
 					setBits += bits.OnesCount8(value)
 				}
-				gomega.Expect(data.SyncCommitteeSignatures).To(gomega.HaveLen(setBits))
+				gomega.Expect(body.SyncAggregate.Signatures).To(gomega.HaveLen(setBits))
 
-				payload, err := block.ExecutionPayload()
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				payload := body.ExecutionPayload
 				feeRecipient, err := hexutil.Decode(payload.FeeRecipient)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				gomega.Expect(feeRecipient).To(gomega.HaveLen(common.AddressLength))

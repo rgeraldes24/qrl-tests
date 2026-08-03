@@ -3,7 +3,6 @@
 package validator_test
 
 import (
-	"encoding/hex"
 	"math/big"
 	"strconv"
 	"strings"
@@ -187,13 +186,12 @@ func (suite *operationsSuite) runMassDepositChurn(ctx ginkgo.SpecContext) {
 		head, err := suite.beacon.HeadSlot(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		for slot := lastSlot + 1; slot <= head; slot++ {
-			graffiti, err := suite.beacon.BlockGraffiti(ctx, strconv.FormatUint(slot, 10))
+			graffiti, err := suite.beacon.BlockGraffitiText(ctx, strconv.FormatUint(slot, 10))
 			if consensus.IsNotFound(err) {
 				continue
 			}
 			g.Expect(err).NotTo(gomega.HaveOccurred())
-			if decoded, err := hex.DecodeString(strings.TrimPrefix(graffiti, "0x")); err == nil &&
-				strings.TrimRight(string(decoded), "\x00") == wantedProposer {
+			if graffiti == wantedProposer {
 				proposerSlot = slot
 				return
 			}

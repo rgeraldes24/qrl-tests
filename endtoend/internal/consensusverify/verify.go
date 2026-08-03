@@ -86,18 +86,12 @@ func (verification *Verifier) Verify(
 	}
 	summary.Block++
 
-	slot, err := decimal("block slot", block.Message.Slot)
-	if err != nil {
-		return summary, err
-	}
-	proposer, err := decimal("block proposer index", block.Message.ProposerIndex)
-	if err != nil {
-		return summary, err
-	}
-	if slotValue, err := decimal("header slot", header.Header.Message.Slot); err != nil || slotValue != slot {
+	slot := block.Message.Slot
+	proposer := block.Message.ProposerIndex
+	if header.Header.Message.Slot != slot {
 		return summary, fmt.Errorf("block and header slot mismatch")
 	}
-	if proposerValue, err := decimal("header proposer index", header.Header.Message.ProposerIndex); err != nil || proposerValue != proposer {
+	if header.Header.Message.ProposerIndex != proposer {
 		return summary, fmt.Errorf("block and header proposer mismatch")
 	}
 	if !strings.EqualFold(header.Header.Message.ParentRoot, block.Message.ParentRoot) {
@@ -114,7 +108,7 @@ func (verification *Verifier) Verify(
 	}
 	summary.Randao++
 
-	stateID := block.Message.Slot
+	stateID := strconv.FormatUint(block.Message.Slot, 10)
 	for index, attestation := range block.Message.Body.Attestations {
 		count, err := verification.verifyAttestation(ctx, attestation)
 		if err != nil {
@@ -223,16 +217,12 @@ func (verification *Verifier) verifyVoluntaryExit(
 	exit consensus.VoluntaryExit,
 	signatureHex string,
 ) error {
-	epoch, err := decimal("voluntary exit epoch", exit.Epoch)
-	if err != nil {
-		return err
+	message := &qrysmpb.VoluntaryExit{
+		Epoch: primitives.Epoch(exit.Epoch), ValidatorIndex: primitives.ValidatorIndex(exit.ValidatorIndex),
 	}
-	validatorIndex, err := decimal("voluntary exit validator index", exit.ValidatorIndex)
-	if err != nil {
-		return err
-	}
-	message := &qrysmpb.VoluntaryExit{Epoch: primitives.Epoch(epoch), ValidatorIndex: primitives.ValidatorIndex(validatorIndex)}
-	return verification.verifyObject(ctx, message, validatorIndex, epoch, params.BeaconConfig().DomainVoluntaryExit, signatureHex)
+	return verification.verifyObject(
+		ctx, message, exit.ValidatorIndex, exit.Epoch, params.BeaconConfig().DomainVoluntaryExit, signatureHex,
+	)
 }
 
 func (verification *Verifier) verifyAttestation(
@@ -244,7 +234,8 @@ func (verification *Verifier) verifyAttestation(
 		return 0, err
 	}
 	positions := bitfield.Bitlist(bits).BitIndices()
-	committee, err := committee(ctx, verification.client, attestation.Data.Slot, attestation.Data)
+	stateID := strconv.FormatUint(attestation.Data.Slot, 10)
+	committee, err := committee(ctx, verification.client, stateID, attestation.Data)
 	if err != nil {
 		return 0, err
 	}
@@ -262,15 +253,9 @@ func (verification *Verifier) verifyIndexedAttestation(
 	ctx context.Context,
 	attestation consensus.IndexedAttestation,
 ) (int, error) {
-	indices := make([]uint64, len(attestation.AttestingIndices))
-	for index, value := range attestation.AttestingIndices {
-		parsed, err := decimal("attesting index", value)
-		if err != nil {
-			return 0, err
-		}
-		indices[index] = parsed
-	}
-	return verification.verifyAttestationSignatures(ctx, attestation.Data, indices, attestation.Signatures)
+	return verification.verifyAttestationSignatures(
+		ctx, attestation.Data, attestation.AttestingIndices, attestation.Signatures,
+	)
 }
 
 func (verification *Verifier) verifyAttestationSignatures(

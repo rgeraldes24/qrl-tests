@@ -293,9 +293,9 @@ var _ = ginkgo.Describe(
 					if blocks[payload.BlockNumber] != fullTransactionsPerBlock {
 						continue
 					}
-					graffiti, err := beacon.BlockGraffiti(ctx, strconv.FormatUint(slot, 10))
+					graffiti, err := beacon.BlockGraffitiText(ctx, strconv.FormatUint(slot, 10))
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
-					observedProposers[decodeGraffiti(graffiti)] = struct{}{}
+					observedProposers[graffiti] = struct{}{}
 				}
 				lastSlot = currentSlot
 			}

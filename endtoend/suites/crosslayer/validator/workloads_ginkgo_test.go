@@ -3,8 +3,8 @@
 package validator_test
 
 import (
-	"encoding/hex"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -83,7 +83,7 @@ func (suite *operationsSuite) submitExit(
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(submitClient.Post(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit)).To(gomega.Succeed())
 	slot := scanner.await(ctx, func(operations consensus.BlockOperations) bool {
-		return contains(operations.VoluntaryExits, index)
+		return slices.Contains(operations.VoluntaryExits, index)
 	})
 	waitValidator(ctx, suite.beacon, index, func(validator consensus.Validator) bool {
 		return validator.ExitEpoch != ^uint64(0)
@@ -125,7 +125,7 @@ func (suite *operationsSuite) submitSlashing(
 		if proposer {
 			indices = operations.ProposerSlashings
 		}
-		return contains(indices, index)
+		return slices.Contains(indices, index)
 	})
 	waitValidator(ctx, suite.beacon, index, func(validator consensus.Validator) bool { return validator.Slashed })
 	return slot
@@ -180,11 +180,9 @@ func recordOperationProposer(
 ) {
 	ginkgo.GinkgoHelper()
 
-	graffiti, err := beacon.BlockGraffiti(ctx, strconv.FormatUint(slot, 10))
+	graffiti, err := beacon.BlockGraffitiText(ctx, strconv.FormatUint(slot, 10))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	decoded, err := hex.DecodeString(strings.TrimPrefix(graffiti, "0x"))
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	observed[strings.TrimRight(string(decoded), "\x00")] = struct{}{}
+	observed[graffiti] = struct{}{}
 }
 
 func expectedValidatorPairs(sessions []*endtoendlive.Session) map[string]struct{} {

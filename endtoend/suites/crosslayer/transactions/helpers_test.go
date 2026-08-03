@@ -4,12 +4,8 @@ package transactions
 
 import (
 	"context"
-	"encoding/hex"
 	"math/big"
-	"strings"
-	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
@@ -47,24 +43,6 @@ func signTransactionAt(session *endtoendlive.Session, nonce uint64, to common.Ad
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(sender).To(gomega.Equal(session.Address))
 	return tx
-}
-
-func awaitFinalizedEpoch(ctx context.Context, beacon *consensus.Client, target uint64) {
-	ginkgo.GinkgoHelper()
-	gomega.Eventually(func() uint64 {
-		finalized, _ := beacon.FinalizedEpoch(ctx)
-		return finalized
-	}).WithContext(ctx).WithTimeout(10 * time.Minute).WithPolling(time.Second).Should(
-		gomega.BeNumerically(">=", target),
-	)
-}
-
-func decodeGraffiti(value string) string {
-	decoded, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimRight(string(decoded), "\x00")
 }
 
 func submitAndWait(ctx context.Context, session *endtoendlive.Session, tx *types.Transaction) *types.Receipt {

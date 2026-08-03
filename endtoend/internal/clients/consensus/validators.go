@@ -14,8 +14,8 @@ import (
 )
 
 type validatorRecordWire struct {
-	Index     string        `json:"index"`
-	Balance   string        `json:"balance"`
+	Index     uint64        `json:"index,string"`
+	Balance   uint64        `json:"balance,string"`
 	Status    string        `json:"status"`
 	Validator validatorWire `json:"validator"`
 }
@@ -23,40 +23,25 @@ type validatorRecordWire struct {
 type validatorWire struct {
 	PublicKey         string `json:"pubkey"`
 	Withdrawal        string `json:"withdrawal_credentials"`
-	EffectiveBalance  string `json:"effective_balance"`
+	EffectiveBalance  uint64 `json:"effective_balance,string"`
 	Slashed           bool   `json:"slashed"`
-	ActivationEpoch   string `json:"activation_epoch"`
-	ExitEpoch         string `json:"exit_epoch"`
-	WithdrawableEpoch string `json:"withdrawable_epoch"`
+	ActivationEpoch   uint64 `json:"activation_epoch,string"`
+	ExitEpoch         uint64 `json:"exit_epoch,string"`
+	WithdrawableEpoch uint64 `json:"withdrawable_epoch,string"`
 }
 
-func (item validatorRecordWire) parse() (Validator, error) {
-	return parseValidator(
-		item.Index,
-		item.Balance,
-		item.Status,
-		item.Validator.PublicKey,
-		item.Validator.Withdrawal,
-		item.Validator.EffectiveBalance,
-		item.Validator.Slashed,
-		item.Validator.ActivationEpoch,
-		item.Validator.ExitEpoch,
-		item.Validator.WithdrawableEpoch,
-	)
+func (item validatorRecordWire) validator() Validator {
+	return Validator{
+		Index: item.Index, Balance: item.Balance, Status: item.Status,
+		PublicKey: item.Validator.PublicKey, Withdrawal: item.Validator.Withdrawal,
+		EffectiveBalance: item.Validator.EffectiveBalance, Slashed: item.Validator.Slashed,
+		ActivationEpoch: item.Validator.ActivationEpoch, ExitEpoch: item.Validator.ExitEpoch,
+		WithdrawableEpoch: item.Validator.WithdrawableEpoch,
+	}
 }
 
 type validatorIndexWire struct {
-	Index string `json:"index"`
-}
-
-type depositContractWire struct {
-	ChainID string `json:"chain_id"`
-	Address string `json:"address"`
-}
-
-type validatorLivenessWire struct {
-	Index  string `json:"index"`
-	IsLive bool   `json:"is_live"`
+	Index uint64 `json:"index,string"`
 }
 
 func (client *Client) Validator(ctx context.Context, validatorID string) (Validator, error) {
@@ -64,19 +49,15 @@ func (client *Client) Validator(ctx context.Context, validatorID string) (Valida
 	if err := client.get(ctx, "/qrl/v1/beacon/states/head/validators/"+url.PathEscape(validatorID), &response); err != nil {
 		return Validator{}, err
 	}
-	return response.Data.parse()
+	return response.Data.validator(), nil
 }
 
 func (client *Client) DepositContract(ctx context.Context) (DepositContract, error) {
-	var response dataResponse[depositContractWire]
+	var response dataResponse[DepositContract]
 	if err := client.get(ctx, "/qrl/v1/config/deposit_contract", &response); err != nil {
 		return DepositContract{}, err
 	}
-	chainID, err := decimal("deposit contract chain ID", response.Data.ChainID)
-	if err != nil {
-		return DepositContract{}, err
-	}
-	return DepositContract{ChainID: chainID, Address: response.Data.Address}, nil
+	return response.Data, nil
 }
 
 func (client *Client) ActiveValidatorCount(ctx context.Context) (int, error) {
@@ -91,11 +72,7 @@ func (client *Client) ActiveValidatorIndices(ctx context.Context) ([]uint64, err
 	}
 	indices := make([]uint64, len(response.Data))
 	for index, validator := range response.Data {
-		value, err := decimal("validator index", validator.Index)
-		if err != nil {
-			return nil, err
-		}
-		indices[index] = value
+		indices[index] = validator.Index
 	}
 	return indices, nil
 }
@@ -111,21 +88,9 @@ func (client *Client) Validators(ctx context.Context, status string) ([]Validato
 	}
 	validators := make([]Validator, len(response.Data))
 	for index, item := range response.Data {
-		validator, err := item.parse()
-		if err != nil {
-			return nil, err
-		}
-		validators[index] = validator
+		validators[index] = item.validator()
 	}
 	return validators, nil
-}
-
-func (client *Client) BlockAttestationCount(ctx context.Context, blockID string) (int, error) {
-	var response dataResponse[[]json.RawMessage]
-	if err := client.get(ctx, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID)+"/attestations", &response); err != nil {
-		return 0, err
-	}
-	return len(response.Data), nil
 }
 
 func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error) {
@@ -149,18 +114,10 @@ func (client *Client) Liveness(ctx context.Context, epoch uint64, indices []uint
 	if err != nil {
 		return nil, err
 	}
-	var response dataResponse[[]validatorLivenessWire]
+	var response dataResponse[[]ValidatorLiveness]
 	path := "/qrl/v1/validator/liveness/" + strconv.FormatUint(epoch, 10)
 	if err := client.do(ctx, http.MethodPost, path, bytes.NewReader(payload), &response); err != nil {
 		return nil, err
 	}
-	result := make([]ValidatorLiveness, len(response.Data))
-	for index, item := range response.Data {
-		validatorIndex, err := decimal("validator index", item.Index)
-		if err != nil {
-			return nil, err
-		}
-		result[index] = ValidatorLiveness{Index: validatorIndex, IsLive: item.IsLive}
-	}
-	return result, nil
+	return response.Data, nil
 }

@@ -91,18 +91,9 @@ func newClefSession(
 	if err != nil {
 		return nil, err
 	}
-	client, err := rpc.DialOptions(
-		ctx,
-		endpoint,
-		rpc.WithHTTPClient(&http.Client{Timeout: requestTimeout}),
-	)
+	client, err := connectClef(ctx, endpoint, process)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("connect to Clef: %w", err), process.stop())
-	}
-
-	if err := waitForClef(ctx, client, process); err != nil {
-		client.Close()
-		return nil, errors.Join(err, process.stop())
+		return nil, err
 	}
 	return &clefSession{
 		process:         process,
@@ -145,21 +136,33 @@ func (session *clefSession) restart(ctx, processContext context.Context) error {
 	if err != nil {
 		return err
 	}
+	client, err := connectClef(ctx, endpoint, process)
+	if err != nil {
+		return err
+	}
+	session.process = process
+	session.client = client
+	return nil
+}
+
+func connectClef(
+	ctx context.Context,
+	endpoint string,
+	process *clefProcess,
+) (*rpc.Client, error) {
 	client, err := rpc.DialOptions(
 		ctx,
 		endpoint,
 		rpc.WithHTTPClient(&http.Client{Timeout: requestTimeout}),
 	)
 	if err != nil {
-		return errors.Join(fmt.Errorf("connect to restarted Clef: %w", err), process.stop())
+		return nil, errors.Join(fmt.Errorf("connect to Clef: %w", err), process.stop())
 	}
 	if err := waitForClef(ctx, client, process); err != nil {
 		client.Close()
-		return errors.Join(err, process.stop())
+		return nil, errors.Join(err, process.stop())
 	}
-	session.process = process
-	session.client = client
-	return nil
+	return client, nil
 }
 
 func waitForClef(

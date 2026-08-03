@@ -3,6 +3,7 @@
 package validator_test
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -105,7 +106,7 @@ func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain cons
 			if proposer {
 				indices = operations.ProposerSlashings
 			}
-			included = included || contains(indices, index)
+			included = included || slices.Contains(indices, index)
 			scannedThrough = slot
 		}
 		lastSlot = scannedThrough

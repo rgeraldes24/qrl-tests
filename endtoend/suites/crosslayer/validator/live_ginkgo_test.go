@@ -3,6 +3,7 @@
 package validator_test
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -148,7 +149,7 @@ var _ = ginkgo.Describe(
 						g.Expect(err).NotTo(gomega.HaveOccurred())
 						return
 					}
-					exitIncluded = exitIncluded || contains(operations.VoluntaryExits, suite.validator.Index)
+					exitIncluded = exitIncluded || slices.Contains(operations.VoluntaryExits, suite.validator.Index)
 					for _, withdrawal := range operations.Withdrawals {
 						if withdrawal.ValidatorIndex == suite.validator.Index {
 							expectedAddress := "0x" + suite.session.Address.Hex()[1:]
@@ -178,12 +179,3 @@ var _ = ginkgo.Describe(
 		))
 	},
 )
-
-func contains(values []uint64, target uint64) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}

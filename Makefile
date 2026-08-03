@@ -37,7 +37,7 @@ network-image:
 clef-image:
 	@test -n "$(strip $(GO_QRL_SOURCE_DIR))" || { echo "GO_QRL_SOURCE_DIR must point to a go-qrl checkout" >&2; exit 2; }
 	docker build \
-		--file endtoend/Dockerfile.clef \
+		--file devnet/Dockerfile.clef \
 		--build-context go-qrl-source="$(GO_QRL_SOURCE_DIR)" \
 		--tag "$(DEVNET_CLEF_IMAGE)" \
 		.

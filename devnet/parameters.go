@@ -196,22 +196,6 @@ func renderCustomParameters(payload []byte, address string, images Images) (stri
 	if err != nil {
 		return "", fmt.Errorf("encode rendered parameters: %w", err)
 	}
-
-	var renderedDocument yaml.Node
-	if err := yaml.Unmarshal(rendered, &renderedDocument); err != nil {
-		return "", errors.New("rendered parameters must contain one YAML mapping")
-	}
-	renderedShape, err := decodeParameterShape(&renderedDocument)
-	if err != nil {
-		return "", errors.New("rendered parameters must contain one YAML mapping")
-	}
-	if len(renderedShape.Participants) == 0 ||
-		renderedShape.Participants[0].ExecutionImage != images.Execution {
-		return "", errors.New("execution-image token was not replaced")
-	}
-	if _, ok := renderedShape.Network.PrefundedAccounts[address]; !ok {
-		return "", errors.New("wallet-address token was not replaced")
-	}
 	return string(rendered), nil
 }
 

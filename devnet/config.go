@@ -101,25 +101,8 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 	if err != nil {
 		return "", err
 	}
-	participantCount := 1
-	switch profile {
-	case ProfileMulti, ProfileChaos:
-		participantCount = 4
-	case ProfileOperations:
-		participantCount = 5
-	case ProfileSync, ProfileOptimistic:
-		participantCount = 2
-	}
-	participants := make([]participant, participantCount)
-	validatorCounts := make([]int, participantCount)
-	for index := range validatorCounts {
-		validatorCounts[index] = 64 / participantCount
-	}
-	preregisteredValidators := 0
-	if profile == ProfileOperations {
-		copy(validatorCounts, []int{128, 128, 128, 128, 300})
-		preregisteredValidators = 512
-	}
+	spec := profileSpecs[profile]
+	participants := make([]participant, len(spec.validatorCounts))
 	for index := range participants {
 		labels := map[string]string{
 			"qrl-tests.participant": strconv.Itoa(index + 1),
@@ -135,30 +118,20 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 			UseRemoteSigner:   true,
 			RemoteSignerType:  "clef",
 			RemoteSignerImage: remoteSignerImage,
-			ValidatorCount:    validatorCounts[index],
+			ValidatorCount:    spec.validatorCounts[index],
 			ELExtraLabels:     maps.Clone(labels),
 			CLExtraLabels:     maps.Clone(labels),
 			VCExtraLabels:     maps.Clone(labels),
 		}
-		if profile == ProfileChaos {
-			participants[index].CLExtraParams = []string{}
-		}
-		if profile == ProfileSync && index == 1 {
-			participants[index].CLExtraParams = append(participants[index].CLExtraParams, "--force-clear-db")
-			participants[index].VCExtraParams = []string{"--enable-doppelganger", "--force-clear-db"}
-		}
-		if profile == ProfileCold {
-			participants[index].CLExtraParams = append(participants[index].CLExtraParams, "--slots-per-archive-point=16")
-		}
-		if profile == ProfileOptimistic && index == 1 {
-			participants[index].CLExtraParams = append(participants[index].CLExtraParams, "--startup-optimistic")
+		if spec.configure != nil {
+			spec.configure(index, &participants[index])
 		}
 	}
 	payload, err := json.Marshal(packageParameters{
 		Participants: participants,
 		NetworkParams: networkParams{
 			NetworkID:               defaultNetworkID,
-			PreregisteredValidators: preregisteredValidators,
+			PreregisteredValidators: spec.preregisteredValidators,
 			SecondsPerSlot:          5,
 			SlotsPerEpoch:           8,
 			ExecutionFollowDistance: 8,
@@ -179,15 +152,70 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 type Profile string
 
 const (
-	ProfileSingle     Profile = "single"
-	ProfileMulti      Profile = "multi"
-	ProfileLifecycle  Profile = "lifecycle"
-	ProfileChaos      Profile = "chaos"
-	ProfileSync       Profile = "sync"
-	ProfileOperations Profile = "operations"
-	ProfileCold       Profile = "cold"
-	ProfileOptimistic Profile = "optimistic"
+	ProfileSingle        Profile = "single"
+	ProfileMulti         Profile = "multi"
+	ProfileLifecycle     Profile = "lifecycle"
+	ProfileChaos         Profile = "chaos"
+	ProfileSync          Profile = "sync"
+	ProfileOperations    Profile = "operations"
+	ProfileCold          Profile = "cold"
+	ProfileOptimistic    Profile = "optimistic"
+	ProfileExecutionSync Profile = "execution-sync"
 )
+
+type profileSpec struct {
+	validatorCounts         []int
+	preregisteredValidators int
+	configure               func(int, *participant)
+}
+
+var profileSpecs = map[Profile]profileSpec{
+	ProfileSingle:    {validatorCounts: []int{64}},
+	ProfileMulti:     {validatorCounts: []int{16, 16, 16, 16}},
+	ProfileLifecycle: {validatorCounts: []int{64}},
+	ProfileChaos: {
+		validatorCounts: []int{16, 16, 16, 16},
+		configure: func(_ int, participant *participant) {
+			participant.CLExtraParams = []string{}
+		},
+	},
+	ProfileSync: {
+		validatorCounts: []int{32, 32},
+		configure: func(index int, participant *participant) {
+			if index == 1 {
+				participant.CLExtraParams = append(participant.CLExtraParams, "--force-clear-db")
+				participant.VCExtraParams = []string{"--enable-doppelganger", "--force-clear-db"}
+			}
+		},
+	},
+	ProfileOperations: {
+		validatorCounts:         []int{128, 128, 128, 128, 300},
+		preregisteredValidators: 512,
+	},
+	ProfileCold: {
+		validatorCounts: []int{64},
+		configure: func(_ int, participant *participant) {
+			participant.CLExtraParams = append(participant.CLExtraParams, "--slots-per-archive-point=16")
+		},
+	},
+	ProfileOptimistic: {
+		validatorCounts: []int{32, 32},
+		configure: func(index int, participant *participant) {
+			if index == 1 {
+				participant.CLExtraParams = append(participant.CLExtraParams, "--startup-optimistic")
+			}
+		},
+	},
+	ProfileExecutionSync: {
+		validatorCounts: []int{64, 0},
+		configure: func(index int, participant *participant) {
+			if index != 1 {
+				return
+			}
+			participant.ELExtraParams = append(participant.ELExtraParams, "--nodiscover", "--bootnodes=")
+		},
+	},
+}
 
 func normalizeProfile(profile Profile) (Profile, error) {
 	if profile == "" {
@@ -195,7 +223,7 @@ func normalizeProfile(profile Profile) (Profile, error) {
 	}
 	switch profile {
 	case ProfileSingle, ProfileMulti, ProfileLifecycle, ProfileChaos, ProfileSync, ProfileOperations,
-		ProfileCold, ProfileOptimistic:
+		ProfileCold, ProfileOptimistic, ProfileExecutionSync:
 		return profile, nil
 	default:
 		return "", fmt.Errorf("unknown development-network profile %q", profile)

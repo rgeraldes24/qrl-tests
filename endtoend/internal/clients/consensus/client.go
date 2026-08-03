@@ -7,11 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 )
 
 type Client struct {
@@ -788,110 +786,4 @@ func (client *Client) BlockOperations(ctx context.Context, blockID string) (Bloc
 		result.Withdrawals = append(result.Withdrawals, Withdrawal{index, validatorIndex, item.Address, amount})
 	}
 	return result, nil
-}
-
-func (client *Client) Post(ctx context.Context, path string, payload any) error {
-	return client.PostJSON(ctx, path, payload, nil)
-}
-
-func (client *Client) GetJSON(ctx context.Context, path string, result any) error {
-	return client.get(ctx, path, result)
-}
-
-func (client *Client) PostJSON(ctx context.Context, path string, payload, result any) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	return client.do(ctx, http.MethodPost, path, bytes.NewReader(body), result)
-}
-
-func (client *Client) get(ctx context.Context, path string, result any) error {
-	return client.do(ctx, http.MethodGet, path, nil, result)
-}
-
-func (client *Client) do(ctx context.Context, method, path string, body io.Reader, result any) error {
-	reference, err := url.Parse(path)
-	if err != nil {
-		return fmt.Errorf("parse consensus path %q: %w", path, err)
-	}
-	endpoint := client.baseURL.ResolveReference(reference)
-	request, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
-	if err != nil {
-		return err
-	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, err := client.http.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-		return &responseError{
-			method: method, path: path, status: response.Status,
-			statusCode: response.StatusCode, body: strings.TrimSpace(string(body)),
-		}
-	}
-	if result == nil {
-		return nil
-	}
-	if err := json.NewDecoder(response.Body).Decode(result); err != nil {
-		return fmt.Errorf("decode %s %s: %w", method, path, err)
-	}
-	return nil
-}
-
-func decimal(name, value string) (uint64, error) {
-	parsed, err := strconv.ParseUint(value, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid %s %q: %w", name, value, err)
-	}
-	return parsed, nil
-}
-
-func parseValidator(
-	indexValue,
-	balanceValue,
-	status,
-	publicKey,
-	withdrawal,
-	effectiveBalanceValue string,
-	slashed bool,
-	activationEpochValue,
-	exitEpochValue,
-	withdrawableEpochValue string,
-) (Validator, error) {
-	index, err := decimal("validator index", indexValue)
-	if err != nil {
-		return Validator{}, err
-	}
-	balance, err := decimal("validator balance", balanceValue)
-	if err != nil {
-		return Validator{}, err
-	}
-	effectiveBalance, err := decimal("validator effective balance", effectiveBalanceValue)
-	if err != nil {
-		return Validator{}, err
-	}
-	activationEpoch, err := decimal("validator activation epoch", activationEpochValue)
-	if err != nil {
-		return Validator{}, err
-	}
-	exitEpoch, err := decimal("validator exit epoch", exitEpochValue)
-	if err != nil {
-		return Validator{}, err
-	}
-	withdrawableEpoch, err := decimal("validator withdrawable epoch", withdrawableEpochValue)
-	if err != nil {
-		return Validator{}, err
-	}
-	return Validator{
-		Index: index, Balance: balance, Status: status,
-		PublicKey: publicKey, Withdrawal: withdrawal,
-		EffectiveBalance: effectiveBalance, Slashed: slashed,
-		ActivationEpoch: activationEpoch, ExitEpoch: exitEpoch, WithdrawableEpoch: withdrawableEpoch,
-	}, nil
 }

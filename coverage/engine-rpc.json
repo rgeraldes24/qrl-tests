@@ -1,0 +1,10 @@
+{
+  "surface": "engine-rpc",
+  "entries": [
+    {"id": "exchange-capabilities", "package": "./endtoend/suites/crosslayer/engine", "lane": "single", "classification": "behavior"},
+    {"id": "payload-bodies", "package": "./endtoend/suites/crosslayer/engine", "lane": "single", "classification": "behavior"},
+    {"id": "forkchoice-updated-v2", "package": "./endtoend/suites/crosslayer/engine", "lane": "single", "classification": "behavior"},
+    {"id": "get-payload-v2", "package": "./endtoend/suites/crosslayer/engine", "lane": "single", "classification": "behavior"},
+    {"id": "new-payload-v2", "package": "./endtoend/suites/crosslayer/engine", "lane": "single", "classification": "behavior"}
+  ]
+}

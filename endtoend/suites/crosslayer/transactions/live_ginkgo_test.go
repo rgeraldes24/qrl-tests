@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
@@ -147,6 +148,48 @@ var _ = ginkgo.Describe(
 			"behavior:transactions:all-execution-clients",
 			"behavior:transactions:network-wide-inclusion",
 		))
+
+		ginkgo.It("propagates a pending transaction between execution peers", func(ctx ginkgo.SpecContext) {
+			if len(sessions) < 2 {
+				ginkgo.Skip("transaction propagation requires the multi-participant profile")
+			}
+			services := devnet.NewServiceController(sessions[0].Environment.EnclaveName)
+			validators := make([]string, 0, len(sessions))
+			for _, session := range sessions {
+				validators = append(validators, session.Participant.ValidatorServiceName)
+			}
+			gomega.Expect(services.Stop(ctx, validators...)).To(gomega.Succeed())
+			stopped := true
+			defer func() {
+				if stopped {
+					cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+					defer cancel()
+					gomega.Expect(services.Start(cleanup, validators...)).To(gomega.Succeed())
+				}
+			}()
+
+			tx := signTransaction(ctx, sessions[0], patternedAddress(0x5a), big.NewInt(77), []byte("peer-propagation"))
+			gomega.Expect(sessions[0].Execution.SendTransaction(ctx, tx)).To(gomega.Succeed())
+			for _, observer := range sessions[1:] {
+				gomega.Eventually(func() bool {
+					stored, pending, err := observer.Execution.TransactionByHash(ctx, tx.Hash())
+					return err == nil && pending && stored.Hash() == tx.Hash()
+				}).WithContext(ctx).WithTimeout(transactionTimeout).WithPolling(250 * time.Millisecond).Should(gomega.BeTrue())
+			}
+
+			gomega.Expect(services.Start(ctx, validators...)).To(gomega.Succeed())
+			stopped = false
+			receipt := waitForReceipt(ctx, sessions[0], tx)
+			for _, observer := range sessions[1:] {
+				gomega.Eventually(func() error {
+					observed, err := observer.Execution.TransactionReceipt(ctx, tx.Hash())
+					if err == nil && observed.BlockHash != receipt.BlockHash {
+						return fmt.Errorf("receipt block mismatch: got %s, want %s", observed.BlockHash, receipt.BlockHash)
+					}
+					return err
+				}).WithContext(ctx).WithTimeout(transactionTimeout).WithPolling(time.Second).Should(gomega.Succeed())
+			}
+		}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label("behavior:transactions:p2p-propagation"))
 
 		ginkgo.It("runs the complete 1000-transaction calldata workload", func(ctx ginkgo.SpecContext) {
 			session := sessions[0]

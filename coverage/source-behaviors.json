@@ -30,18 +30,18 @@
   },
   {
     "scenario": "dev/two-way-network-split-non-finality.yaml",
-    "status": "Full",
+    "status": "Failing",
     "behaviors": [
       {"id": "partition.finality-stall", "status": "Covered", "label": "behavior:partition:finality-stall"},
-      {"id": "partition.finality-recovery", "status": "Covered", "label": "behavior:partition:finality-recovery"}
+      {"id": "partition.finality-recovery", "status": "Failing", "label": "behavior:partition:finality-recovery"}
     ]
   },
   {
     "scenario": "dev/two-way-network-split-reorg-trigger.yaml",
-    "status": "Full",
+    "status": "Failing",
     "behaviors": [
       {"id": "partition.competing-heads", "status": "Covered", "label": "behavior:partition:competing-heads"},
-      {"id": "partition.reorg-recovery", "status": "Covered", "label": "behavior:partition:reorg-recovery"}
+      {"id": "partition.reorg-recovery", "status": "Failing", "label": "behavior:partition:reorg-recovery"}
     ]
   },
   {

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	protocolengine "github.com/theQRL/go-qrl/beacon/engine"
 )
 
 type Client struct {
@@ -78,6 +80,28 @@ func (client *Client) ExchangeCapabilities(ctx context.Context) ([]string, error
 func (client *Client) PayloadBodiesByHash(ctx context.Context, hashes []string) ([]*PayloadBody, error) {
 	var result []*PayloadBody
 	err := client.Call(ctx, &result, "engine_getPayloadBodiesByHashV1", hashes)
+	return result, err
+}
+
+func (client *Client) ForkchoiceUpdatedV2(
+	ctx context.Context,
+	state protocolengine.ForkchoiceStateV1,
+	attributes *protocolengine.PayloadAttributes,
+) (protocolengine.ForkChoiceResponse, error) {
+	var result protocolengine.ForkChoiceResponse
+	err := client.Call(ctx, &result, "engine_forkchoiceUpdatedV2", state, attributes)
+	return result, err
+}
+
+func (client *Client) GetPayloadV2(ctx context.Context, id protocolengine.PayloadID) (*protocolengine.ExecutionPayloadEnvelope, error) {
+	var result protocolengine.ExecutionPayloadEnvelope
+	err := client.Call(ctx, &result, "engine_getPayloadV2", id)
+	return &result, err
+}
+
+func (client *Client) NewPayloadV2(ctx context.Context, payload protocolengine.ExecutableData) (protocolengine.PayloadStatusV1, error) {
+	var result protocolengine.PayloadStatusV1
+	err := client.Call(ctx, &result, "engine_newPayloadV2", payload)
 	return result, err
 }
 

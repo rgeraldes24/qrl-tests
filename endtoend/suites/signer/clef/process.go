@@ -60,7 +60,7 @@ func (ui *automatedUI) ShowError(signercore.Message) {}
 
 func (ui *automatedUI) ShowInfo(signercore.Message) {}
 
-func (ui *automatedUI) OnApprovedTx(signercore.SignTransactionResult) {}
+func (ui *automatedUI) OnApprovedTx(any) {}
 
 func (ui *automatedUI) OnSignerStartup(signercore.StartupInfo) {}
 

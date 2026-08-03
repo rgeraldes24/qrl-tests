@@ -87,12 +87,14 @@ func TestBuiltInProfiles(t *testing.T) {
 		{ProfileOperations, 5, 812},
 		{ProfileCold, 1, 64},
 		{ProfileOptimistic, 2, 64},
+		{ProfileExecutionSync, 2, 64},
 	} {
 		payload, err := effectiveParametersForProfile(address, "image", nil, test.profile)
 		require.NoError(t, err)
 		var parameters struct {
 			Participants []struct {
 				ValidatorCount int      `json:"validator_count"`
+				ELExtraParams  []string `json:"el_extra_params"`
 				CLExtraParams  []string `json:"cl_extra_params"`
 				VCExtraParams  []string `json:"vc_extra_params"`
 			} `json:"participants"`
@@ -113,6 +115,7 @@ func TestBuiltInProfiles(t *testing.T) {
 		}
 		if test.profile == ProfileChaos {
 			require.Empty(t, parameters.Participants[0].CLExtraParams)
+			require.NotNil(t, parameters.Participants[0].CLExtraParams)
 		}
 		if test.profile == ProfileCold {
 			require.Contains(t, parameters.Participants[0].CLExtraParams, "--slots-per-archive-point=16")
@@ -123,6 +126,12 @@ func TestBuiltInProfiles(t *testing.T) {
 		if test.profile == ProfileOperations {
 			require.Equal(t, 512, parameters.Network.PreregisteredValidators)
 			require.Equal(t, 300, parameters.Participants[4].ValidatorCount)
+		}
+		if test.profile == ProfileExecutionSync {
+			require.Zero(t, parameters.Participants[1].ValidatorCount)
+			require.Contains(t, parameters.Participants[1].ELExtraParams, "--nodiscover")
+			require.Contains(t, parameters.Participants[1].ELExtraParams, "--bootnodes=")
+			require.Contains(t, parameters.Participants[1].CLExtraParams, "--min-sync-peers=0")
 		}
 	}
 }

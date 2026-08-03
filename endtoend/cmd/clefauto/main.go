@@ -54,7 +54,7 @@ func (*automatedUI) ShowError(signercore.Message) {}
 
 func (*automatedUI) ShowInfo(signercore.Message) {}
 
-func (*automatedUI) OnApprovedTx(signercore.SignTransactionResult) {}
+func (*automatedUI) OnApprovedTx(any) {}
 
 func (*automatedUI) OnSignerStartup(signercore.StartupInfo) {}
 

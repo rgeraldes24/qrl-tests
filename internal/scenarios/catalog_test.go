@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/internal/lanes"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,10 +21,10 @@ const sourceTableHeading = "## Source Scenario Inventory"
 
 func TestScenarioInventoryIsExhaustive(t *testing.T) {
 	root := repositoryRoot(t)
-	source := scenarioNames(t, filepath.Join(root, "internal/scenarios/testdata/scenarios.txt"))
+	source := scenarioNames(t, filepath.Join(root, "coverage/source-scenarios.txt"))
 	coverage := coverageRows(t, filepath.Join(root, "docs/scenario-coverage.md"))
-	contracts := behaviorContracts(t, filepath.Join(root, "internal/scenarios/testdata/behavior-contracts.json"))
-	suites := suiteSource(t, root)
+	contracts := behaviorContracts(t, filepath.Join(root, "coverage/source-behaviors.json"))
+	suites := suiteSources(t, root)
 
 	require.Len(t, source, 79)
 	require.Len(t, coverage, len(source))
@@ -41,7 +43,9 @@ func TestScenarioInventoryIsExhaustive(t *testing.T) {
 				require.Contains(t, []string{"Covered", "Equivalent", "Missing", "Failing", "Unsupported"}, behavior.Status)
 				if behavior.Status == "Covered" || behavior.Status == "Equivalent" || behavior.Status == "Failing" {
 					require.NotEmptyf(t, behavior.Label, "%s behavior %s has no Ginkgo label", name, behavior.ID)
-					require.Containsf(t, suites, `"`+behavior.Label+`"`, "%s behavior %s has no executable Ginkgo coverage", name, behavior.ID)
+					files := filesWithLabel(suites, behavior.Label)
+					require.NotEmptyf(t, files, "%s behavior %s has no executable Ginkgo coverage", name, behavior.ID)
+					require.Truef(t, selectedByLane(root, files), "%s behavior %s is not selected by any E2E lane", name, behavior.ID)
 				} else {
 					require.NotEmptyf(t, behavior.Reason, "%s behavior %s has no missing/unsupported reason", name, behavior.ID)
 				}
@@ -87,9 +91,9 @@ func behaviorContracts(t *testing.T, path string) map[string]behaviorContract {
 	return contracts
 }
 
-func suiteSource(t *testing.T, root string) string {
+func suiteSources(t *testing.T, root string) map[string]string {
 	t.Helper()
-	var source strings.Builder
+	sources := make(map[string]string)
 	err := filepath.WalkDir(filepath.Join(root, "endtoend/suites"), func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -101,11 +105,42 @@ func suiteSource(t *testing.T, root string) string {
 		if err != nil {
 			return err
 		}
-		source.Write(contents)
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		sources[filepath.ToSlash(relative)] = string(contents)
 		return nil
 	})
 	require.NoError(t, err)
-	return source.String()
+	return sources
+}
+
+func filesWithLabel(sources map[string]string, label string) []string {
+	var files []string
+	for path, source := range sources {
+		if strings.Contains(source, `"`+label+`"`) {
+			files = append(files, path)
+		}
+	}
+	slices.Sort(files)
+	return files
+}
+
+func selectedByLane(root string, files []string) bool {
+	for _, lane := range lanes.All() {
+		for _, pattern := range lane.Packages {
+			packageRoot := strings.TrimSuffix(strings.TrimPrefix(pattern, "./"), "/...")
+			for _, file := range files {
+				if file == packageRoot || strings.HasPrefix(file, packageRoot+"/") {
+					if _, err := os.Stat(filepath.Join(root, file)); err == nil {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 type coverageRow struct {

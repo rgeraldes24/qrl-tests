@@ -18,7 +18,7 @@ Statuses mean:
 - **Unsupported**: the scenario depends entirely on a protocol feature or
   execution model QRL does not support.
 
-[`behavior-contracts.json`](../internal/scenarios/testdata/behavior-contracts.json)
+[`source-behaviors.json`](../coverage/source-behaviors.json)
 is the machine-checked contract for every non-unsupported scenario. It records
 individual covered, missing, failing, and unsupported behaviors and ties each
 implemented behavior to an executable Ginkgo label.
@@ -30,21 +30,23 @@ implemented behavior to an executable Ginkgo label.
 | `network` | Implemented | Client health, EL/CL synchronization, finality, block proposals, slot waits, validator attestations, and head progression |
 | `vm` | Implemented | QRVM opcodes, VM64 boundaries, calls, creation, logs, and precompiles |
 | `api` | Implemented | JSON-RPC, GraphQL, WebSocket, debug, filters, transaction lookup, and txpool behavior |
-| `transactions` | Implemented | Deterministic wallet funding and large-calldata transaction inclusion |
+| `transactions` | Implemented | Deterministic wallet funding, execution P2P propagation, and large-calldata transaction inclusion |
 | `abi` | Implemented | VM64 ABI and generated bindings |
 | `console` | Implemented | Embedded web3 and console behavior |
 | `clef` | Implemented | Clef account, signing, rules, and persistence behavior |
 | `externalsigner` | Implemented | go-qrl to Clef integration |
-| `engine` | Implemented | Engine authentication, capabilities, payload bodies, and CL/EL payload consistency |
+| `engine` | Implemented | Engine authentication, capabilities, payload bodies, V2 forkchoice/payload validation, payload construction, and CL/EL consistency |
 | `resilience` | Implemented | Native client stop, restart, outage, and catch-up behavior |
-| `validator` | Implemented | Deposit, top-up, activation, voluntary exit, execution withdrawal, and slashings |
-| `partition` | Implemented | Partition, finality stall, competing heads, healing, convergence, and renewed finality |
-| `beaconapi` | Implemented | Beacon node, state, configuration, pool, and signature-verification APIs |
-| `validatorapi` | Implemented | Attester, proposer, sync-committee duty, and liveness APIs |
+| `validator` | Implemented | Deposit, top-up, activation, voluntary exit, execution withdrawal, slashings, and slashing economics |
+| `partition` | Failing | Partition and competing-head behaviors execute, but Qrysm peers remain split after healing and finality does not resume |
+| `beaconapi` | Implemented | Beacon node, state, configuration, pool, event-stream, and signature-verification APIs |
+| `validatorapi` | Implemented | Attester, proposer, sync-committee duty, liveness, and legacy/standard assignment parity APIs |
 | `protocol` | Implemented | Genesis, peer, metrics, execution-data, fee-recipient, sync participation, and signature invariants |
 | `sync` | Implemented | Fresh database sync and doppelganger protection |
+| `execution-sync` | Implemented | Fresh execution sync with exact block, receipt, code, balance, full-width storage/log/proof, and restart persistence checks |
 | `coldstate` | Implemented | Historical validator assignments after archival |
 | `optimistic` | Implemented | Native optimistic import and execution-validation recovery |
+| `soak` | Implemented | Repeated transactions, participant restarts, balanced partitions, convergence, and renewed finality |
 
 ## Source Scenario Inventory
 
@@ -59,8 +61,8 @@ implemented behavior to an executable Ginkgo label.
 | `dev/generate-attestations.yaml` | Equivalent | `endtoend/suites/crosslayer/network` verifies every active validator participates across three epochs; source fault injection is unsupported |
 | `dev/shell-test.yaml` | Unsupported | Arbitrary shell execution is not a protocol scenario |
 | `dev/synchronized-check.yaml` | Full | `endtoend/suites/crosslayer/network` verifies every execution and consensus client is synchronized |
-| `dev/two-way-network-split-non-finality.yaml` | Full | `endtoend/suites/crosslayer/partition` stalls and restores finality across a balanced split |
-| `dev/two-way-network-split-reorg-trigger.yaml` | Full | Competing heads form, then every node converges on the same newer finalized checkpoint after healing |
+| `dev/two-way-network-split-non-finality.yaml` | Failing | The split stalls finality, but Qrysm peers do not reconnect and finality does not resume after healing |
+| `dev/two-way-network-split-reorg-trigger.yaml` | Failing | Competing heads form, but Qrysm peers remain split instead of converging after healing |
 | `dev/validator-lifecycle-test.yaml` | Equivalent | Supported lifecycle operations, 300-validator deposit churn, partial and full withdrawals, proposer matrices, and finality recovery are covered; BLS credential changes are not part of QRL |
 | `dev/validator-proposer-slashing-test.yaml` | Equivalent | The operations lane submits 50 proposer slashings through every consensus client and observes inclusion by every proposer pair |
 | `dev/validator-slashing-single.yaml` | Full | `endtoend/suites/crosslayer/validator` submits one proposer slashing and verifies inclusion and state transition |

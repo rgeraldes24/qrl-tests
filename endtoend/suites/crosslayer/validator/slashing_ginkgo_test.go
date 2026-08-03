@@ -67,6 +67,8 @@ func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain vali
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(validator.Slashed).To(gomega.BeFalse())
 	gomega.Expect(strings.EqualFold(validator.PublicKey, hexutil.Encode(key.PublicKey().Marshal()))).To(gomega.BeTrue())
+	initialBalance := validator.Balance
+	initialWithdrawableEpoch := validator.WithdrawableEpoch
 
 	head, err := beacon.Head(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -109,5 +111,7 @@ func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain vali
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(included).To(gomega.BeTrue())
 		g.Expect(validator.Slashed).To(gomega.BeTrue())
+		g.Expect(validator.Balance).To(gomega.BeNumerically("<", initialBalance))
+		g.Expect(validator.WithdrawableEpoch).NotTo(gomega.Equal(initialWithdrawableEpoch))
 	}).WithContext(ctx).WithTimeout(validatorTimeout).WithPolling(2 * time.Second).Should(gomega.Succeed())
 }

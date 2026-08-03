@@ -1,0 +1,9 @@
+{
+  "surface": "execution-rpc",
+  "entries": [
+    {"id": "json-rpc", "package": "./endtoend/suites/execution/api", "lane": "single", "classification": "behavior"},
+    {"id": "graphql", "package": "./endtoend/suites/execution/api", "lane": "single", "classification": "behavior"},
+    {"id": "websocket", "package": "./endtoend/suites/execution/api", "lane": "single", "classification": "behavior"},
+    {"id": "debug-and-tracing", "package": "./endtoend/suites/execution/api", "lane": "single", "classification": "behavior"}
+  ]
+}

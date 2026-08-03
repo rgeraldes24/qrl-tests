@@ -1,4 +1,4 @@
-.PHONY: test fmt e2e-compile network-image clef-image network-start network-stop e2e-test e2e-execution e2e-consensus e2e-crosslayer e2e-signer e2e-all e2e-core e2e-validator e2e-validator-operations e2e-chaos e2e-scenarios e2e-sync e2e-cold e2e-optimistic
+.PHONY: test fmt e2e-compile network-image clef-image network-start network-stop e2e-test e2e-execution e2e-consensus e2e-crosslayer e2e-signer e2e-all e2e-core e2e-validator e2e-validator-operations e2e-chaos e2e-scenarios e2e-sync e2e-execution-sync e2e-cold e2e-optimistic e2e-soak
 
 GO ?= go
 GO_QRL_SOURCE_DIR ?=
@@ -73,7 +73,7 @@ e2e-test:
 		$(strip $(E2E_PACKAGES)) \
 		-- -test.run='^TestE2E$$'
 
-e2e-execution: E2E_PACKAGES=./endtoend/suites/execution/...
+e2e-execution: E2E_PACKAGES=./endtoend/suites/execution/abi ./endtoend/suites/execution/api ./endtoend/suites/execution/console ./endtoend/suites/execution/vm
 e2e-execution: e2e-test
 
 e2e-consensus: E2E_PACKAGES=./endtoend/suites/consensus/beaconapi ./endtoend/suites/consensus/validatorapi ./endtoend/suites/consensus/protocol
@@ -86,11 +86,14 @@ e2e-crosslayer: e2e-test
 e2e-signer: E2E_PACKAGES=./endtoend/suites/signer/...
 e2e-signer: e2e-test
 
-e2e-all: E2E_PACKAGES=./endtoend/suites/...
-e2e-all: E2E_SUITE_TIMEOUT=4h
-e2e-all: e2e-test
+e2e-all: network-image clef-image
+	DEVNET_EXECUTION_IMAGE="$(DEVNET_EXECUTION_IMAGE)" \
+	DEVNET_ENCLAVE_NAME="$(DEVNET_ENCLAVE_NAME)" \
+	GO_QRL_SOURCE_DIR="$(GO_QRL_SOURCE_DIR)" \
+	E2E_REPORT_DIR="$(E2E_REPORT_DIR)" \
+	$(GO) run ./endtoend/cmd/e2e run-all
 
-e2e-core: E2E_PACKAGES=./endtoend/suites/execution/... ./endtoend/suites/signer/... ./endtoend/suites/crosslayer/engine ./endtoend/suites/crosslayer/network ./endtoend/suites/crosslayer/transactions
+e2e-core: E2E_PACKAGES=./endtoend/suites/execution/abi ./endtoend/suites/execution/api ./endtoend/suites/execution/console ./endtoend/suites/execution/vm ./endtoend/suites/signer/... ./endtoend/suites/crosslayer/engine ./endtoend/suites/crosslayer/network ./endtoend/suites/crosslayer/transactions
 e2e-core: e2e-test
 
 e2e-validator: E2E_PACKAGES=./endtoend/suites/crosslayer/validator
@@ -115,6 +118,10 @@ e2e-sync: E2E_PACKAGES=./endtoend/suites/consensus/sync
 e2e-sync: E2E_SUITE_TIMEOUT=45m
 e2e-sync: e2e-test
 
+e2e-execution-sync: E2E_PACKAGES=./endtoend/suites/execution/sync
+e2e-execution-sync: E2E_SUITE_TIMEOUT=45m
+e2e-execution-sync: e2e-test
+
 e2e-cold: E2E_PACKAGES=./endtoend/suites/consensus/coldstate
 e2e-cold: E2E_SUITE_TIMEOUT=45m
 e2e-cold: e2e-test
@@ -122,3 +129,8 @@ e2e-cold: e2e-test
 e2e-optimistic: E2E_PACKAGES=./endtoend/suites/consensus/optimistic
 e2e-optimistic: E2E_SUITE_TIMEOUT=45m
 e2e-optimistic: e2e-test
+
+e2e-soak: E2E_PACKAGES=./endtoend/suites/system/soak
+e2e-soak: E2E_SUITE_TIMEOUT=4h
+e2e-soak: E2E_LABEL_FILTER=scenario-full
+e2e-soak: e2e-test

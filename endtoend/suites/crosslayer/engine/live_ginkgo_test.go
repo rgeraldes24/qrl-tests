@@ -3,13 +3,16 @@
 package engine_test
 
 import (
+	"math/big"
 	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	engineapi "github.com/cyyber/qrl-tests/endtoend/internal/clients/engine"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	protocolengine "github.com/theQRL/go-qrl/beacon/engine"
 	"github.com/theQRL/go-qrl/common"
+	"github.com/theQRL/go-qrl/core/types"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -77,5 +80,59 @@ var _ = ginkgo.Describe(
 			gomega.Expect(bodies[0].Transactions).To(gomega.Equal(payload.Transactions))
 			gomega.Expect(bodies[0].Withdrawals).To(gomega.HaveLen(len(payload.Withdrawals)))
 		}, ginkgo.SpecTimeout(engineTimeout))
+
+		ginkgo.It("validates canonical forkchoice and payload data", func(ctx ginkgo.SpecContext) {
+			block, err := session.Execution.BlockByNumber(ctx, nil)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			state := protocolengine.ForkchoiceStateV1{
+				HeadBlockHash: block.Hash(), SafeBlockHash: block.Hash(), FinalizedBlockHash: block.Hash(),
+			}
+			forkchoice, err := engine.ForkchoiceUpdatedV2(ctx, state, nil)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(forkchoice.PayloadStatus.Status).To(gomega.Equal(protocolengine.VALID))
+
+			payload := protocolengine.BlockToExecutableData(block, new(big.Int)).ExecutionPayload
+			status, err := engine.NewPayloadV2(ctx, *payload)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(status.Status).To(gomega.Equal(protocolengine.VALID))
+			gomega.Expect(status.LatestValidHash).NotTo(gomega.BeNil())
+			gomega.Expect(*status.LatestValidHash).To(gomega.Equal(block.Hash()))
+			invalid := *payload
+			invalid.ExtraData = append(append([]byte(nil), payload.ExtraData...), 0x01)
+			status, err = engine.NewPayloadV2(ctx, invalid)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(status.Status).To(gomega.Equal(protocolengine.INVALID))
+
+			unknown := common.HexToHash("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+			state.HeadBlockHash = unknown
+			forkchoice, err = engine.ForkchoiceUpdatedV2(ctx, state, nil)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(forkchoice.PayloadStatus.Status).To(gomega.Equal(protocolengine.SYNCING))
+		}, ginkgo.SpecTimeout(engineTimeout), ginkgo.Label("behavior:engine:forkchoice-payload-validation"))
+
+		ginkgo.It("builds and returns a payload through Engine V2", func(ctx ginkgo.SpecContext) {
+			block, err := session.Execution.BlockByNumber(ctx, nil)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			state := protocolengine.ForkchoiceStateV1{
+				HeadBlockHash: block.Hash(), SafeBlockHash: block.Hash(), FinalizedBlockHash: block.Hash(),
+			}
+			attributes := &protocolengine.PayloadAttributes{
+				Timestamp: block.Time() + 1, Random: block.Random(), SuggestedFeeRecipient: block.Coinbase(),
+				Withdrawals: []*types.Withdrawal{},
+			}
+			response, err := engine.ForkchoiceUpdatedV2(ctx, state, attributes)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(response.PayloadStatus.Status).To(gomega.Equal(protocolengine.VALID))
+			gomega.Expect(response.PayloadID).NotTo(gomega.BeNil())
+
+			var payload *protocolengine.ExecutionPayloadEnvelope
+			gomega.Eventually(func() error {
+				payload, err = engine.GetPayloadV2(ctx, *response.PayloadID)
+				return err
+			}).WithContext(ctx).WithTimeout(engineTimeout).WithPolling(250 * time.Millisecond).Should(gomega.Succeed())
+			gomega.Expect(payload.ExecutionPayload.ParentHash).To(gomega.Equal(block.Hash()))
+			gomega.Expect(payload.ExecutionPayload.Timestamp).To(gomega.Equal(attributes.Timestamp))
+			gomega.Expect(payload.ExecutionPayload.Withdrawals).NotTo(gomega.BeNil())
+		}, ginkgo.SpecTimeout(engineTimeout), ginkgo.Label("behavior:engine:payload-build"))
 	},
 )

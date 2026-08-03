@@ -26,6 +26,15 @@ make e2e-test
 make network-stop
 ```
 
+Run every lane against a fresh matching network profile:
+
+```bash
+make e2e-all
+```
+
+`e2e-all` provisions and removes each network automatically. Use the individual
+`network-start`, suite, and `network-stop` commands when iterating on one lane.
+
 Normal runs exclude long `scenario-full` workloads. Run the full QRL network
 scenarios against a multi-client network with:
 
@@ -57,12 +66,24 @@ DEVNET_PROFILE=sync make network-start
 DEVNET_PROFILE=sync make e2e-sync
 make network-stop
 
+DEVNET_PROFILE=execution-sync make network-start
+DEVNET_PROFILE=execution-sync make e2e-execution-sync
+make network-stop
+
 DEVNET_PROFILE=cold make network-start
 DEVNET_PROFILE=cold make e2e-cold
 make network-stop
 
 DEVNET_PROFILE=optimistic make network-start
 DEVNET_PROFILE=optimistic make e2e-optimistic
+make network-stop
+```
+
+The long-running recovery lane uses the four-participant chaos profile:
+
+```bash
+DEVNET_PROFILE=chaos make network-start
+make e2e-soak
 make network-stop
 ```
 

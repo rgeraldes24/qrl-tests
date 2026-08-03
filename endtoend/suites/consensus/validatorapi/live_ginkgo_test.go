@@ -118,6 +118,49 @@ var _ = ginkgo.Describe(
 				gomega.Expect(seen[index]).To(gomega.BeTrue())
 			}
 		}, ginkgo.Label("behavior:validator-api:liveness"))
+
+		ginkgo.It("returns equivalent standard and legacy validator assignments", func(ctx ginkgo.SpecContext) {
+			head, err := client.Head(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			slotsPerEpoch, err := client.SpecUint(ctx, "SLOTS_PER_EPOCH")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			epoch := head.Slot / slotsPerEpoch
+			indices, err := client.ActiveValidatorIndices(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			request := make([]string, len(indices))
+			for index, validatorIndex := range indices {
+				request[index] = strconv.FormatUint(validatorIndex, 10)
+			}
+
+			var standard struct {
+				Data []struct {
+					ValidatorIndex string `json:"validator_index"`
+					Slot           string `json:"slot"`
+					CommitteeIndex string `json:"committee_index"`
+				} `json:"data"`
+			}
+			path := "/qrl/v1/validator/duties/attester/" + strconv.FormatUint(epoch, 10)
+			gomega.Expect(client.PostJSON(ctx, path, request, &standard)).To(gomega.Succeed())
+			legacy, err := client.ValidatorAssignments(ctx, epoch)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			legacyByIndex := make(map[uint64]consensus.ValidatorAssignment, len(legacy))
+			for _, assignment := range legacy {
+				legacyByIndex[assignment.ValidatorIndex] = assignment
+			}
+			gomega.Expect(standard.Data).To(gomega.HaveLen(len(indices)))
+			for _, duty := range standard.Data {
+				validatorIndex, err := strconv.ParseUint(duty.ValidatorIndex, 10, 64)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				slot, err := strconv.ParseUint(duty.Slot, 10, 64)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				committee, err := strconv.ParseUint(duty.CommitteeIndex, 10, 64)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				assignment, found := legacyByIndex[validatorIndex]
+				gomega.Expect(found).To(gomega.BeTrue())
+				gomega.Expect(assignment.AttesterSlot).To(gomega.Equal(slot))
+				gomega.Expect(assignment.CommitteeIndex).To(gomega.Equal(committee))
+			}
+		}, ginkgo.Label("behavior:validator-api:legacy-parity"))
 	},
 )
 

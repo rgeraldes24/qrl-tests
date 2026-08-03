@@ -1,0 +1,41 @@
+// Copyright 2026 The go-qrl Authors
+// This file is part of the go-qrl library.
+
+package lanes
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestRegistry(t *testing.T) {
+	root := repositoryRoot(t)
+	seen := make(map[string]struct{})
+	for _, lane := range All() {
+		require.NotEmpty(t, lane.Name)
+		_, duplicate := seen[lane.Name]
+		require.Falsef(t, duplicate, "duplicate lane %q", lane.Name)
+		seen[lane.Name] = struct{}{}
+		require.NotEmpty(t, lane.Profile)
+		require.NotEmpty(t, lane.Packages)
+		require.Positive(t, lane.Timeout)
+		for _, pattern := range lane.Packages {
+			path := strings.TrimSuffix(strings.TrimPrefix(pattern, "./"), "/...")
+			info, err := os.Stat(filepath.Join(root, path))
+			require.NoErrorf(t, err, "lane %s package %s", lane.Name, pattern)
+			require.Truef(t, info.IsDir(), "lane %s package %s is not a directory", lane.Name, pattern)
+		}
+	}
+}
+
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../.."))
+}

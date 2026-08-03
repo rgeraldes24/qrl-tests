@@ -224,5 +224,27 @@ var _ = ginkgo.Describe(
 				}
 			}
 		}, ginkgo.Label("behavior:consensus-api:pools"))
+
+		ginkgo.It("streams head, block, attestation, and finality events", func(ctx ginkgo.SpecContext) {
+			events, failures, err := nodes[0].client.Events(ctx, "head", "block", "attestation", "finalized_checkpoint")
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			seen := make(map[string]bool)
+			gomega.Eventually(func() bool {
+				select {
+				case event, ok := <-events:
+					if !ok {
+						return false
+					}
+					gomega.Expect(json.Valid(event.Data)).To(gomega.BeTrue())
+					seen[event.Topic] = true
+				case err, ok := <-failures:
+					if ok {
+						gomega.Expect(err).NotTo(gomega.HaveOccurred())
+					}
+				default:
+				}
+				return seen["head"] && seen["block"] && seen["attestation"] && seen["finalized_checkpoint"]
+			}).WithContext(ctx).WithTimeout(beaconAPITimeout).WithPolling(100 * time.Millisecond).Should(gomega.BeTrue())
+		}, ginkgo.SpecTimeout(beaconAPITimeout), ginkgo.Label("behavior:consensus-api:events"))
 	},
 )

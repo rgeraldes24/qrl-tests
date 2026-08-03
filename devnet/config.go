@@ -105,9 +105,6 @@ func effectiveParameters(address, executionImage string, custom []byte) (string,
 
 func effectiveParametersForProfile(address string, images Images, custom []byte, profile Profile) (string, error) {
 	images = images.withDefaults()
-	if err := images.validate(BackendDocker); err != nil {
-		return "", err
-	}
 	if custom != nil {
 		return renderCustomParameters(custom, address, images)
 	}

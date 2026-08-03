@@ -55,8 +55,8 @@ Run every implemented domain with `make e2e-all`.
 
 Use `make e2e-all-k8s` with registry-backed `DEVNET_*_IMAGE` values to run all
 supported lane lifecycles on the selected Kubernetes cluster. The runner
-reports and skips the partition and soak lanes because their current fault
-injection uses Docker container network namespaces.
+omits the partition package from the chaos lane and reports the skipped soak
+lane because their fault injection uses Docker container network namespaces.
 
 ## Adding a suite
 

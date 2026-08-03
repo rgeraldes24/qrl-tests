@@ -18,7 +18,10 @@ type Lane struct {
 	Packages    []string
 	LabelFilter string
 	Timeout     time.Duration
-	DockerOnly  bool
+
+	// KubernetesPackages overrides Packages when running on Kubernetes. A
+	// non-nil empty slice marks the entire lane unsupported.
+	KubernetesPackages []string
 }
 
 var registry = []Lane{
@@ -60,11 +63,14 @@ var registry = []Lane{
 		Timeout:     2 * time.Hour,
 	},
 	{
-		Name:       "chaos",
-		Profile:    devnet.ProfileChaos,
-		Packages:   []string{"./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/resilience", "./endtoend/suites/crosslayer/partition"},
-		Timeout:    2 * time.Hour,
-		DockerOnly: true,
+		Name:     "chaos",
+		Profile:  devnet.ProfileChaos,
+		Packages: []string{"./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/resilience", "./endtoend/suites/crosslayer/partition"},
+		KubernetesPackages: []string{
+			"./endtoend/suites/crosslayer/network",
+			"./endtoend/suites/crosslayer/resilience",
+		},
+		Timeout: 2 * time.Hour,
 	},
 	{
 		Name:     "consensus-sync",
@@ -98,12 +104,12 @@ var registry = []Lane{
 		Timeout:  45 * time.Minute,
 	},
 	{
-		Name:        "soak",
-		Profile:     devnet.ProfileChaos,
-		Packages:    []string{"./endtoend/suites/system/soak"},
-		LabelFilter: "scenario-full",
-		Timeout:     4 * time.Hour,
-		DockerOnly:  true,
+		Name:               "soak",
+		Profile:            devnet.ProfileChaos,
+		Packages:           []string{"./endtoend/suites/system/soak"},
+		LabelFilter:        "scenario-full",
+		Timeout:            4 * time.Hour,
+		KubernetesPackages: []string{},
 	},
 }
 
@@ -112,14 +118,23 @@ func All() []Lane {
 	copy(result, registry)
 	for index := range result {
 		result[index].Packages = slices.Clone(result[index].Packages)
+		result[index].KubernetesPackages = slices.Clone(result[index].KubernetesPackages)
 	}
 	return result
+}
+
+func (lane Lane) ForBackend(backend devnet.Backend) (Lane, bool) {
+	if backend == devnet.BackendKubernetes && lane.KubernetesPackages != nil {
+		lane.Packages = slices.Clone(lane.KubernetesPackages)
+	}
+	return lane, len(lane.Packages) != 0
 }
 
 func Named(name string) (Lane, error) {
 	for _, lane := range registry {
 		if lane.Name == name {
 			lane.Packages = slices.Clone(lane.Packages)
+			lane.KubernetesPackages = slices.Clone(lane.KubernetesPackages)
 			return lane, nil
 		}
 	}

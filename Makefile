@@ -5,9 +5,9 @@ GO_QRL_SOURCE_DIR ?=
 DEVNET_BACKEND ?= docker
 DEVNET_EXECUTION_IMAGE ?= local/go-qrl:devnet
 DEVNET_CLEF_IMAGE ?= local/go-qrl-clef:devnet
-DEVNET_CONSENSUS_IMAGE ?= qrledger/qrysm:beacon-chain-8b80fa0c3f5a
-DEVNET_VALIDATOR_IMAGE ?= qrledger/qrysm:validator-8b80fa0c3f5a
-DEVNET_GENESIS_IMAGE ?= qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a
+DEVNET_CONSENSUS_IMAGE ?=
+DEVNET_VALIDATOR_IMAGE ?=
+DEVNET_GENESIS_IMAGE ?=
 DEVNET_ENCLAVE_NAME ?=
 DEVNET_PROFILE ?= single
 DEVNET_START_TIMEOUT ?=
@@ -62,16 +62,16 @@ network-start-configured: network-preflight
 		--backend "$(DEVNET_BACKEND)" \
 		--execution-image "$(DEVNET_EXECUTION_IMAGE)" \
 		--clef-image "$(DEVNET_CLEF_IMAGE)" \
-		--consensus-image "$(DEVNET_CONSENSUS_IMAGE)" \
-		--validator-image "$(DEVNET_VALIDATOR_IMAGE)" \
-		--genesis-image "$(DEVNET_GENESIS_IMAGE)" \
+		$(if $(DEVNET_CONSENSUS_IMAGE),--consensus-image "$(DEVNET_CONSENSUS_IMAGE)") \
+		$(if $(DEVNET_VALIDATOR_IMAGE),--validator-image "$(DEVNET_VALIDATOR_IMAGE)") \
+		$(if $(DEVNET_GENESIS_IMAGE),--genesis-image "$(DEVNET_GENESIS_IMAGE)") \
 		--profile "$(DEVNET_PROFILE)" \
 		$(if $(DEVNET_ENCLAVE_NAME),--enclave-name "$(DEVNET_ENCLAVE_NAME)") \
 		$(if $(DEVNET_START_TIMEOUT),--timeout "$(DEVNET_START_TIMEOUT)") \
 		$(if $(DEVNET_PARAMS_FILE),--params-file "$(DEVNET_PARAMS_FILE)")
 
 network-stop:
-	DEVNET_BACKEND="$(DEVNET_BACKEND)" $(GO) run ./cmd/devnet stop $(if $(DEVNET_ENCLAVE_NAME),--enclave-name "$(DEVNET_ENCLAVE_NAME)")
+	$(GO) run ./cmd/devnet stop $(if $(DEVNET_ENCLAVE_NAME),--enclave-name "$(DEVNET_ENCLAVE_NAME)")
 
 e2e-test:
 	@test -n "$(strip $(GO_QRL_SOURCE_DIR))" || { echo "GO_QRL_SOURCE_DIR must point to a go-qrl checkout" >&2; exit 2; }

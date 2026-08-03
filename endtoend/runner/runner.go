@@ -21,6 +21,14 @@ import (
 
 const defaultReportDir = "reports"
 
+type runnerConfig struct {
+	sourceDir string
+	baseName  string
+	reportDir string
+	backend   devnet.Backend
+	images    devnet.Images
+}
+
 // Run executes an E2E runner command.
 func Run(ctx context.Context, arguments []string) error {
 	if len(arguments) == 0 {
@@ -40,22 +48,31 @@ func Run(ctx context.Context, arguments []string) error {
 		if err != nil {
 			return err
 		}
-		return runLane(ctx, lane, false)
+		configuration, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		lane, supported := lane.ForBackend(configuration.backend)
+		if !supported {
+			return fmt.Errorf("lane %s is unsupported by %s backend", lane.Name, configuration.backend)
+		}
+		return runLane(ctx, lane, false, configuration)
 	case "run-all":
 		if len(arguments) != 1 {
 			return errors.New("usage: e2e run-all")
 		}
-		var result error
-		backend, err := devnet.ParseBackend(os.Getenv("DEVNET_BACKEND"))
+		configuration, err := loadConfig()
 		if err != nil {
 			return err
 		}
+		var result error
 		for _, lane := range lanes.All() {
-			if backend == devnet.BackendKubernetes && lane.DockerOnly {
-				fmt.Printf("=== SKIP lane=%s: requires Docker network partitions ===\n", lane.Name)
+			lane, supported := lane.ForBackend(configuration.backend)
+			if !supported {
+				fmt.Printf("=== SKIP lane=%s: unsupported by %s backend ===\n", lane.Name, configuration.backend)
 				continue
 			}
-			if err := runLane(ctx, lane, true); err != nil {
+			if err := runLane(ctx, lane, true, configuration); err != nil {
 				result = errors.Join(result, err)
 			}
 		}
@@ -65,37 +82,42 @@ func Run(ctx context.Context, arguments []string) error {
 	}
 }
 
-func runLane(ctx context.Context, lane lanes.Lane, suffixEnclave bool) error {
+func loadConfig() (runnerConfig, error) {
 	sourceDir := strings.TrimSpace(os.Getenv("GO_QRL_SOURCE_DIR"))
 	if sourceDir == "" {
-		return errors.New("GO_QRL_SOURCE_DIR must point to a go-qrl checkout")
-	}
-	baseName := cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_ENCLAVE_NAME")), devnet.DefaultEnclaveName)
-	enclaveName := baseName
-	if suffixEnclave {
-		enclaveName += "-" + lane.Name
+		return runnerConfig{}, errors.New("GO_QRL_SOURCE_DIR must point to a go-qrl checkout")
 	}
 	backend, err := devnet.ParseBackend(os.Getenv("DEVNET_BACKEND"))
 	if err != nil {
-		return err
+		return runnerConfig{}, err
 	}
-	if backend == devnet.BackendKubernetes && lane.DockerOnly {
-		return fmt.Errorf("lane %s requires Docker network partitions", lane.Name)
-	}
-	images := devnet.Images{
-		Execution: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_EXECUTION_IMAGE")), devnet.DefaultExecutionImage),
-		Clef:      cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_CLEF_IMAGE")), devnet.DefaultClefImage),
-		Consensus: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_CONSENSUS_IMAGE")), devnet.DefaultConsensusImage),
-		Validator: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_VALIDATOR_IMAGE")), devnet.DefaultValidatorImage),
-		Genesis:   cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_GENESIS_IMAGE")), devnet.DefaultGenesisImage),
+	return runnerConfig{
+		sourceDir: sourceDir,
+		baseName:  cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_ENCLAVE_NAME")), devnet.DefaultEnclaveName),
+		reportDir: cmp.Or(strings.TrimSpace(os.Getenv("E2E_REPORT_DIR")), defaultReportDir),
+		backend:   backend,
+		images: devnet.Images{
+			Execution: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_EXECUTION_IMAGE")), devnet.DefaultExecutionImage),
+			Clef:      cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_CLEF_IMAGE")), devnet.DefaultClefImage),
+			Consensus: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_CONSENSUS_IMAGE")), devnet.DefaultConsensusImage),
+			Validator: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_VALIDATOR_IMAGE")), devnet.DefaultValidatorImage),
+			Genesis:   cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_GENESIS_IMAGE")), devnet.DefaultGenesisImage),
+		},
+	}, nil
+}
+
+func runLane(ctx context.Context, lane lanes.Lane, suffixEnclave bool, configuration runnerConfig) error {
+	enclaveName := configuration.baseName
+	if suffixEnclave {
+		enclaveName += "-" + lane.Name
 	}
 
 	manager := devnet.NewManager()
 	startCtx, cancelStart := context.WithTimeout(ctx, devnet.DefaultStartTimeout)
-	err = manager.Start(startCtx, devnet.StartOptions{
+	err := manager.Start(startCtx, devnet.StartOptions{
 		EnclaveName: enclaveName,
-		Backend:     backend,
-		Images:      images,
+		Backend:     configuration.backend,
+		Images:      configuration.images,
 		Profile:     lane.Profile,
 	})
 	cancelStart()
@@ -110,7 +132,7 @@ func runLane(ctx context.Context, lane lanes.Lane, suffixEnclave bool) error {
 		}
 	}()
 
-	reportDir := filepath.Join(cmp.Or(os.Getenv("E2E_REPORT_DIR"), defaultReportDir), lane.Name)
+	reportDir := filepath.Join(configuration.reportDir, lane.Name)
 	if err := os.MkdirAll(reportDir, 0o755); err != nil {
 		return fmt.Errorf("lane %s: create report directory: %w", lane.Name, err)
 	}
@@ -140,9 +162,9 @@ func runLane(ctx context.Context, lane lanes.Lane, suffixEnclave bool) error {
 	command.Stderr = os.Stderr
 	command.Env = append(os.Environ(),
 		"DEVNET_ENCLAVE_NAME="+enclaveName,
-		"DEVNET_BACKEND="+string(backend),
+		"DEVNET_BACKEND="+string(configuration.backend),
 		"DEVNET_PROFILE="+string(lane.Profile),
-		"GO_QRL_SOURCE_DIR="+sourceDir,
+		"GO_QRL_SOURCE_DIR="+configuration.sourceDir,
 	)
 	fmt.Printf("=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
 	if err := command.Run(); err != nil {

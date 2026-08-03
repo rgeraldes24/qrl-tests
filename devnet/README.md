@@ -14,20 +14,22 @@ make network-stop
 `network-start` builds the local go-qrl and Clef images, runs the pinned
 qrl-package, and waits for readiness. It does not run the test suites.
 
-For Kubernetes, select the Kurtosis cluster and run its gateway in a separate
-terminal. All service images must be available from a registry accessible to
-the cluster:
+For Kubernetes, select the Kurtosis cluster and run its gateway:
 
 ```bash
 kurtosis cluster set <cluster>
 kurtosis gateway
+```
 
+In another terminal, start the network using images available to the cluster:
+
+```bash
 DEVNET_EXECUTION_IMAGE=registry.example/go-qrl:test \
 DEVNET_CLEF_IMAGE=registry.example/go-qrl-clef:test \
 make network-start-k8s
 
 DEVNET_BACKEND=kubernetes make e2e-test
-DEVNET_BACKEND=kubernetes make network-stop
+make network-stop
 ```
 
 Cluster image-pull credentials are managed outside this repository. The

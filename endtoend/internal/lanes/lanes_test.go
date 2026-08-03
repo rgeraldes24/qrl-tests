@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,6 +32,27 @@ func TestRegistry(t *testing.T) {
 			require.Truef(t, info.IsDir(), "lane %s package %s is not a directory", lane.Name, pattern)
 		}
 	}
+}
+
+func TestLaneForBackend(t *testing.T) {
+	chaos, err := Named("chaos")
+	require.NoError(t, err)
+
+	docker, supported := chaos.ForBackend(devnet.BackendDocker)
+	require.True(t, supported)
+	require.Len(t, docker.Packages, 3)
+
+	kubernetes, supported := chaos.ForBackend(devnet.BackendKubernetes)
+	require.True(t, supported)
+	require.Equal(t, []string{
+		"./endtoend/suites/crosslayer/network",
+		"./endtoend/suites/crosslayer/resilience",
+	}, kubernetes.Packages)
+
+	soak, err := Named("soak")
+	require.NoError(t, err)
+	_, supported = soak.ForBackend(devnet.BackendKubernetes)
+	require.False(t, supported)
 }
 
 func repositoryRoot(t *testing.T) string {

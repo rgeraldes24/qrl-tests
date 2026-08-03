@@ -1,23 +1,27 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 package devnet
 
 import (
 	"context"
 	"fmt"
-	"math/big"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/cyyber/qrl-tests/devnet/internal/rpcjson"
+	"github.com/theQRL/go-qrl/common"
+	"github.com/theQRL/go-qrl/qrlclient"
 )
 
 const chainAdvancementWindow = 30 * time.Second
 
 func probeNetwork(ctx context.Context, rpcURL, address string) error {
-	firstBlock, err := blockNumber(ctx, rpcURL)
+	client, err := qrlclient.DialContext(ctx, rpcURL)
+	if err != nil {
+		return fmt.Errorf("dial execution RPC: %w", err)
+	}
+	defer client.Close()
+
+	firstBlock, err := client.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("read block number: %w", err)
 	}
@@ -25,7 +29,7 @@ func probeNetwork(ctx context.Context, rpcURL, address string) error {
 	advancementCtx, cancel := context.WithTimeout(ctx, chainAdvancementWindow)
 	defer cancel()
 	if err := retryUntil(advancementCtx, func() error {
-		block, err := blockNumber(advancementCtx, rpcURL)
+		block, err := client.BlockNumber(advancementCtx)
 		if err != nil {
 			return fmt.Errorf("read advancing block number: %w", err)
 		}
@@ -42,35 +46,17 @@ func probeNetwork(ctx context.Context, rpcURL, address string) error {
 		)
 	}
 
-	var encodedBalance string
-	if err := rpcjson.Call(
-		ctx,
-		rpcURL,
-		"qrl_getBalance",
-		[]any{address, "latest"},
-		&encodedBalance,
-	); err != nil {
-		return fmt.Errorf("read development wallet balance: %w", err)
+	account, err := common.NewAddressFromString(address)
+	if err != nil {
+		return fmt.Errorf("parse development wallet address: %w", err)
 	}
-	balance, ok := new(big.Int).SetString(strings.TrimPrefix(encodedBalance, "0x"), 16)
-	if !ok {
-		return fmt.Errorf("invalid development wallet balance %q", encodedBalance)
+	balance, err := client.BalanceAt(ctx, account, nil)
+	if err != nil {
+		return fmt.Errorf("read development wallet balance: %w", err)
 	}
 	if balance.Sign() <= 0 {
 		return fmt.Errorf("development wallet %s has no balance", address)
 	}
 
 	return nil
-}
-
-func blockNumber(ctx context.Context, rpcURL string) (uint64, error) {
-	var encoded string
-	if err := rpcjson.Call(ctx, rpcURL, "qrl_blockNumber", nil, &encoded); err != nil {
-		return 0, err
-	}
-	block, err := strconv.ParseUint(strings.TrimPrefix(encoded, "0x"), 16, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid qrl_blockNumber %q: %w", encoded, err)
-	}
-	return block, nil
 }

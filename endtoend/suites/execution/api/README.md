@@ -41,7 +41,7 @@ serialization part of the live assertions.
 Run it against the separately started development network:
 
 ```bash
-make e2e-test E2E_PACKAGES=./endtoend/suites/execution/api
+make e2e E2E_LANE=single
 ```
 
 Representative boundaries include full 64-byte addresses, storage values, and

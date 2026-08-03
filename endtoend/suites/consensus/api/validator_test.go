@@ -24,11 +24,12 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			session, err = endtoendlive.Open(ctx, false)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			session, err = runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(session.Close)
-			client, err = consensus.New(session.Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			client = session.Consensus
 		})
 
 		ginkgo.It("returns coherent attester, proposer, and sync duties", func(ctx ginkgo.SpecContext) {

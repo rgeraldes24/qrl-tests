@@ -19,6 +19,12 @@ type StateContract struct {
 	Topic   common.LogTopic
 }
 
+type TransactionParameters struct {
+	FeeCap *big.Int
+	TipCap *big.Int
+	Gas    uint64
+}
+
 func DeployStateContract(ctx context.Context, session *endtoendlive.Session, topic common.LogTopic) (StateContract, error) {
 	auth, err := bind.NewKeyedTransactorWithChainID(session.Wallet, session.ChainID)
 	if err != nil {
@@ -52,13 +58,27 @@ func SignCall(
 	value *big.Int,
 	data []byte,
 ) (*types.Transaction, error) {
-	feeCap, err := session.Execution.SuggestGasPrice(ctx)
+	parameters, err := EstimateCall(ctx, session, to, value, data)
 	if err != nil {
 		return nil, err
 	}
+	return SignCallWithParameters(session, nonce, to, value, data, parameters)
+}
+
+func EstimateCall(
+	ctx context.Context,
+	session *endtoendlive.Session,
+	to common.Address,
+	value *big.Int,
+	data []byte,
+) (TransactionParameters, error) {
+	feeCap, err := session.Execution.SuggestGasPrice(ctx)
+	if err != nil {
+		return TransactionParameters{}, err
+	}
 	tipCap, err := session.Execution.SuggestGasTipCap(ctx)
 	if err != nil {
-		return nil, err
+		return TransactionParameters{}, err
 	}
 	feeCap = new(big.Int).Mul(feeCap, big.NewInt(4))
 	if feeCap.Cmp(tipCap) < 0 {
@@ -68,12 +88,25 @@ func SignCall(
 		From: session.Address, To: &to, Value: value, Data: data,
 	})
 	if err != nil {
-		return nil, err
+		return TransactionParameters{}, err
 	}
+	return TransactionParameters{FeeCap: feeCap, TipCap: tipCap, Gas: gas + gas/5}, nil
+}
+
+func SignCallWithParameters(
+	session *endtoendlive.Session,
+	nonce uint64,
+	to common.Address,
+	value *big.Int,
+	data []byte,
+	parameters TransactionParameters,
+) (*types.Transaction, error) {
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID: session.ChainID, Nonce: nonce,
-		GasTipCap: tipCap, GasFeeCap: feeCap, Gas: gas + gas/5,
-		To: &to, Value: value, Data: data,
+		GasTipCap: new(big.Int).Set(parameters.TipCap),
+		GasFeeCap: new(big.Int).Set(parameters.FeeCap),
+		Gas:       parameters.Gas,
+		To:        &to, Value: value, Data: data,
 	})
 	return types.SignTx(tx, types.LatestSignerForChainID(session.ChainID), session.Wallet)
 }

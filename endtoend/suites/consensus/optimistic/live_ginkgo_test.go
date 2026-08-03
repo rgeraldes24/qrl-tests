@@ -4,11 +4,9 @@ package optimistic_test
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -23,21 +21,19 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "consensus", "optimistic", "mutates-network", "profile-optimistic"),
 	func() {
 		ginkgo.It("marks unvalidated blocks optimistic and validates them after execution recovery", func(ctx ginkgo.SpecContext) {
-			if os.Getenv("DEVNET_PROFILE") != string(devnet.ProfileOptimistic) {
-				ginkgo.Skip("optimistic-sync coverage requires DEVNET_PROFILE=optimistic")
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			defer runtime.Close()
+			if runtime.Profile != devnet.ProfileOptimistic {
+				ginkgo.Skip("optimistic-sync coverage requires the optimistic profile")
 			}
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(sessions).To(gomega.HaveLen(2))
-			for _, session := range sessions {
-				defer session.Close()
-			}
 			primary, secondary := sessions[0], sessions[1]
-			primaryBeacon, err := consensus.New(primary.Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			secondaryBeacon, err := consensus.New(secondary.Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			services := devnet.NewServiceController(primary.Environment.EnclaveName)
+			primaryBeacon := primary.Consensus
+			secondaryBeacon := secondary.Consensus
+			services := runtime.Services
 			participant := secondary.Participant
 
 			gomega.Eventually(func() error {
@@ -63,15 +59,15 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(services.Stop(
 				ctx,
-				participant.ValidatorServiceName,
-				participant.ConsensusServiceName,
-				participant.ExecutionServiceName,
+				participant.Validator.Name,
+				participant.Consensus.Name,
+				participant.Execution.Name,
 			)).To(gomega.Succeed())
 			ginkgo.DeferCleanup(func(cleanupCtx ginkgo.SpecContext) {
 				for _, service := range []string{
-					participant.ExecutionServiceName,
-					participant.ConsensusServiceName,
-					participant.ValidatorServiceName,
+					participant.Execution.Name,
+					participant.Consensus.Name,
+					participant.Validator.Name,
 				} {
 					_ = services.Start(cleanupCtx, service)
 				}
@@ -83,18 +79,11 @@ var _ = ginkgo.Describe(
 			}).WithContext(ctx).WithTimeout(optimisticTimeout).WithPolling(time.Second).Should(
 				gomega.BeNumerically(">=", start+2*slotsPerEpoch),
 			)
-			gomega.Expect(services.Start(ctx, participant.ConsensusServiceName)).To(gomega.Succeed())
-			var consensusEndpoint string
+			gomega.Expect(services.Start(ctx, participant.Consensus.Name)).To(gomega.Succeed())
 			gomega.Eventually(func() error {
-				var err error
-				consensusEndpoint, err = devnet.NewManager().ConsensusEndpoint(
-					ctx,
-					primary.Environment.EnclaveName,
-					participant.ConsensusServiceName,
-				)
-				return err
+				return runtime.Refresh(ctx)
 			}).WithContext(ctx).WithTimeout(optimisticTimeout).WithPolling(time.Second).Should(gomega.Succeed())
-			secondaryBeacon, err = consensus.New(consensusEndpoint)
+			secondaryBeacon, err = runtime.ConsensusClient(participant.Index)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			var optimisticHead uint64
@@ -113,7 +102,7 @@ var _ = ginkgo.Describe(
 				return nil
 			}).WithContext(ctx).WithTimeout(optimisticTimeout).WithPolling(100 * time.Millisecond).Should(gomega.Succeed())
 
-			gomega.Expect(services.Start(ctx, participant.ExecutionServiceName)).To(gomega.Succeed())
+			gomega.Expect(services.Start(ctx, participant.Execution.Name)).To(gomega.Succeed())
 
 			gomega.Eventually(func() error {
 				status, err := secondaryBeacon.Syncing(ctx)

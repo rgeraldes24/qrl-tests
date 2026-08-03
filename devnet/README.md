@@ -26,9 +26,9 @@ In another terminal, start the network using images available to the cluster:
 ```bash
 DEVNET_EXECUTION_IMAGE=registry.example/go-qrl:test \
 DEVNET_CLEF_IMAGE=registry.example/go-qrl-clef:test \
-make network-start-k8s
+DEVNET_BACKEND=kubernetes make network-start
 
-DEVNET_BACKEND=kubernetes make e2e-test
+DEVNET_BACKEND=kubernetes make e2e E2E_LANE=single
 make network-stop
 ```
 
@@ -95,8 +95,8 @@ DEVNET_PARAMS_FILE=devnet/network_params.yaml make network-start
 ```
 
 The controller discovers every execution, consensus, and validator participant
-from qrl-package service labels. Existing consumers can use the primary-node
-endpoint aliases, while multi-node suites use `Environment.Participants`.
+from qrl-package service labels. Consumers select the primary participant with
+`Environment.Primary`; multi-node suites use `Environment.Participants`.
 The reported GraphQL URL is live only if the profile enables GraphQL on the RPC
 port. Readiness requires advancing blocks and a funded development wallet.
 
@@ -113,9 +113,9 @@ slashings while preserving a recoverable network.
 ## Consumers
 
 Go tooling can import `github.com/cyyber/qrl-tests/devnet` and call
-`devnet.Inspect(ctx)` to discover the live execution RPC, GraphQL, WebSocket,
-and consensus REST endpoints. The separately maintained
-[end-to-end suites](../endtoend/README.md) are one consumer.
+`devnet.NewManager().Inspect(ctx, enclaveName, backend)` to discover the live
+execution RPC, GraphQL, WebSocket, and consensus REST endpoints. The separately
+maintained [end-to-end suites](../endtoend/README.md) are one consumer.
 
 ## Safety
 
@@ -124,8 +124,8 @@ checks and the migrated live suites. Its matching test seed is maintained by
 the suite that signs transactions. Never fund or use this account outside
 disposable local development networks.
 
-After a failed start, run `make network-stop` with the same enclave name before
-retrying.
+Failed provisioning removes the enclave created by that start attempt. It does
+not remove a pre-existing enclave with the requested name.
 
 Parallel networks must use distinct `DEVNET_ENCLAVE_NAME` values and report
 directories. Kurtosis enclaves provide isolation; cluster capacity and image

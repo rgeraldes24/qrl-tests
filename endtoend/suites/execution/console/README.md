@@ -8,7 +8,7 @@ go test -tags=e2e -run '^$' ./endtoend/suites/execution/console
 go generate ./endtoend/suites/execution/console
 
 # Run against an already-running development network.
-make e2e-test E2E_PACKAGES=./endtoend/suites/execution/console
+make e2e E2E_LANE=single
 ```
 
 ## Coverage contract

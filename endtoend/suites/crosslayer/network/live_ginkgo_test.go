@@ -41,14 +41,14 @@ var _ = ginkgo.Describe(
 		var suite *liveSuite
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite = new(liveSuite)
 			for _, session := range sessions {
-				ginkgo.DeferCleanup(session.Close)
-				beacon, err := consensus.New(session.Participant.ConsensusURL)
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
-				suite.nodes = append(suite.nodes, node{session: session, consensus: beacon})
+				suite.nodes = append(suite.nodes, node{session: session, consensus: session.Consensus})
 			}
 		})
 
@@ -93,7 +93,7 @@ var _ = ginkgo.Describe(
 		ginkgo.It("observes proposals from every validator pair", func(ctx ginkgo.SpecContext) {
 			expected := make(map[string]struct{}, len(suite.nodes))
 			for _, current := range suite.nodes {
-				name := strings.TrimPrefix(current.session.Participant.ValidatorServiceName, "vc-")
+				name := strings.TrimPrefix(current.session.Participant.Validator.Name, "vc-")
 				gomega.Expect(name).NotTo(gomega.BeEmpty())
 				expected[name] = struct{}{}
 			}

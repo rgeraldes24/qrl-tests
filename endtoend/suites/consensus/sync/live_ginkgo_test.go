@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -34,19 +33,18 @@ var _ = ginkgo.Describe(
 		var services *devnet.ServiceController
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			if os.Getenv("DEVNET_PROFILE") != string(devnet.ProfileSync) {
-				ginkgo.Skip("fresh sync and doppelganger coverage requires DEVNET_PROFILE=sync")
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			if runtime.Profile != devnet.ProfileSync {
+				ginkgo.Skip("fresh sync and doppelganger coverage requires the sync profile")
 			}
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(sessions).To(gomega.HaveLen(2))
-			for _, session := range sessions {
-				ginkgo.DeferCleanup(session.Close)
-			}
 			primary, secondary = sessions[0], sessions[1]
-			primaryBeacon, err = consensus.New(primary.Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			services = devnet.NewServiceController(primary.Environment.EnclaveName)
+			primaryBeacon = primary.Consensus
+			services = runtime.Services
 		})
 
 		ginkgo.It("refuses recently active validator keys after local history is cleared", func(ctx ginkgo.SpecContext) {
@@ -70,10 +68,10 @@ var _ = ginkgo.Describe(
 				gomega.Expect(validator.IsLive).To(gomega.BeTrue(), "validator %d was not active before restart", validator.Index)
 			}
 
-			metricsURL := secondary.Participant.ConsensusMetricsURL
+			metricsURL := secondary.Participant.Consensus.MetricsURL
 			checksBefore, err := doppelgangerChecks(ctx, metricsURL)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			service := secondary.Participant.ValidatorServiceName
+			service := secondary.Participant.Validator.Name
 			gomega.Expect(services.Stop(ctx, service)).To(gomega.Succeed())
 			gomega.Expect(services.Start(ctx, service)).To(gomega.Succeed())
 
@@ -116,11 +114,11 @@ var _ = ginkgo.Describe(
 			participant := secondary.Participant
 			gomega.Expect(services.Stop(
 				ctx,
-				participant.ConsensusServiceName,
-				participant.ExecutionServiceName,
+				participant.Consensus.Name,
+				participant.Execution.Name,
 			)).To(gomega.Succeed())
 			ginkgo.DeferCleanup(func(cleanupCtx ginkgo.SpecContext) {
-				_ = services.Start(cleanupCtx, participant.ExecutionServiceName, participant.ConsensusServiceName)
+				_ = services.Start(cleanupCtx, participant.Execution.Name, participant.Consensus.Name)
 			})
 
 			gomega.Eventually(func() uint64 {
@@ -130,20 +128,21 @@ var _ = ginkgo.Describe(
 				gomega.BeNumerically(">=", start+2*slotsPerEpoch),
 			)
 
-			gomega.Expect(services.Start(ctx, participant.ExecutionServiceName, participant.ConsensusServiceName)).To(gomega.Succeed())
+			gomega.Expect(services.Start(ctx, participant.Execution.Name, participant.Consensus.Name)).To(gomega.Succeed())
 			var refreshed *endtoendlive.Session
 			gomega.Eventually(func() error {
-				current, err := endtoendlive.OpenParticipant(ctx, participant.Index, false)
+				if err := primary.Runtime.Refresh(ctx); err != nil {
+					return err
+				}
+				current, err := primary.Runtime.OpenParticipant(ctx, participant.Index, false)
 				if err != nil {
 					return err
 				}
 				refreshed = current
 				return nil
 			}).WithContext(ctx).WithTimeout(syncTimeout).WithPolling(time.Second).Should(gomega.Succeed())
-			ginkgo.DeferCleanup(refreshed.Close)
 
-			secondaryBeacon, err := consensus.New(refreshed.Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			secondaryBeacon := refreshed.Consensus
 			gomega.Eventually(func() error {
 				progress, err := refreshed.Execution.SyncProgress(ctx)
 				if err != nil {

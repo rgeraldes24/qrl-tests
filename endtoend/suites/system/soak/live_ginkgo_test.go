@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
+	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/core/types"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -31,22 +31,18 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "system", "soak", "scenario-full", "mutates-network", "mutates-chain"),
 	func() {
 		ginkgo.It("keeps finalizing through repeated restarts and partitions", func(ctx ginkgo.SpecContext) {
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			defer runtime.Close()
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			if len(sessions) < 4 {
-				for _, session := range sessions {
-					session.Close()
-				}
 				ginkgo.Skip("the soak lane requires the four-participant chaos profile")
 			}
-			for _, session := range sessions {
-				ginkgo.DeferCleanup(session.Close)
-			}
-			beacon, err := consensus.New(sessions[0].Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			beacon := sessions[0].Consensus
 			contract, err := execfixture.DeployStateContract(ctx, sessions[0], execfixture.FullTopic(0xd0))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			services := devnet.NewServiceController(sessions[0].Environment.EnclaveName)
+			services := runtime.Services
 			partition, err := devnet.NewNetworkPartition(sessions[0].Environment.Backend)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(func() {
@@ -78,18 +74,20 @@ var _ = ginkgo.Describe(
 				if cycle%2 == 0 {
 					participant := sessions[1].Participant
 					gomega.Expect(services.Restart(ctx,
-						participant.ExecutionServiceName,
-						participant.ConsensusServiceName,
-						participant.ValidatorServiceName,
+						participant.Execution.Name,
+						participant.Consensus.Name,
+						participant.Validator.Name,
 					)).To(gomega.Succeed())
 					var replacement *endtoendlive.Session
 					gomega.Eventually(func() error {
 						var err error
-						replacement, err = endtoendlive.OpenParticipant(ctx, participant.Index, false)
+						if err := runtime.Refresh(ctx); err != nil {
+							return err
+						}
+						replacement, err = runtime.OpenParticipant(ctx, participant.Index, false)
 						return err
 					}).WithContext(ctx).WithTimeout(5 * time.Minute).WithPolling(time.Second).Should(gomega.Succeed())
 					sessions[1] = replacement
-					ginkgo.DeferCleanup(replacement.Close)
 				} else {
 					participants := sessions[0].Environment.Participants
 					middle := len(participants) / 2
@@ -114,8 +112,8 @@ var _ = ginkgo.Describe(
 
 func awaitReceipt(ctx context.Context, session *endtoendlive.Session, tx *types.Transaction) {
 	ginkgo.GinkgoHelper()
-	gomega.Eventually(func() error {
-		_, err := session.Execution.TransactionReceipt(ctx, tx.Hash())
-		return err
-	}).WithContext(ctx).WithTimeout(3 * time.Minute).WithPolling(time.Second).Should(gomega.Succeed())
+	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	_, err := bind.WaitMined(waitCtx, session.Execution, tx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }

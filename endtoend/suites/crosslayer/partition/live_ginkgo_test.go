@@ -38,25 +38,20 @@ var _ = ginkgo.Describe(
 		var suite *liveSuite
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			environment := sessions[0].Environment
 			if len(environment.Participants) < 4 {
-				for _, session := range sessions {
-					session.Close()
-				}
 				ginkgo.Skip("partition scenarios require the four-participant chaos profile")
-			}
-			for _, session := range sessions {
-				ginkgo.DeferCleanup(session.Close)
 			}
 			partition, err := devnet.NewNetworkPartition(environment.Backend)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite = &liveSuite{environment: environment, sessions: sessions, partition: partition}
-			for _, participant := range environment.Participants {
-				beacon, err := consensus.New(participant.ConsensusURL)
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
-				suite.beacons = append(suite.beacons, beacon)
+			for _, session := range sessions {
+				suite.beacons = append(suite.beacons, session.Consensus)
 			}
 		})
 

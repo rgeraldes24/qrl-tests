@@ -5,7 +5,7 @@
 go test -tags=e2e -run '^$' ./endtoend/suites/signer/clef
 
 # Run against an already-running development network.
-make e2e-test E2E_PACKAGES=./endtoend/suites/signer/clef
+make e2e E2E_LANE=single
 ```
 
 ## Coverage contract

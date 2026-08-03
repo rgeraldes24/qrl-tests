@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 //go:build e2e
 
@@ -44,12 +44,14 @@ type liveFixture struct {
 func setupLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
-	session, err := endtoendlive.Open(ctx, true)
+	runtime, err := endtoendlive.Load(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	ginkgo.DeferCleanup(session.Close)
+	ginkgo.DeferCleanup(runtime.Close)
+	session, err := runtime.Primary(ctx, true)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	suite := &liveSuite{
-		graphQLURL: session.Environment.GraphQLURL,
+		graphQLURL: session.Participant.Execution.GraphQLURL,
 		client:     session.Execution,
 		wsClient:   session.ExecutionWebSocket,
 		wallet:     session.Wallet,

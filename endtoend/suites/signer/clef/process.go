@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 package clef
 
@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net"
 	"os"
@@ -20,56 +19,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cyyber/qrl-tests/internal/clefprocess"
+	"github.com/cyyber/qrl-tests/internal/clefui"
 	"github.com/theQRL/go-qrl/common"
-	"github.com/theQRL/go-qrl/rpc"
 	signercore "github.com/theQRL/go-qrl/signer/core"
 )
 
 type clefProcess struct {
-	cancel   context.CancelFunc
-	done     chan struct{}
-	err      error
-	log      *os.File
-	input    io.WriteCloser
-	output   io.ReadCloser
-	uiClient *rpc.Client
-}
-
-type automatedUI struct {
-	masterPassword  string
-	accountPassword string
-}
-
-func (ui *automatedUI) ApproveTx(request *signercore.SignTxRequest) (signercore.SignTxResponse, error) {
-	return signercore.SignTxResponse{Transaction: request.Transaction, Approved: true}, nil
-}
-
-func (ui *automatedUI) ApproveSignData(*signercore.SignDataRequest) (signercore.SignDataResponse, error) {
-	return signercore.SignDataResponse{Approved: true}, nil
-}
-
-func (ui *automatedUI) ApproveListing(request *signercore.ListRequest) (signercore.ListResponse, error) {
-	return signercore.ListResponse{Accounts: request.Accounts}, nil
-}
-
-func (ui *automatedUI) ApproveNewAccount(*signercore.NewAccountRequest) (signercore.NewAccountResponse, error) {
-	return signercore.NewAccountResponse{Approved: true}, nil
-}
-
-func (ui *automatedUI) ShowError(signercore.Message) {}
-
-func (ui *automatedUI) ShowInfo(signercore.Message) {}
-
-func (ui *automatedUI) OnApprovedTx(any) {}
-
-func (ui *automatedUI) OnSignerStartup(signercore.StartupInfo) {}
-
-func (ui *automatedUI) OnInputRequired(request signercore.UserInputRequest) (signercore.UserInputResponse, error) {
-	password := ui.accountPassword
-	if request.Title == "Master Password" {
-		password = ui.masterPassword
-	}
-	return signercore.UserInputResponse{Text: password}, nil
+	process *clefprocess.Process
+	log     *os.File
 }
 
 func initializeClef(
@@ -189,71 +147,17 @@ func startClef(
 	if err != nil {
 		return nil, "", fmt.Errorf("create Clef log: %w", err)
 	}
-	processCtx, cancel := context.WithCancel(ctx)
-	command := exec.CommandContext(
-		processCtx,
-		clefPath,
-		clefServerArgs(workspace, port, chainID)...,
-	)
-	input, err := command.StdinPipe()
+	process, err := clefprocess.Start(ctx, clefPath, clefServerArgs(workspace, port, chainID), &clefui.UI{Input: func(request signercore.UserInputRequest) string {
+		if request.Title == "Master Password" {
+			return masterPassword
+		}
+		return accountPassword
+	}}, logFile)
 	if err != nil {
-		cancel()
 		_ = logFile.Close()
-		return nil, "", fmt.Errorf("open Clef stdin: %w", err)
+		return nil, "", err
 	}
-	output, err := command.StdoutPipe()
-	if err != nil {
-		cancel()
-		_ = input.Close()
-		_ = logFile.Close()
-		return nil, "", fmt.Errorf("open Clef stdout: %w", err)
-	}
-	command.Stderr = logFile
-
-	uiClient, err := rpc.DialIO(
-		processCtx,
-		output,
-		input,
-	)
-	if err != nil {
-		cancel()
-		_ = input.Close()
-		_ = output.Close()
-		_ = logFile.Close()
-		return nil, "", fmt.Errorf("create Clef UI client: %w", err)
-	}
-	if err := uiClient.RegisterName("ui", &automatedUI{
-		masterPassword:  masterPassword,
-		accountPassword: accountPassword,
-	}); err != nil {
-		cancel()
-		uiClient.Close()
-		_ = input.Close()
-		_ = output.Close()
-		_ = logFile.Close()
-		return nil, "", fmt.Errorf("register Clef UI service: %w", err)
-	}
-	if err := command.Start(); err != nil {
-		cancel()
-		uiClient.Close()
-		_ = input.Close()
-		_ = output.Close()
-		_ = logFile.Close()
-		return nil, "", fmt.Errorf("start Clef: %w", err)
-	}
-	process := &clefProcess{
-		cancel:   cancel,
-		done:     make(chan struct{}),
-		log:      logFile,
-		input:    input,
-		output:   output,
-		uiClient: uiClient,
-	}
-	go func() {
-		process.err = command.Wait()
-		close(process.done)
-	}()
-	return process, "http://127.0.0.1:" + strconv.Itoa(port), nil
+	return &clefProcess{process: process, log: logFile}, "http://127.0.0.1:" + strconv.Itoa(port), nil
 }
 
 func clefServerArgs(workspace string, port int, chainID *big.Int) []string {
@@ -276,11 +180,7 @@ func clefServerArgs(workspace string, port int, chainID *big.Int) []string {
 }
 
 func (process *clefProcess) stop() error {
-	process.cancel()
-	process.uiClient.Close()
-	_ = process.input.Close()
-	_ = process.output.Close()
-	<-process.done
+	process.process.Stop()
 	return process.log.Close()
 }
 

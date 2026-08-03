@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 // Package lanes defines the live E2E execution matrix.
 package lanes
@@ -15,20 +15,29 @@ import (
 type Lane struct {
 	Name        string
 	Profile     devnet.Profile
-	Packages    []string
+	Suites      []Suite
 	LabelFilter string
 	Timeout     time.Duration
+	Tools       []Tool
+}
 
-	// KubernetesPackages overrides Packages when running on Kubernetes. A
-	// non-nil empty slice marks the entire lane unsupported.
-	KubernetesPackages []string
+type Tool string
+
+const (
+	ToolGQRL Tool = "gqrl"
+	ToolClef Tool = "clef"
+)
+
+type Suite struct {
+	Package  string
+	Requires []devnet.Capability
 }
 
 var registry = []Lane{
 	{
 		Name:    "single",
 		Profile: devnet.ProfileSingle,
-		Packages: []string{
+		Suites: packages(
 			"./endtoend/suites/execution/abi",
 			"./endtoend/suites/execution/api",
 			"./endtoend/suites/execution/console",
@@ -37,106 +46,144 @@ var registry = []Lane{
 			"./endtoend/suites/consensus/api",
 			"./endtoend/suites/consensus/protocol",
 			"./endtoend/suites/crosslayer/engine",
-		},
+		),
 		LabelFilter: "!scenario-full && !profile-operations",
 		Timeout:     90 * time.Minute,
+		Tools:       []Tool{ToolGQRL, ToolClef},
 	},
 	{
 		Name:        "multi",
 		Profile:     devnet.ProfileMulti,
-		Packages:    []string{"./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/transactions"},
+		Suites:      packages("./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/transactions"),
 		LabelFilter: "!scenario-full",
 		Timeout:     90 * time.Minute,
 	},
 	{
 		Name:        "workloads",
 		Profile:     devnet.ProfileMulti,
-		Packages:    []string{"./endtoend/suites/crosslayer/transactions"},
+		Suites:      packages("./endtoend/suites/crosslayer/transactions"),
 		LabelFilter: "scenario-full",
 		Timeout:     3 * time.Hour,
 	},
 	{
 		Name:        "lifecycle",
 		Profile:     devnet.ProfileLifecycle,
-		Packages:    []string{"./endtoend/suites/crosslayer/validator"},
+		Suites:      packages("./endtoend/suites/crosslayer/validator"),
 		LabelFilter: "!profile-operations",
 		Timeout:     2 * time.Hour,
 	},
 	{
-		Name:     "chaos",
-		Profile:  devnet.ProfileChaos,
-		Packages: []string{"./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/resilience", "./endtoend/suites/crosslayer/partition"},
-		KubernetesPackages: []string{
-			"./endtoend/suites/crosslayer/network",
-			"./endtoend/suites/crosslayer/resilience",
+		Name:    "chaos",
+		Profile: devnet.ProfileChaos,
+		Suites: []Suite{
+			{Package: "./endtoend/suites/crosslayer/network"},
+			{Package: "./endtoend/suites/crosslayer/resilience"},
+			{Package: "./endtoend/suites/crosslayer/partition", Requires: []devnet.Capability{devnet.CapabilityNetworkPartition}},
 		},
 		Timeout: 2 * time.Hour,
 	},
 	{
-		Name:     "consensus-sync",
-		Profile:  devnet.ProfileSync,
-		Packages: []string{"./endtoend/suites/consensus/sync"},
-		Timeout:  45 * time.Minute,
+		Name:    "consensus-sync",
+		Profile: devnet.ProfileSync,
+		Suites:  packages("./endtoend/suites/consensus/sync"),
+		Timeout: 45 * time.Minute,
 	},
 	{
-		Name:     "execution-sync",
-		Profile:  devnet.ProfileExecutionSync,
-		Packages: []string{"./endtoend/suites/execution/sync"},
-		Timeout:  45 * time.Minute,
+		Name:    "execution-sync",
+		Profile: devnet.ProfileExecutionSync,
+		Suites:  packages("./endtoend/suites/execution/sync"),
+		Timeout: 45 * time.Minute,
 	},
 	{
 		Name:        "operations",
 		Profile:     devnet.ProfileOperations,
-		Packages:    []string{"./endtoend/suites/crosslayer/validator"},
+		Suites:      packages("./endtoend/suites/crosslayer/validator"),
 		LabelFilter: "profile-operations",
 		Timeout:     4 * time.Hour,
 	},
 	{
-		Name:     "cold-state",
-		Profile:  devnet.ProfileCold,
-		Packages: []string{"./endtoend/suites/consensus/coldstate"},
-		Timeout:  45 * time.Minute,
+		Name:    "cold-state",
+		Profile: devnet.ProfileCold,
+		Suites:  packages("./endtoend/suites/consensus/coldstate"),
+		Timeout: 45 * time.Minute,
 	},
 	{
-		Name:     "optimistic",
-		Profile:  devnet.ProfileOptimistic,
-		Packages: []string{"./endtoend/suites/consensus/optimistic"},
-		Timeout:  45 * time.Minute,
+		Name:    "optimistic",
+		Profile: devnet.ProfileOptimistic,
+		Suites:  packages("./endtoend/suites/consensus/optimistic"),
+		Timeout: 45 * time.Minute,
 	},
 	{
-		Name:               "soak",
-		Profile:            devnet.ProfileChaos,
-		Packages:           []string{"./endtoend/suites/system/soak"},
-		LabelFilter:        "scenario-full",
-		Timeout:            4 * time.Hour,
-		KubernetesPackages: []string{},
+		Name:        "soak",
+		Profile:     devnet.ProfileChaos,
+		Suites:      []Suite{{Package: "./endtoend/suites/system/soak", Requires: []devnet.Capability{devnet.CapabilityNetworkPartition}}},
+		LabelFilter: "scenario-full",
+		Timeout:     4 * time.Hour,
 	},
+}
+
+func packages(names ...string) []Suite {
+	result := make([]Suite, len(names))
+	for index, name := range names {
+		result[index].Package = name
+	}
+	return result
 }
 
 func All() []Lane {
 	result := make([]Lane, len(registry))
 	copy(result, registry)
 	for index := range result {
-		result[index].Packages = slices.Clone(result[index].Packages)
-		result[index].KubernetesPackages = slices.Clone(result[index].KubernetesPackages)
+		result[index].Suites = cloneSuites(result[index].Suites)
+		result[index].Tools = slices.Clone(result[index].Tools)
 	}
 	return result
 }
 
 func (lane Lane) ForBackend(backend devnet.Backend) (Lane, bool) {
-	if backend == devnet.BackendKubernetes && lane.KubernetesPackages != nil {
-		lane.Packages = slices.Clone(lane.KubernetesPackages)
+	suites := make([]Suite, 0, len(lane.Suites))
+	for _, suite := range lane.Suites {
+		if supportsAll(backend, suite.Requires) {
+			suites = append(suites, suite)
+		}
 	}
-	return lane, len(lane.Packages) != 0
+	lane.Suites = cloneSuites(suites)
+	return lane, len(lane.Suites) != 0
+}
+
+func (lane Lane) Packages() []string {
+	result := make([]string, len(lane.Suites))
+	for index, suite := range lane.Suites {
+		result[index] = suite.Package
+	}
+	return result
 }
 
 func Named(name string) (Lane, error) {
 	for _, lane := range registry {
 		if lane.Name == name {
-			lane.Packages = slices.Clone(lane.Packages)
-			lane.KubernetesPackages = slices.Clone(lane.KubernetesPackages)
+			lane.Suites = cloneSuites(lane.Suites)
+			lane.Tools = slices.Clone(lane.Tools)
 			return lane, nil
 		}
 	}
 	return Lane{}, fmt.Errorf("unknown E2E lane %q", name)
+}
+
+func cloneSuites(source []Suite) []Suite {
+	result := make([]Suite, len(source))
+	copy(result, source)
+	for index := range result {
+		result[index].Requires = slices.Clone(result[index].Requires)
+	}
+	return result
+}
+
+func supportsAll(backend devnet.Backend, required []devnet.Capability) bool {
+	for _, capability := range required {
+		if !backend.Supports(capability) {
+			return false
+		}
+	}
+	return true
 }

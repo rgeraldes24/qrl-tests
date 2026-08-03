@@ -5,11 +5,9 @@ package protocol_test
 import (
 	"testing"
 
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 )
 
 func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Consensus Protocol E2E Suite")
+	testsuite.Run(t, "Consensus Protocol E2E Suite")
 }

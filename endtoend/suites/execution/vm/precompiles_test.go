@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 //go:build e2e
 
@@ -56,9 +56,11 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			session, err = endtoendlive.Open(ctx, false)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			session, err = runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(session.Close)
 			vectors = precompileVectors()
 			gomega.Expect(vectors).To(gomega.HaveLen(len(qrvm.PrecompiledContractsZond)))
 		})

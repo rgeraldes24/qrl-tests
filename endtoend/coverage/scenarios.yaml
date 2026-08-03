@@ -1,0 +1,444 @@
+version: 1
+source_scenario_count: 79
+scenarios:
+    - id: api-compatibility/gloas-api-check.yaml
+      disposition: Unsupported
+      replacement: Gloas/ePBS API surface is not supported
+    - id: dev/block-proposal-with-blobs-check.yaml
+      disposition: Unsupported
+      replacement: Blob transactions are not supported
+    - id: dev/dev-deposits.yaml
+      disposition: Full
+      replacement: '`endtoend/suites/crosslayer/validator` submits the configured two distinct deposits and verifies their consensus balances'
+      behaviors:
+        - id: validator.deposit-distinct
+          status: Covered
+          label: behavior:validator:deposit-distinct
+    - id: dev/execution-spec-tests-dependencies.yaml
+      disposition: Unsupported
+      replacement: Ethereum execution-spec tooling assumes EVM32/Ethereum protocol behavior
+    - id: dev/execution-spec-tests-execute.yaml
+      disposition: Unsupported
+      replacement: Ethereum execution-spec tooling assumes EVM32/Ethereum protocol behavior
+    - id: dev/fund-wallet.yaml
+      disposition: Equivalent
+      replacement: '`endtoend/suites/crosslayer/transactions` verifies a deterministic transfer, receipt, and resulting balance'
+      behaviors:
+        - id: transactions.fund-wallet
+          status: Covered
+          label: behavior:transactions:fund-wallet
+    - id: dev/generate-attestations.yaml
+      disposition: Equivalent
+      replacement: '`endtoend/suites/crosslayer/network` verifies every active validator participates across three epochs; source fault injection is unsupported'
+      behaviors:
+        - id: network.validator-liveness
+          status: Covered
+          label: behavior:network:validator-liveness
+        - id: network.attestation-fault-injection
+          status: Unsupported
+          reason: the default QRL profile does not expose attestation fault injection
+    - id: dev/shell-test.yaml
+      disposition: Unsupported
+      replacement: Arbitrary shell execution is not a protocol scenario
+    - id: dev/synchronized-check.yaml
+      disposition: Full
+      replacement: '`endtoend/suites/crosslayer/network` verifies every execution and consensus client is synchronized'
+      behaviors:
+        - id: network.clients-synchronized
+          status: Covered
+          label: behavior:network:clients-synchronized
+    - id: dev/two-way-network-split-non-finality.yaml
+      disposition: Failing
+      replacement: The split stalls finality, but Qrysm peers do not reconnect and finality does not resume after healing
+      behaviors:
+        - id: partition.finality-stall
+          status: Covered
+          label: behavior:partition:finality-stall
+        - id: partition.finality-recovery
+          status: Failing
+          label: behavior:partition:finality-recovery
+    - id: dev/two-way-network-split-reorg-trigger.yaml
+      disposition: Failing
+      replacement: Competing heads form, but Qrysm peers remain split instead of converging after healing
+      behaviors:
+        - id: partition.competing-heads
+          status: Covered
+          label: behavior:partition:competing-heads
+        - id: partition.reorg-recovery
+          status: Failing
+          label: behavior:partition:reorg-recovery
+    - id: dev/validator-lifecycle-test.yaml
+      disposition: Equivalent
+      replacement: Supported lifecycle operations, 300-validator deposit churn, partial and full withdrawals, proposer matrices, and finality recovery are covered; BLS credential changes are not part of QRL
+      behaviors:
+        - id: validator.deposit-topup-activate
+          status: Covered
+          label: behavior:validator:deposit-topup-activate
+        - id: validator.exit-withdraw
+          status: Covered
+          label: behavior:validator:exit-withdraw
+        - id: validator.proposer-slashing
+          status: Covered
+          label: behavior:validator:proposer-slashing
+        - id: validator.attester-slashing
+          status: Covered
+          label: behavior:validator:attester-slashing
+        - id: validator.mass-deposit-churn
+          status: Covered
+          label: behavior:validator:mass-deposit-churn
+        - id: validator.deposit-proposer-matrix
+          status: Covered
+          label: behavior:validator:deposit-proposer-matrix
+        - id: validator.exit-proposer-matrix
+          status: Covered
+          label: behavior:validator:exit-proposer-matrix
+        - id: validator.slashing-proposer-matrix
+          status: Covered
+          label: behavior:validator:slashing-proposer-matrix
+        - id: validator.bls-credential-change
+          status: Unsupported
+          reason: QRL withdrawal credentials are direct Q-addresses
+    - id: dev/validator-proposer-slashing-test.yaml
+      disposition: Equivalent
+      replacement: The operations lane submits 50 proposer slashings through every consensus client and observes inclusion by every proposer pair
+      behaviors:
+        - id: validator.proposer-slashing
+          status: Covered
+          label: behavior:validator:proposer-slashing
+        - id: validator.proposer-slashing-matrix
+          status: Covered
+          label: behavior:validator:proposer-slashing-matrix
+        - id: validator.operation-submission-matrix
+          status: Covered
+          label: behavior:validator:operation-submission-matrix
+    - id: dev/validator-slashing-single.yaml
+      disposition: Full
+      replacement: '`endtoend/suites/crosslayer/validator` submits one proposer slashing and verifies inclusion and state transition'
+      behaviors:
+        - id: validator.proposer-slashing
+          status: Covered
+          label: behavior:validator:proposer-slashing
+    - id: dev/validator-withdrawal-test-v2.yaml
+      disposition: Unsupported
+      replacement: QRL withdrawal credentials are direct 64-byte Q-addresses; the source scenario specifically tests BLS-to-execution credential changes
+    - id: dev/wait-for-slot.yaml
+      disposition: Full
+      replacement: '`endtoend/suites/crosslayer/network` verifies slot and execution-block progression'
+      behaviors:
+        - id: network.slot-progress
+          status: Covered
+          label: behavior:network:slot-progress
+    - id: fusaka-dev/kurtosis/analyze-cgc.yaml
+      disposition: Unsupported
+      replacement: Fusaka CGC behavior is not supported
+    - id: fusaka-dev/kurtosis/cgc-validation-test.yaml
+      disposition: Unsupported
+      replacement: Fusaka CGC behavior is not supported
+    - id: fusaka-dev/kurtosis/ethconfig-test-with-rpc-call.yaml
+      disposition: Unsupported
+      replacement: EIP-7910/Fusaka behavior is not supported
+    - id: glamsterdam-dev/execution-sec-tests-sequential.yaml
+      disposition: Unsupported
+      replacement: Glamsterdam execution-spec behavior is not supported
+    - id: gloas-dev/builder-deposit-spam.yaml
+      disposition: Unsupported
+      replacement: Gloas builder deposits are not supported
+    - id: gloas-dev/builder-deposit.yaml
+      disposition: Unsupported
+      replacement: Gloas builder deposits are not supported
+    - id: gloas-dev/builder-lifecycle.yaml
+      disposition: Unsupported
+      replacement: Gloas builder lifecycle is not supported
+    - id: gloas-dev/builder-prefork-onboard.yaml
+      disposition: Unsupported
+      replacement: Gloas builder onboarding is not supported
+    - id: gloas-dev/builder-prefork-queuefill.yaml
+      disposition: Unsupported
+      replacement: Gloas builder queues are not supported
+    - id: gloas-dev/deploy-eip8282-contracts.yaml
+      disposition: Unsupported
+      replacement: EIP-8282 is not supported
+    - id: gloas-dev/exit-builders.yaml
+      disposition: Unsupported
+      replacement: Gloas builder exits are not supported
+    - id: gloas-dev/exit-conflict.yaml
+      disposition: Unsupported
+      replacement: Gloas builder/validator conflict behavior is not supported
+    - id: gloas-dev/prefork-queue-fill-public.yaml
+      disposition: Unsupported
+      replacement: Gloas pending queues are not supported
+    - id: gloas-dev/prefork-queue-fill.yaml
+      disposition: Unsupported
+      replacement: Gloas pending queues are not supported
+    - id: gloas-dev/slash-active-validators.yaml
+      disposition: Unsupported
+      replacement: This variant depends on Gloas builder state
+    - id: gloas-dev/slash-validators.yaml
+      disposition: Unsupported
+      replacement: This variant depends on Gloas builder state
+    - id: gloas-dev/slashing-exit-conflict.yaml
+      disposition: Unsupported
+      replacement: This variant depends on Gloas builder state
+    - id: gloas-dev/worst-case-block.yaml
+      disposition: Unsupported
+      replacement: Gloas operation mix is not supported
+    - id: pectra-dev/blockhash-test-with-rpc-call.yaml
+      disposition: Unsupported
+      replacement: EIP-2935/Pectra behavior is not supported
+    - id: pectra-dev/eip7002-all.yaml
+      disposition: Unsupported
+      replacement: EL-triggered EIP-7002 requests are not supported
+    - id: pectra-dev/eip7251-all.yaml
+      disposition: Unsupported
+      replacement: EIP-7251 consolidations are not supported
+    - id: pectra-dev/execution-spec-tests-sequential.yaml
+      disposition: Unsupported
+      replacement: Pectra execution-spec behavior is not supported
+    - id: pectra-dev/execution-spec-tests.yaml
+      disposition: Unsupported
+      replacement: Pectra execution-spec behavior is not supported
+    - id: pectra-dev/kurtosis/33eth-deposit.yaml
+      disposition: Unsupported
+      replacement: Pectra-specific deposit semantics are not supported
+    - id: pectra-dev/kurtosis/64-el-triggered-consolidation.yaml
+      disposition: Unsupported
+      replacement: EIP-7251 consolidations are not supported
+    - id: pectra-dev/kurtosis/all.yaml
+      disposition: Unsupported
+      replacement: Aggregate Pectra feature suite is not supported
+    - id: pectra-dev/kurtosis/blockhash-test.yaml
+      disposition: Unsupported
+      replacement: EIP-2935/Pectra behavior is not supported
+    - id: pectra-dev/kurtosis/bls-changes.yaml
+      disposition: Unsupported
+      replacement: QRL withdrawal credentials are direct 64-byte Q-addresses and do not use BLS credential-change operations
+    - id: pectra-dev/kurtosis/consolidion-overflow-tests.yaml
+      disposition: Unsupported
+      replacement: EIP-7251 consolidation queues are not supported
+    - id: pectra-dev/kurtosis/eip6110-double-deposit.yaml
+      disposition: Unsupported
+      replacement: Pectra/EIP-6110-specific deposit semantics are not supported
+    - id: pectra-dev/kurtosis/eip7002-lh-bug.yaml
+      disposition: Unsupported
+      replacement: EIP-7002 is not supported
+    - id: pectra-dev/kurtosis/eip7002-mass-withdrawals.yaml
+      disposition: Unsupported
+      replacement: EIP-7002 is not supported
+    - id: pectra-dev/kurtosis/eip7251-mass-consolidations.yaml
+      disposition: Unsupported
+      replacement: EIP-7251 is not supported
+    - id: pectra-dev/kurtosis/eip7702-test.yaml
+      disposition: Unsupported
+      replacement: EIP-7702 transactions are not supported
+    - id: pectra-dev/kurtosis/eip7702-txpool-invalidation.yaml
+      disposition: Unsupported
+      replacement: EIP-7702 transactions are not supported
+    - id: pectra-dev/kurtosis/el-triggered-consolidation.yaml
+      disposition: Unsupported
+      replacement: EIP-7251 is not supported
+    - id: pectra-dev/kurtosis/el-triggered-consolidations-of-consolidations.yaml
+      disposition: Unsupported
+      replacement: EIP-7251 is not supported
+    - id: pectra-dev/kurtosis/el-triggered-exit.yaml
+      disposition: Unsupported
+      replacement: EIP-7002 is not supported
+    - id: pectra-dev/kurtosis/el-triggered-withdrawal.yaml
+      disposition: Unsupported
+      replacement: EIP-7002 is not supported
+    - id: pectra-dev/kurtosis/fillup-all-el-queues-valid.yaml
+      disposition: Unsupported
+      replacement: Pectra EL request queues are not supported
+    - id: pectra-dev/kurtosis/fillup-all-el-queues.yaml
+      disposition: Unsupported
+      replacement: Pectra EL request queues are not supported
+    - id: pectra-dev/kurtosis/fillup-consolidation-queue.yaml
+      disposition: Unsupported
+      replacement: EIP-7251 is not supported
+    - id: pectra-dev/kurtosis/fillup-deposit-queue.yaml
+      disposition: Unsupported
+      replacement: Pectra deposit queue behavior is not supported
+    - id: pectra-dev/kurtosis/fillup-withdrawal-queue.yaml
+      disposition: Unsupported
+      replacement: EIP-7002 is not supported
+    - id: pectra-dev/kurtosis/massive-deposit-0x02.yaml
+      disposition: Unsupported
+      replacement: Pectra 0x02 credential behavior is not supported
+    - id: pectra-dev/kurtosis/massive-deposit.yaml
+      disposition: Unsupported
+      replacement: Pectra-specific deposit behavior is not supported
+    - id: pectra-dev/kurtosis/topup-deposits.yaml
+      disposition: Equivalent
+      replacement: '`endtoend/suites/crosslayer/validator` deposits twice for the same validator and verifies balance and activation'
+      behaviors:
+        - id: validator.deposit-topup-activate
+          status: Covered
+          label: behavior:validator:deposit-topup-activate
+    - id: pectra-dev/kurtosis/voluntary-exits.yaml
+      disposition: Full
+      replacement: The operations lane signs, submits, includes, and applies exactly 64 voluntary exits
+      behaviors:
+        - id: validator.voluntary-exit
+          status: Covered
+          label: behavior:validator:voluntary-exit
+        - id: validator.voluntary-exit-64
+          status: Covered
+          label: behavior:validator:voluntary-exit-64
+    - id: pectra-dev/validator-lifecycle-test-v3.yaml
+      disposition: Unsupported
+      replacement: Pectra lifecycle and request queues are not supported
+    - id: stable/all-opcodes-test.yaml
+      disposition: Equivalent
+      replacement: The QRL-native VM suite covers QRVM/VM64 opcodes and precompiles, plus mined deployment, state-changing execution, and terminal receipt status
+      behaviors:
+        - id: vm.vm64-opcodes
+          status: Covered
+          label: behavior:vm:vm64-opcodes
+        - id: vm.precompiles
+          status: Covered
+          label: behavior:vm:precompiles
+        - id: vm.mined-opcode-contract
+          status: Covered
+          label: behavior:vm:mined-opcode-path
+        - id: vm.mined-terminal-status
+          status: Covered
+          label: behavior:vm:mined-terminal-status
+    - id: stable/big-calldata-tx-test.yaml
+      disposition: Full
+      replacement: The full lane submits 1000 transactions with 1000-byte calldata at no more than 10 workload transactions per block and verifies finality
+      behaviors:
+        - id: transactions.calldata-boundary
+          status: Covered
+          label: behavior:transactions:calldata-boundary
+        - id: transactions.big-calldata-1000
+          status: Covered
+          label: behavior:transactions:big-calldata-1000
+        - id: transactions.finality-under-load
+          status: Covered
+          label: behavior:transactions:finality-under-load
+    - id: stable/blob-transactions-test.yaml
+      disposition: Unsupported
+      replacement: Blob transactions are not supported
+    - id: stable/block-proposal-check.yaml
+      disposition: Full
+      replacement: '`endtoend/suites/crosslayer/network` observes a proposal from every validator client pair'
+      behaviors:
+        - id: network.proposer-coverage
+          status: Covered
+          label: behavior:network:proposer-coverage
+    - id: stable/dencun-opcodes-test.yaml
+      disposition: Unsupported
+      replacement: Dencun opcodes are not supported
+    - id: stable/eoa-transactions-test.yaml
+      disposition: Equivalent
+      replacement: The full lane sustains 10 dynamic-fee transactions per block through every execution client until every validator pair proposes a transaction-bearing block; legacy transactions are unsupported
+      behaviors:
+        - id: transactions.all-execution-clients
+          status: Covered
+          label: behavior:transactions:all-execution-clients
+        - id: transactions.network-wide-inclusion
+          status: Covered
+          label: behavior:transactions:network-wide-inclusion
+        - id: transactions.sustained-10-per-block
+          status: Covered
+          label: behavior:transactions:sustained-10-per-block
+        - id: transactions.proposer-inclusion-matrix
+          status: Covered
+          label: behavior:transactions:proposer-inclusion-matrix
+        - id: transactions.legacy-type
+          status: Unsupported
+          reason: QRL does not support Ethereum legacy transactions
+    - id: stable/kurtosis/validator-exit-test.yaml
+      disposition: Equivalent
+      replacement: The operations lane distributes 64 exits through every consensus client and observes inclusion by every proposer pair
+      behaviors:
+        - id: validator.voluntary-exit
+          status: Covered
+          label: behavior:validator:voluntary-exit
+        - id: validator.voluntary-exit-64
+          status: Covered
+          label: behavior:validator:voluntary-exit-64
+        - id: validator.operation-submission-matrix
+          status: Covered
+          label: behavior:validator:operation-submission-matrix
+        - id: validator.exit-proposer-matrix
+          status: Covered
+          label: behavior:validator:exit-proposer-matrix
+    - id: stable/kurtosis/validator-slashing-test.yaml
+      disposition: Equivalent
+      replacement: The operations lane submits 50 proposer and 50 attester slashings through every consensus client and observes both types from every proposer pair
+      behaviors:
+        - id: validator.proposer-slashing
+          status: Covered
+          label: behavior:validator:proposer-slashing
+        - id: validator.attester-slashing
+          status: Covered
+          label: behavior:validator:attester-slashing
+        - id: validator.proposer-slashing-matrix
+          status: Covered
+          label: behavior:validator:proposer-slashing-matrix
+        - id: validator.attester-slashing-matrix
+          status: Covered
+          label: behavior:validator:attester-slashing-matrix
+        - id: validator.operation-submission-matrix
+          status: Covered
+          label: behavior:validator:operation-submission-matrix
+        - id: validator.slashing-proposer-matrix
+          status: Covered
+          label: behavior:validator:slashing-proposer-matrix
+    - id: stable/kurtosis/validator-withdrawal-test.yaml
+      disposition: Equivalent
+      replacement: '`endtoend/suites/crosslayer/validator` verifies QRL direct-address withdrawal and execution balance transfer'
+      behaviors:
+        - id: validator.exit-withdraw
+          status: Covered
+          label: behavior:validator:exit-withdraw
+    - id: stable/mev-block-proposal-check.yaml
+      disposition: Unsupported
+      replacement: MEV builder/relay flow is not part of the current QRL network
+    - id: stable/stability-check.yaml
+      disposition: Full
+      replacement: The network lane enforces synchronization, finality, target/head participation, reorg, and fork budgets
+      behaviors:
+        - id: network.clients-synchronized
+          status: Covered
+          label: behavior:network:clients-synchronized
+        - id: network.finality
+          status: Covered
+          label: behavior:network:finality
+        - id: network.attestation-thresholds
+          status: Covered
+          label: behavior:network:attestation-thresholds
+        - id: network.reorg-budget
+          status: Covered
+          label: behavior:network:reorg-budget
+        - id: network.fork-budget
+          status: Covered
+          label: behavior:network:fork-budget
+    - id: stable/validator-lifecycle-test-v2.yaml
+      disposition: Equivalent
+      replacement: The operations lane runs the ten-validator mixed lifecycle with QRL direct-address withdrawals; BLS credential changes are not part of QRL
+      behaviors:
+        - id: validator.deposit-topup-activate
+          status: Covered
+          label: behavior:validator:deposit-topup-activate
+        - id: validator.proposer-slashing
+          status: Covered
+          label: behavior:validator:proposer-slashing
+        - id: validator.attester-slashing
+          status: Covered
+          label: behavior:validator:attester-slashing
+        - id: validator.exit-withdraw
+          status: Covered
+          label: behavior:validator:exit-withdraw
+        - id: validator.lifecycle-matrix
+          status: Covered
+          label: behavior:validator:lifecycle-matrix
+        - id: validator.bls-credential-change
+          status: Unsupported
+          reason: QRL withdrawal credentials are direct Q-addresses
+    - id: verkle-dev/aave-deployment.yaml
+      disposition: Unsupported
+      replacement: Verkle state and Ethereum AAVE deployment are not supported
+    - id: verkle-dev/verkle-conversion-check.yaml
+      disposition: Unsupported
+      replacement: Verkle state conversion is not supported

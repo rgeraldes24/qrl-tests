@@ -3,7 +3,6 @@
 package protocol_test
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -15,7 +14,10 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
@@ -46,13 +48,13 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			suite.sessions, err = endtoendlive.OpenAll(ctx, false)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			suite.sessions, err = runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			for _, session := range suite.sessions {
-				ginkgo.DeferCleanup(session.Close)
-				beacon, err := consensus.New(session.Participant.ConsensusURL)
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
-				suite.beacons = append(suite.beacons, beacon)
+				suite.beacons = append(suite.beacons, session.Consensus)
 			}
 			suite.slotsPerEpoch, err = suite.beacons[0].SpecUint(ctx, "SLOTS_PER_EPOCH")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -116,7 +118,7 @@ var _ = ginkgo.Describe(
 					seen[peer.PeerID] = struct{}{}
 				}
 
-				beaconMetrics := readMetrics(ctx, suite.sessions[index].Participant.ConsensusMetricsURL)
+				beaconMetrics := readMetrics(ctx, suite.sessions[index].Participant.Consensus.MetricsURL)
 				head, err := beacon.HeadSlot(ctx)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				metricHead := singleMetric(beaconMetrics, "beacon_head_slot")
@@ -124,7 +126,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(float64(head) - metricHead).To(gomega.BeNumerically("<=", 2))
 				gomega.Expect(singleMetric(beaconMetrics, "go_memstats_alloc_bytes")).To(gomega.BeNumerically("<", maxMetricsMemory))
 
-				validatorMetrics := readMetrics(ctx, suite.sessions[index].Participant.ValidatorMetricsURL)
+				validatorMetrics := readMetrics(ctx, suite.sessions[index].Participant.Validator.MetricsURL)
 				gomega.Expect(metricCount(validatorMetrics, "validator_statuses")).To(gomega.BeNumerically(">", 0))
 				gomega.Expect(metricSum(validatorMetrics, "validator_successful_attestations")).To(gomega.BeNumerically(">", 0))
 			}
@@ -135,18 +137,22 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("verifies execution-data votes, fee recipients, sync participation, and every carried signature", func(ctx ginkgo.SpecContext) {
 			start, end := suite.previousEpoch(ctx)
+			verifier, err := consensusverify.New(ctx, suite.beacons[0])
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			votingEpochs, err := suite.beacons[0].SpecUint(ctx, "EPOCHS_PER_EXECUTION_VOTING_PERIOD")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			votingPeriod := votingEpochs * suite.slotsPerEpoch
 			votes := make(map[uint64]consensus.ExecutionDataVote)
-			verified := consensus.SignatureSummary{}
+			verified := consensusverify.SignatureSummary{}
 			produced := 0
 			for slot := start; slot < end; slot++ {
 				blockID := strconv.FormatUint(slot, 10)
-				data, err := suite.beacons[0].BlockConsensusData(ctx, blockID)
+				block, err := suite.beacons[0].Block(ctx, blockID)
 				if consensus.IsNotFound(err) {
 					continue
 				}
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				data, err := block.ConsensusData()
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				produced++
 				period := slot / votingPeriod
@@ -166,7 +172,7 @@ var _ = ginkgo.Describe(
 				}
 				gomega.Expect(data.SyncCommitteeSignatures).To(gomega.HaveLen(setBits))
 
-				payload, err := suite.beacons[0].BlockExecutionPayload(ctx, blockID)
+				payload, err := block.ExecutionPayload()
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				feeRecipient, err := hexutil.Decode(payload.FeeRecipient)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -183,7 +189,9 @@ var _ = ginkgo.Describe(
 					gomega.Expect(balanceAfter).To(gomega.BeNumerically(">", balanceBefore))
 				}
 
-				summary, err := suite.beacons[0].VerifyBlockSignatures(ctx, blockID)
+				header, err := suite.beacons[0].BlockHeader(ctx, blockID)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				summary, err := verifier.Verify(ctx, header, block)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				verified.Block += summary.Block
 				verified.Randao += summary.Randao
@@ -219,12 +227,7 @@ func (suite *protocolSuite) previousEpoch(ctx context.Context) (uint64, uint64) 
 	return start, start + suite.slotsPerEpoch
 }
 
-type metricSample struct {
-	name  string
-	value float64
-}
-
-func readMetrics(ctx context.Context, endpoint string) []metricSample {
+func readMetrics(ctx context.Context, endpoint string) map[string]*dto.MetricFamily {
 	ginkgo.GinkgoHelper()
 	gomega.Expect(endpoint).NotTo(gomega.BeEmpty())
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/metrics", nil)
@@ -233,43 +236,25 @@ func readMetrics(ctx context.Context, endpoint string) []metricSample {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	defer response.Body.Close()
 	gomega.Expect(response.StatusCode).To(gomega.Equal(http.StatusOK))
-	payload, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
+	parser := expfmt.TextParser{}
+	families, err := parser.TextToMetricFamilies(io.LimitReader(response.Body, 32<<20))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-	var samples []metricSample
-	scanner := bufio.NewScanner(strings.NewReader(string(payload)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		name := strings.SplitN(fields[0], "{", 2)[0]
-		value, err := strconv.ParseFloat(fields[len(fields)-1], 64)
-		if err == nil {
-			samples = append(samples, metricSample{name: name, value: value})
-		}
-	}
-	gomega.Expect(scanner.Err()).NotTo(gomega.HaveOccurred())
-	return samples
+	return families
 }
 
-func singleMetric(samples []metricSample, name string) float64 {
+func singleMetric(families map[string]*dto.MetricFamily, name string) float64 {
 	ginkgo.GinkgoHelper()
-	values := metricValues(samples, name)
+	values := metricValues(families, name)
 	gomega.Expect(values).To(gomega.HaveLen(1), fmt.Sprintf("metric %s", name))
 	return values[0]
 }
 
-func metricCount(samples []metricSample, name string) int {
-	return len(metricValues(samples, name))
+func metricCount(families map[string]*dto.MetricFamily, name string) int {
+	return len(metricValues(families, name))
 }
 
-func metricSum(samples []metricSample, name string) float64 {
-	values := metricValues(samples, name)
+func metricSum(families map[string]*dto.MetricFamily, name string) float64 {
+	values := metricValues(families, name)
 	gomega.Expect(values).NotTo(gomega.BeEmpty(), fmt.Sprintf("metric %s", name))
 	var total float64
 	for _, value := range values {
@@ -278,11 +263,20 @@ func metricSum(samples []metricSample, name string) float64 {
 	return total
 }
 
-func metricValues(samples []metricSample, name string) []float64 {
-	var values []float64
-	for _, sample := range samples {
-		if sample.name == name {
-			values = append(values, sample.value)
+func metricValues(families map[string]*dto.MetricFamily, name string) []float64 {
+	family := families[name]
+	if family == nil {
+		return nil
+	}
+	values := make([]float64, 0, len(family.Metric))
+	for _, metric := range family.Metric {
+		switch family.GetType() {
+		case dto.MetricType_COUNTER:
+			values = append(values, metric.GetCounter().GetValue())
+		case dto.MetricType_GAUGE:
+			values = append(values, metric.GetGauge().GetValue())
+		case dto.MetricType_UNTYPED:
+			values = append(values, metric.GetUntyped().GetValue())
 		}
 	}
 	return values

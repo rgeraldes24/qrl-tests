@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 //
 // The go-qrl library is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
@@ -12,7 +12,7 @@
 // GNU Lesser General Public License for more details.
 //
 // You should have received a copy of the GNU Lesser General Public License
-// along with the go-qrl library. If not, see <http://www.gnu.org/licenses/>.
+// along with qrl-tests. If not, see <http://www.gnu.org/licenses/>.
 
 //go:build e2e
 
@@ -21,13 +21,12 @@ package abi
 import (
 	"testing"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
-	gomega "github.com/onsi/gomega"
 )
 
 func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "ABI E2E suite")
+	testsuite.Run(t, "ABI E2E suite")
 }
 
 var suite *liveSuite

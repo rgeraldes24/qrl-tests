@@ -190,7 +190,7 @@ func recordOperationProposer(
 func expectedValidatorPairs(sessions []*endtoendlive.Session) map[string]struct{} {
 	expected := make(map[string]struct{}, len(sessions))
 	for _, session := range sessions {
-		name := strings.TrimPrefix(session.Participant.ValidatorServiceName, "vc-")
+		name := strings.TrimPrefix(session.Participant.Validator.Name, "vc-")
 		gomega.Expect(name).NotTo(gomega.BeEmpty())
 		expected[name] = struct{}{}
 	}

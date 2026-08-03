@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 //go:build e2e
 
@@ -7,12 +7,11 @@ package clef
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/build"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	qrl "github.com/theQRL/go-qrl"
@@ -26,8 +25,7 @@ import (
 const liveSpecTimeout = 10 * time.Minute
 
 func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Clef live E2E suite")
+	testsuite.Run(t, "Clef live E2E suite")
 }
 
 var _ = ginkgo.Describe(
@@ -44,14 +42,15 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			network, err = endtoendlive.Open(ctx, false)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			network, err = runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(network.Close)
 
 			workDir := ginkgo.GinkgoT().TempDir()
-			clefPath := filepath.Join(workDir, "clef")
-			ginkgo.By("building the current Clef binary")
-			gomega.Expect(build.Binary(ctx, "./cmd/clef", clefPath)).To(gomega.Succeed())
+			clefPath, err := runtime.Clef()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			session, err = newClefSession(
 				ctx,

@@ -1,11 +1,9 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 package coverage
 
 import (
-	"bufio"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,78 +14,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const sourceTableHeading = "## Source Scenario Inventory"
-
 func TestScenarioInventoryIsExhaustive(t *testing.T) {
 	root := repositoryRoot(t)
-	source := scenarioNames(t, filepath.Join(root, "endtoend/coverage/source-scenarios.txt"))
-	coverage := coverageRows(t, filepath.Join(root, "docs/scenario-coverage.md"))
-	contracts := behaviorContracts(t, filepath.Join(root, "endtoend/coverage/source-behaviors.json"))
+	catalog, err := Load(filepath.Join(root, "endtoend/coverage/scenarios.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, 1, catalog.Version)
+	require.Len(t, catalog.Scenarios, catalog.SourceScenarioCount)
 	suites := suiteSources(t, root)
+	seen := make(map[string]struct{}, len(catalog.Scenarios))
 
-	require.Len(t, source, 79)
-	require.Len(t, coverage, len(source))
-	for name := range source {
-		row, ok := coverage[name]
-		require.Truef(t, ok, "scenario %q is not classified", name)
-		require.Contains(t, []string{"Full", "Equivalent", "Partial", "Failing", "Unsupported"}, row.disposition)
-		require.NotEmptyf(t, row.replacement, "scenario %q has no coverage contract or exclusion reason", name)
-		if row.disposition != "Unsupported" {
-			contract, ok := contracts[name]
-			require.Truef(t, ok, "scenario %q has no behavior-level contract", name)
-			require.Equal(t, row.disposition, contract.Status, name)
-			require.NotEmpty(t, contract.Behaviors, name)
-			for _, behavior := range contract.Behaviors {
-				require.NotEmpty(t, behavior.ID, name)
-				require.Contains(t, []string{"Covered", "Equivalent", "Missing", "Failing", "Unsupported"}, behavior.Status)
-				if behavior.Status == "Covered" || behavior.Status == "Equivalent" || behavior.Status == "Failing" {
-					require.NotEmptyf(t, behavior.Label, "%s behavior %s has no Ginkgo label", name, behavior.ID)
-					files := filesWithLabel(suites, behavior.Label)
-					require.NotEmptyf(t, files, "%s behavior %s has no executable Ginkgo coverage", name, behavior.ID)
-					require.Truef(t, selectedByLane(root, files), "%s behavior %s is not selected by any E2E lane", name, behavior.ID)
-				} else {
-					require.NotEmptyf(t, behavior.Reason, "%s behavior %s has no missing/unsupported reason", name, behavior.ID)
-				}
+	for _, scenario := range catalog.Scenarios {
+		require.NotEmpty(t, scenario.ID)
+		_, duplicate := seen[scenario.ID]
+		require.Falsef(t, duplicate, "duplicate scenario %q", scenario.ID)
+		seen[scenario.ID] = struct{}{}
+		require.Contains(t, []string{"Full", "Equivalent", "Partial", "Failing", "Unsupported"}, scenario.Disposition)
+		require.NotEmptyf(t, scenario.Replacement, "scenario %q has no coverage contract or exclusion reason", scenario.ID)
+		if scenario.Disposition == "Unsupported" {
+			require.Emptyf(t, scenario.Behaviors, "unsupported scenario %q must not claim a behavior contract", scenario.ID)
+			continue
+		}
+		require.NotEmptyf(t, scenario.Behaviors, "scenario %q has no behavior-level contract", scenario.ID)
+		for _, behavior := range scenario.Behaviors {
+			require.NotEmpty(t, behavior.ID, scenario.ID)
+			require.Contains(t, []string{"Covered", "Equivalent", "Missing", "Failing", "Unsupported"}, behavior.Status)
+			if behavior.Status == "Covered" || behavior.Status == "Equivalent" || behavior.Status == "Failing" {
+				require.NotEmptyf(t, behavior.Label, "%s behavior %s has no Ginkgo label", scenario.ID, behavior.ID)
+				files := filesWithLabel(suites, behavior.Label)
+				require.NotEmptyf(t, files, "%s behavior %s has no executable Ginkgo coverage", scenario.ID, behavior.ID)
+				require.Truef(t, selectedByLane(root, files), "%s behavior %s is not selected by any E2E lane", scenario.ID, behavior.ID)
+			} else {
+				require.NotEmptyf(t, behavior.Reason, "%s behavior %s has no missing/unsupported reason", scenario.ID, behavior.ID)
 			}
-		} else {
-			_, ok := contracts[name]
-			require.Falsef(t, ok, "unsupported scenario %q must not claim a behavior contract", name)
 		}
 	}
-	for name := range contracts {
-		_, ok := source[name]
-		require.Truef(t, ok, "behavior contract references unknown scenario %q", name)
-	}
 }
 
-type behaviorContract struct {
-	Scenario  string     `json:"scenario"`
-	Status    string     `json:"status"`
-	Behaviors []behavior `json:"behaviors"`
-}
-
-type behavior struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Label  string `json:"label"`
-	Reason string `json:"reason"`
-}
-
-func behaviorContracts(t *testing.T, path string) map[string]behaviorContract {
-	t.Helper()
-	payload, err := os.ReadFile(path)
+func TestScenarioDocumentationIsCurrent(t *testing.T) {
+	root := repositoryRoot(t)
+	catalog, err := Load(filepath.Join(root, "endtoend/coverage/scenarios.yaml"))
 	require.NoError(t, err)
-	var source []behaviorContract
-	require.NoError(t, json.Unmarshal(payload, &source))
-
-	contracts := make(map[string]behaviorContract, len(source))
-	for _, contract := range source {
-		require.NotEmpty(t, contract.Scenario)
-		_, duplicate := contracts[contract.Scenario]
-		require.Falsef(t, duplicate, "duplicate behavior contract for %q", contract.Scenario)
-		contracts[contract.Scenario] = contract
-	}
-	return contracts
+	documentPath := filepath.Join(root, "docs/scenario-coverage.md")
+	document, err := os.ReadFile(documentPath)
+	require.NoError(t, err)
+	updated, err := ReplaceScenarioInventory(string(document), RenderScenarioInventory(catalog))
+	require.NoError(t, err)
+	require.Equal(t, string(document), updated, "run `go generate ./endtoend/coverage`")
 }
 
 func suiteSources(t *testing.T, root string) map[string]string {
@@ -128,7 +100,7 @@ func filesWithLabel(sources map[string]string, label string) []string {
 
 func selectedByLane(root string, files []string) bool {
 	for _, lane := range lanes.All() {
-		for _, pattern := range lane.Packages {
+		for _, pattern := range lane.Packages() {
 			packageRoot := strings.TrimSuffix(strings.TrimPrefix(pattern, "./"), "/...")
 			for _, file := range files {
 				if file == packageRoot || strings.HasPrefix(file, packageRoot+"/") {
@@ -140,65 +112,4 @@ func selectedByLane(root string, files []string) bool {
 		}
 	}
 	return false
-}
-
-type coverageRow struct {
-	disposition string
-	replacement string
-}
-
-func coverageRows(t *testing.T, path string) map[string]coverageRow {
-	t.Helper()
-	file, err := os.Open(path)
-	require.NoError(t, err)
-	defer file.Close()
-
-	rows := make(map[string]coverageRow)
-	inSourceTable := false
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == sourceTableHeading {
-			inSourceTable = true
-			continue
-		}
-		if inSourceTable && strings.HasPrefix(line, "## ") {
-			break
-		}
-		if !inSourceTable || !strings.HasPrefix(line, "| `") {
-			continue
-		}
-		columns := strings.Split(line, "|")
-		require.Len(t, columns, 5, line)
-		name := strings.Trim(strings.TrimSpace(columns[1]), "`")
-		_, duplicate := rows[name]
-		require.Falsef(t, duplicate, "duplicate scenario %q", name)
-		rows[name] = coverageRow{
-			disposition: strings.TrimSpace(columns[2]),
-			replacement: strings.TrimSpace(columns[3]),
-		}
-	}
-	require.NoError(t, scanner.Err())
-	return rows
-}
-
-func scenarioNames(t *testing.T, path string) map[string]struct{} {
-	t.Helper()
-	file, err := os.Open(path)
-	require.NoError(t, err)
-	defer file.Close()
-
-	names := make(map[string]struct{})
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		name := strings.TrimSpace(scanner.Text())
-		if name == "" || strings.HasPrefix(name, "#") {
-			continue
-		}
-		_, duplicate := names[name]
-		require.Falsef(t, duplicate, "duplicate source scenario %q", name)
-		names[name] = struct{}{}
-	}
-	require.NoError(t, scanner.Err())
-	return names
 }

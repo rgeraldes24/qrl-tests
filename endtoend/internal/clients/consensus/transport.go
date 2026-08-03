@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+type dataResponse[T any] struct {
+	Data T `json:"data"`
+}
+
 func (client *Client) Post(ctx context.Context, path string, payload any) error {
 	return client.PostJSON(ctx, path, payload, nil)
 }

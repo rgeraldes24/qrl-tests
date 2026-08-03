@@ -34,23 +34,18 @@ var _ = ginkgo.Describe(
 		var suite *liveSuite
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			if len(sessions) < 2 {
-				for _, session := range sessions {
-					session.Close()
-				}
 				ginkgo.Skip("resilience scenarios require the sync or multi profile")
 			}
-			for _, session := range sessions {
-				ginkgo.DeferCleanup(session.Close)
-			}
-			primaryBeacon, err := consensus.New(sessions[0].Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite = &liveSuite{
 				primary: sessions[0], secondary: sessions[1],
-				primaryBeacon: primaryBeacon,
-				services:      devnet.NewServiceController(sessions[0].Environment.EnclaveName),
+				primaryBeacon: sessions[0].Consensus,
+				services:      runtime.Services,
 				stopped:       make(map[string]bool),
 			}
 		})
@@ -67,7 +62,7 @@ var _ = ginkgo.Describe(
 		})
 
 		ginkgo.It("recovers a stopped execution client and Engine connection", func(ctx ginkgo.SpecContext) {
-			service := suite.secondary.Participant.ExecutionServiceName
+			service := suite.secondary.Participant.Execution.Name
 			gomega.Expect(suite.stop(ctx, service)).To(gomega.Succeed())
 
 			gomega.Eventually(func() bool {
@@ -80,7 +75,7 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(recoveryTimeout))
 
 		ginkgo.It("recovers a stopped consensus client", func(ctx ginkgo.SpecContext) {
-			service := suite.secondary.Participant.ConsensusServiceName
+			service := suite.secondary.Participant.Consensus.Name
 			start, err := suite.primaryBeacon.HeadSlot(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(suite.stop(ctx, service)).To(gomega.Succeed())
@@ -96,9 +91,9 @@ var _ = ginkgo.Describe(
 		ginkgo.It("catches up an execution-consensus pair after an extended outage", func(ctx ginkgo.SpecContext) {
 			participant := suite.secondary.Participant
 			services := []string{
-				participant.ValidatorServiceName,
-				participant.ConsensusServiceName,
-				participant.ExecutionServiceName,
+				participant.Validator.Name,
+				participant.Consensus.Name,
+				participant.Execution.Name,
 			}
 			start, err := suite.primaryBeacon.HeadSlot(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -121,15 +116,15 @@ var _ = ginkgo.Describe(
 func (suite *liveSuite) awaitSecondaryReady(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 	gomega.Eventually(func() error {
-		secondary, err := endtoendlive.OpenParticipant(ctx, suite.secondary.Participant.Index, false)
+		if err := suite.primary.Runtime.Refresh(ctx); err != nil {
+			return err
+		}
+		secondary, err := suite.primary.Runtime.OpenParticipant(ctx, suite.secondary.Participant.Index, false)
 		if err != nil {
 			return err
 		}
 		defer secondary.Close()
-		secondaryBeacon, err := consensus.New(secondary.Participant.ConsensusURL)
-		if err != nil {
-			return err
-		}
+		secondaryBeacon := secondary.Consensus
 		progress, err := secondary.Execution.SyncProgress(ctx)
 		if err != nil {
 			return err

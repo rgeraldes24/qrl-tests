@@ -11,19 +11,11 @@ import (
 )
 
 func Await(ctx context.Context, sessions []*endtoendlive.Session, startEpoch, advance uint64) error {
-	beacons := make([]*consensus.Client, len(sessions))
-	for index, session := range sessions {
-		beacon, err := consensus.New(session.Participant.ConsensusURL)
-		if err != nil {
-			return err
-		}
-		beacons[index] = beacon
-	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var lastErr error
 	for {
-		if lastErr = stable(ctx, sessions, beacons, startEpoch+advance); lastErr == nil {
+		if lastErr = stable(ctx, sessions, startEpoch+advance); lastErr == nil {
 			return nil
 		}
 		select {
@@ -37,11 +29,11 @@ func Await(ctx context.Context, sessions []*endtoendlive.Session, startEpoch, ad
 func stable(
 	ctx context.Context,
 	sessions []*endtoendlive.Session,
-	beacons []*consensus.Client,
 	targetEpoch uint64,
 ) error {
 	var expected consensus.Checkpoint
-	for index, beacon := range beacons {
+	for index, session := range sessions {
+		beacon := session.Consensus
 		status, err := beacon.Syncing(ctx)
 		if err != nil {
 			return err
@@ -61,7 +53,7 @@ func stable(
 		} else if checkpoint != expected {
 			return fmt.Errorf("finalized checkpoints have not converged: %+v != %+v", checkpoint, expected)
 		}
-		progress, err := sessions[index].Execution.SyncProgress(ctx)
+		progress, err := session.Execution.SyncProgress(ctx)
 		if err != nil {
 			return err
 		}

@@ -1,102 +1,55 @@
 # QRL Tests
 
-`qrl-tests` owns black-box end-to-end testing across QRL execution and
-consensus clients. It starts a pinned Kurtosis development network and runs
-QRL-native Ginkgo suites through public RPC, REST, GraphQL, WebSocket, console,
-and signer interfaces.
-
-The suites cover QRL network health, workloads, lifecycle operations, failure
-recovery, and protocol boundaries without maintaining a second YAML runner.
-Unsupported protocol families such as blobs, Pectra/Fusaka/Gloas/Verkle
-behavior, EIP-7702, and MEV builders are explicitly excluded. See
-[`docs/scenario-coverage.md`](docs/scenario-coverage.md).
+`qrl-tests` owns black-box testing across QRL execution and consensus clients.
+It provisions pinned Kurtosis networks and runs QRL-native Ginkgo suites through
+public RPC, REST, GraphQL, WebSocket, console, signer, and Engine interfaces.
 
 ## Run
 
-Point the harness at the go-qrl checkout whose image and helper binaries should
-be tested:
+Point the harness at the go-qrl checkout used to build the execution image and
+helper binaries:
 
 ```bash
 export GO_QRL_SOURCE_DIR=/path/to/go-qrl
 
 make test
 make e2e-compile
-make network-start
-make e2e-test
-make network-stop
+make e2e-run E2E_LANE=single
 ```
 
-Run every lane against a fresh matching network profile:
+`e2e-run` provisions the lane's network profile, runs the lane, and removes the
+network. Run every supported lane with:
 
 ```bash
 make e2e-all
 ```
 
-`e2e-all` provisions and removes each network automatically. Use the individual
-`network-start`, suite, and `network-stop` commands when iterating on one lane.
-The equivalent Kubernetes entry points are `network-start-k8s` and
-`e2e-all-k8s`; they require registry images and a selected Kurtosis cluster with
-its gateway running. See [`devnet/README.md`](devnet/README.md).
-
-Normal runs exclude long `scenario-full` workloads. Run the full QRL network
-scenarios against a multi-client network with:
+For iterative work, keep a network running:
 
 ```bash
-DEVNET_PROFILE=multi make network-start
-make e2e-scenarios
+make network-start DEVNET_PROFILE=single
+make e2e E2E_LANE=single
 make network-stop
 ```
 
-Run destructive validator operation workloads on a fresh, larger network:
+List the registered lanes with `go run ./cmd/qrl-tests list`. Reports are
+written under `reports/<lane>/`.
+
+## Kubernetes
+
+The same runner supports Kurtosis on Docker and Kubernetes. Kubernetes runs
+must use registry-backed images and an active Kurtosis gateway:
 
 ```bash
-DEVNET_PROFILE=operations make network-start
-make e2e-validator-operations
-make network-stop
+DEVNET_BACKEND=kubernetes \
+DEVNET_EXECUTION_IMAGE=registry.example/go-qrl:test \
+DEVNET_CLEF_IMAGE=registry.example/go-qrl-clef:test \
+make e2e-run E2E_LANE=single
 ```
 
-Run consensus API and protocol checks against the current network:
+Use distinct `DEVNET_ENCLAVE_NAME` and `E2E_REPORT_DIR` values for concurrent
+networks. Backend-specific scenarios are selected from declared capabilities;
+Docker-only partition tests are omitted on Kubernetes.
 
-```bash
-make e2e-consensus
-```
-
-Fresh-database sync, cold-state lookup, and optimistic-sync coverage use
-dedicated network profiles:
-
-```bash
-DEVNET_PROFILE=sync make network-start
-DEVNET_PROFILE=sync make e2e-sync
-make network-stop
-
-DEVNET_PROFILE=execution-sync make network-start
-DEVNET_PROFILE=execution-sync make e2e-execution-sync
-make network-stop
-
-DEVNET_PROFILE=cold make network-start
-DEVNET_PROFILE=cold make e2e-cold
-make network-stop
-
-DEVNET_PROFILE=optimistic make network-start
-DEVNET_PROFILE=optimistic make e2e-optimistic
-make network-stop
-```
-
-The long-running recovery lane uses the four-participant chaos profile:
-
-```bash
-DEVNET_PROFILE=chaos make network-start
-make e2e-soak
-make network-stop
-```
-
-Select suites with `E2E_PACKAGES`:
-
-```bash
-make e2e-test E2E_PACKAGES=./endtoend/suites/crosslayer/network
-make e2e-test E2E_PACKAGES='./endtoend/suites/execution/api ./endtoend/suites/execution/console'
-```
-
-Network configuration is documented in [`devnet/README.md`](devnet/README.md).
-Suite ownership and the client-repository boundary are documented in
-[`docs/migration.md`](docs/migration.md).
+See [development network configuration](devnet/README.md), [suite ownership](endtoend/README.md),
+[scenario coverage](docs/scenario-coverage.md), and [test ownership](docs/ownership.md).

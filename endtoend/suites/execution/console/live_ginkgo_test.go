@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 //go:build e2e
 
@@ -9,15 +9,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/build"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
 
 func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Console live E2E suite")
+	testsuite.Run(t, "Console live E2E suite")
 }
 
 var _ = ginkgo.Describe(
@@ -36,16 +35,17 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			session, err = endtoendlive.Open(ctx, true)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			session, err = runtime.Primary(ctx, true)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(session.Close)
-			rpcURL = session.Environment.RPCURL
+			rpcURL = session.Participant.Execution.RPCURL
 
 			workDir := ginkgo.GinkgoT().TempDir()
 
-			gqrlPath = filepath.Join(workDir, "gqrl")
-			ginkgo.By("building the current gqrl console")
-			gomega.Expect(build.Binary(ctx, "./cmd/gqrl", gqrlPath)).To(gomega.Succeed())
+			gqrlPath, err = runtime.GQRL()
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			jsPath = filepath.Join(workDir, "js")
 			ginkgo.By("preparing the console scripts and deployment transaction")

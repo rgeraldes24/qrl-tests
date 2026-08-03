@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 // Package kurtosis provides the narrow Kurtosis API used by the development
 // network controller. Raw SDK types deliberately do not escape this package.
@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/kurtosis_core_rpc_api_bindings"
+	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/enclaves"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/services"
 	"github.com/kurtosis-tech/kurtosis/api/golang/core/lib/starlark_run_config"
 	"github.com/kurtosis-tech/kurtosis/api/golang/engine/lib/kurtosis_context"
@@ -66,37 +67,25 @@ func (client *SDKClient) CreateAndRunRemotePackage(
 	name string,
 	locator,
 	serializedParams string,
-) error {
+) (bool, error) {
 	enclave, err := client.context.CreateEnclave(ctx, name)
 	if err != nil {
-		return err
+		return false, err
 	}
 	configuration := starlark_run_config.NewRunStarlarkConfig(starlark_run_config.WithSerializedParams(serializedParams))
 	stream, cancel, err := enclave.RunStarlarkRemotePackage(ctx, locator, configuration)
 	if err != nil {
-		return err
+		return true, err
 	}
 	defer cancel()
 	// qrl-package output can contain generated seed material. Completion is all
 	// the network controller needs, so raw serialized output never escapes this
 	// SDK boundary.
-	return consumeStarlarkCompletion(stream)
-}
-
-func (client *SDKClient) Service(ctx context.Context, enclaveName, serviceName string) (Service, error) {
-	enclave, err := client.context.GetEnclaveContext(ctx, enclaveName)
-	if err != nil {
-		return Service{}, err
-	}
-	serviceContext, err := enclave.GetServiceContext(serviceName)
-	if err != nil {
-		return Service{}, err
-	}
-	return service(serviceContext), nil
+	return true, consumeStarlarkCompletion(stream)
 }
 
 func (client *SDKClient) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
-	enclave, err := client.context.GetEnclaveContext(ctx, enclaveName)
+	enclave, err := client.enclave(ctx, enclaveName)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +106,10 @@ func (client *SDKClient) Services(ctx context.Context, enclaveName string) (map[
 		result[string(name)] = service(context)
 	}
 	return result, nil
+}
+
+func (client *SDKClient) enclave(ctx context.Context, name string) (*enclaves.EnclaveContext, error) {
+	return client.context.GetEnclaveContext(ctx, name)
 }
 
 type serviceContext interface {

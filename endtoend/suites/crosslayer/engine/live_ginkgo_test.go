@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	engineJWTSecret = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
-	engineTimeout   = 5 * time.Minute
+	engineTimeout = 5 * time.Minute
 )
 
 var _ = ginkgo.Describe(
@@ -34,13 +33,15 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			session, err = endtoendlive.Open(ctx, false)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			session, err = runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(session.Close)
-			beacon, err = consensus.New(session.Participant.ConsensusURL)
+			beacon = session.Consensus
+			engine, err = engineapi.New(ctx, session.Participant.Execution.EngineURL, runtime.Environment.EngineJWTSecret)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			engine, err = engineapi.New(session.Participant.EngineURL, engineJWTSecret)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(engine.Close)
 		})
 
 		ginkgo.It("authenticates and advertises the supported Engine methods", func(ctx ginkgo.SpecContext) {
@@ -54,8 +55,9 @@ var _ = ginkgo.Describe(
 				"engine_getPayloadBodiesByRangeV1",
 			))
 
-			unauthenticated, err := engineapi.New(session.Participant.EngineURL, strings.Repeat("00", 32))
+			unauthenticated, err := engineapi.New(ctx, session.Participant.Execution.EngineURL, strings.Repeat("00", 32))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			defer unauthenticated.Close()
 			_, err = unauthenticated.ExchangeCapabilities(ctx)
 			gomega.Expect(err).To(gomega.HaveOccurred())
 		}, ginkgo.SpecTimeout(engineTimeout))

@@ -5,11 +5,9 @@ package partition
 import (
 	"testing"
 
-	ginkgo "github.com/onsi/ginkgo/v2"
-	gomega "github.com/onsi/gomega"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 )
 
 func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "QRL Network Partition E2E Suite")
+	testsuite.Run(t, "QRL Network Partition E2E Suite")
 }

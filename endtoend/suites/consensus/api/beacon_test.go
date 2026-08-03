@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -33,13 +34,13 @@ var _ = ginkgo.Describe(
 		var nodes []beaconNode
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			for _, session := range sessions {
-				ginkgo.DeferCleanup(session.Close)
-				client, err := consensus.New(session.Participant.ConsensusURL)
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
-				nodes = append(nodes, beaconNode{session: session, client: client})
+				nodes = append(nodes, beaconNode{session: session, client: session.Consensus})
 			}
 		})
 
@@ -198,7 +199,9 @@ var _ = ginkgo.Describe(
 					return slot / slotsPerEpoch
 				}).WithContext(ctx).WithTimeout(beaconAPITimeout).Should(gomega.BeNumerically(">=", 2))
 
-				summary, err := node.client.VerifyBlockSignatures(ctx, "head")
+				verifier, err := consensusverify.New(ctx, node.client)
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				summary, err := verifier.VerifyBlock(ctx, "head")
 				gomega.Expect(err).NotTo(gomega.HaveOccurred(), fmt.Sprintf("participant %d", node.session.Participant.Index))
 				gomega.Expect(summary.Block).To(gomega.Equal(1))
 				gomega.Expect(summary.Randao).To(gomega.Equal(1))

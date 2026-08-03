@@ -3,12 +3,10 @@
 package coldstate_test
 
 import (
-	"os"
 	"slices"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -23,14 +21,15 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "consensus", "cold-state", "profile-cold"),
 	func() {
 		ginkgo.It("retrieves complete genesis-era assignments after archival", func(ctx ginkgo.SpecContext) {
-			if os.Getenv("DEVNET_PROFILE") != string(devnet.ProfileCold) {
-				ginkgo.Skip("cold-state coverage requires DEVNET_PROFILE=cold")
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			defer runtime.Close()
+			if runtime.Profile != devnet.ProfileCold {
+				ginkgo.Skip("cold-state coverage requires the cold profile")
 			}
-			session, err := endtoendlive.Open(ctx, false)
+			session, err := runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			defer session.Close()
-			beacon, err := consensus.New(session.Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			beacon := session.Consensus
 			slotsPerEpoch, err := beacon.SpecUint(ctx, "SLOTS_PER_EPOCH")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			active, err := beacon.ActiveValidatorIndices(ctx)

@@ -5,11 +5,9 @@ package transactions
 import (
 	"testing"
 
-	ginkgo "github.com/onsi/ginkgo/v2"
-	gomega "github.com/onsi/gomega"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 )
 
 func TestE2E(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Transaction scenarios live E2E suite")
+	testsuite.Run(t, "Transaction scenarios live E2E suite")
 }

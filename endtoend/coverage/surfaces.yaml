@@ -1,0 +1,28 @@
+surfaces:
+  - name: execution-rpc
+    entries:
+      - {id: json-rpc, package: ./endtoend/suites/execution/api, lane: single, classification: behavior}
+      - {id: graphql, package: ./endtoend/suites/execution/api, lane: single, classification: behavior}
+      - {id: websocket, package: ./endtoend/suites/execution/api, lane: single, classification: behavior}
+      - {id: debug-and-tracing, package: ./endtoend/suites/execution/api, lane: single, classification: behavior}
+  - name: beacon-rest
+    entries:
+      - {id: node-and-config, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+      - {id: beacon-state, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+      - {id: operation-pools, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+      - {id: event-stream, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+      - {id: chain-reorg-event, package: ./endtoend/suites/crosslayer/partition, lane: chaos, classification: behavior}
+      - {id: legacy-parity, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+  - name: validator-rest
+    entries:
+      - {id: attester-duties, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+      - {id: proposer-duties, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+      - {id: sync-duties, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+      - {id: liveness, package: ./endtoend/suites/consensus/api, lane: single, classification: behavior}
+  - name: engine-rpc
+    entries:
+      - {id: exchange-capabilities, package: ./endtoend/suites/crosslayer/engine, lane: single, classification: behavior}
+      - {id: payload-bodies, package: ./endtoend/suites/crosslayer/engine, lane: single, classification: behavior}
+      - {id: forkchoice-updated-v2, package: ./endtoend/suites/crosslayer/engine, lane: single, classification: behavior}
+      - {id: get-payload-v2, package: ./endtoend/suites/crosslayer/engine, lane: single, classification: behavior}
+      - {id: new-payload-v2, package: ./endtoend/suites/crosslayer/engine, lane: single, classification: behavior}

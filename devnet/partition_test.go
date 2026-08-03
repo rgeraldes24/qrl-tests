@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 package devnet
 
@@ -24,12 +24,12 @@ func TestNetworkPartition(t *testing.T) {
 		},
 	}
 	first := Participant{
-		ExecutionServiceID: "el-1", ExecutionPrivateIP: "10.0.0.1",
-		ConsensusServiceID: "cl-1", ConsensusPrivateIP: "10.0.0.2",
+		Execution: ExecutionService{ServiceInfo: ServiceInfo{ID: "el-1", PrivateIP: "10.0.0.1"}},
+		Consensus: ConsensusService{ServiceInfo: ServiceInfo{ID: "cl-1", PrivateIP: "10.0.0.2"}},
 	}
 	second := Participant{
-		ExecutionServiceID: "el-2", ExecutionPrivateIP: "10.0.0.3",
-		ConsensusServiceID: "cl-2", ConsensusPrivateIP: "10.0.0.4",
+		Execution: ExecutionService{ServiceInfo: ServiceInfo{ID: "el-2", PrivateIP: "10.0.0.3"}},
+		Consensus: ConsensusService{ServiceInfo: ServiceInfo{ID: "cl-2", PrivateIP: "10.0.0.4"}},
 	}
 
 	require.NoError(t, partition.Apply(t.Context(), []Participant{first}, []Participant{second}))

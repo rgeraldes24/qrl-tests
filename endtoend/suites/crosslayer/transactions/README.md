@@ -9,5 +9,5 @@ as Ginkgo specs:
 Run it against the separately started development network:
 
 ```bash
-make e2e-test E2E_PACKAGES=./endtoend/suites/crosslayer/transactions
+make e2e E2E_LANE=multi
 ```

@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 package devnet
 
@@ -10,10 +10,23 @@ import (
 
 type Backend string
 
+type Capability string
+
 const (
 	BackendDocker     Backend = "docker"
 	BackendKubernetes Backend = "kubernetes"
+
+	CapabilityNetworkPartition Capability = "network-partition"
 )
+
+func (backend Backend) Supports(capability Capability) bool {
+	switch capability {
+	case CapabilityNetworkPartition:
+		return backend == BackendDocker
+	default:
+		return false
+	}
+}
 
 func ParseBackend(value string) (Backend, error) {
 	backend := Backend(strings.TrimSpace(value))
@@ -36,18 +49,32 @@ type Images struct {
 	Genesis   string
 }
 
+func DefaultImages() Images {
+	return Images{
+		Execution: DefaultExecutionImage,
+		Clef:      DefaultClefImage,
+		Consensus: DefaultConsensusImage,
+		Validator: DefaultValidatorImage,
+		Genesis:   DefaultGenesisImage,
+	}
+}
+
 func (images Images) withDefaults() Images {
+	defaults := DefaultImages()
+	if images.Execution == "" {
+		images.Execution = defaults.Execution
+	}
 	if images.Clef == "" {
-		images.Clef = DefaultClefImage
+		images.Clef = defaults.Clef
 	}
 	if images.Consensus == "" {
-		images.Consensus = DefaultConsensusImage
+		images.Consensus = defaults.Consensus
 	}
 	if images.Validator == "" {
-		images.Validator = DefaultValidatorImage
+		images.Validator = defaults.Validator
 	}
 	if images.Genesis == "" {
-		images.Genesis = DefaultGenesisImage
+		images.Genesis = defaults.Genesis
 	}
 	return images
 }

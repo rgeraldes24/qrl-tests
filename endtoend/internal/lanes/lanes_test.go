@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 package lanes
 
@@ -23,9 +23,9 @@ func TestRegistry(t *testing.T) {
 		require.Falsef(t, duplicate, "duplicate lane %q", lane.Name)
 		seen[lane.Name] = struct{}{}
 		require.NotEmpty(t, lane.Profile)
-		require.NotEmpty(t, lane.Packages)
+		require.NotEmpty(t, lane.Suites)
 		require.Positive(t, lane.Timeout)
-		for _, pattern := range lane.Packages {
+		for _, pattern := range lane.Packages() {
 			path := strings.TrimSuffix(strings.TrimPrefix(pattern, "./"), "/...")
 			info, err := os.Stat(filepath.Join(root, path))
 			require.NoErrorf(t, err, "lane %s package %s", lane.Name, pattern)
@@ -40,14 +40,14 @@ func TestLaneForBackend(t *testing.T) {
 
 	docker, supported := chaos.ForBackend(devnet.BackendDocker)
 	require.True(t, supported)
-	require.Len(t, docker.Packages, 3)
+	require.Len(t, docker.Packages(), 3)
 
 	kubernetes, supported := chaos.ForBackend(devnet.BackendKubernetes)
 	require.True(t, supported)
 	require.Equal(t, []string{
 		"./endtoend/suites/crosslayer/network",
 		"./endtoend/suites/crosslayer/resilience",
-	}, kubernetes.Packages)
+	}, kubernetes.Packages())
 
 	soak, err := Named("soak")
 	require.NoError(t, err)

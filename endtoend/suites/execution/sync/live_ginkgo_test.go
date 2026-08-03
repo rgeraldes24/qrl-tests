@@ -41,19 +41,19 @@ var _ = ginkgo.Describe(
 		var secondaryConsensusStopped bool
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			sessions, err := endtoendlive.OpenAll(ctx, false)
+			runtime, err := endtoendlive.Load(ctx)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			sessions, err := runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(sessions).To(gomega.HaveLen(2))
 			primary, secondary = sessions[0], sessions[1]
-			for _, session := range sessions {
-				ginkgo.DeferCleanup(session.Close)
-			}
-			services = devnet.NewServiceController(primary.Environment.EnclaveName)
-			gomega.Expect(services.Stop(ctx, secondary.Participant.ConsensusServiceName)).To(gomega.Succeed())
+			services = runtime.Services
+			gomega.Expect(services.Stop(ctx, secondary.Participant.Consensus.Name)).To(gomega.Succeed())
 			secondaryConsensusStopped = true
 			ginkgo.DeferCleanup(func(cleanupCtx ginkgo.SpecContext) {
 				if secondaryConsensusStopped {
-					gomega.Expect(services.Start(cleanupCtx, secondary.Participant.ConsensusServiceName)).To(gomega.Succeed())
+					gomega.Expect(services.Start(cleanupCtx, secondary.Participant.Consensus.Name)).To(gomega.Succeed())
 				}
 			})
 		})
@@ -94,7 +94,7 @@ var _ = ginkgo.Describe(
 			var added bool
 			gomega.Expect(secondary.Execution.Client().CallContext(ctx, &added, "admin_addPeer", nodeInfo.Qnode)).To(gomega.Succeed())
 			gomega.Expect(added).To(gomega.BeTrue())
-			gomega.Expect(services.Start(ctx, secondary.Participant.ConsensusServiceName)).To(gomega.Succeed())
+			gomega.Expect(services.Start(ctx, secondary.Participant.Consensus.Name)).To(gomega.Succeed())
 			secondaryConsensusStopped = false
 
 			awaitExecutionState(ctx, secondary, canonical)
@@ -103,15 +103,17 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("preserves the synced state across an execution-client restart", func(ctx ginkgo.SpecContext) {
 			participantIndex := secondary.Participant.Index
-			gomega.Expect(services.Restart(ctx, secondary.Participant.ExecutionServiceName)).To(gomega.Succeed())
+			gomega.Expect(services.Restart(ctx, secondary.Participant.Execution.Name)).To(gomega.Succeed())
 			var replacement *endtoendlive.Session
 			gomega.Eventually(func() error {
+				if err := primary.Runtime.Refresh(ctx); err != nil {
+					return err
+				}
 				var err error
-				replacement, err = endtoendlive.OpenParticipant(ctx, participantIndex, false)
+				replacement, err = primary.Runtime.OpenParticipant(ctx, participantIndex, false)
 				return err
 			}).WithContext(ctx).WithTimeout(executionSyncTimeout).WithPolling(time.Second).Should(gomega.Succeed())
 			secondary = replacement
-			ginkgo.DeferCleanup(secondary.Close)
 			gomega.Eventually(func() error {
 				return assertExecutionState(ctx, secondary, canonical)
 			}).WithContext(ctx).WithTimeout(executionSyncTimeout).WithPolling(time.Second).Should(gomega.Succeed())

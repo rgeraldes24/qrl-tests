@@ -1,14 +1,52 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 package devnet
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/stretchr/testify/require"
 )
+
+type startClient struct {
+	created   bool
+	destroyed bool
+}
+
+func (*startClient) EnclaveExists(context.Context, string) (bool, error) { return false, nil }
+
+func (client *startClient) CreateAndRunRemotePackage(context.Context, string, string, string) (bool, error) {
+	return client.created, errors.New("package failed")
+}
+
+func (*startClient) Services(context.Context, string) (map[string]kurtosis.Service, error) {
+	return nil, nil
+}
+
+func (client *startClient) DestroyEnclave(context.Context, string) error {
+	client.destroyed = true
+	return nil
+}
+
+func TestStartCleansCreatedEnclave(t *testing.T) {
+	client := &startClient{created: true}
+	manager := &Manager{
+		newClient: func() (kurtosisClient, error) { return client, nil },
+		probe:     func(context.Context, string, string) error { return nil },
+	}
+
+	_, err := manager.Start(t.Context(), StartOptions{
+		EnclaveName: "failed-start",
+		Images:      Images{Execution: "go-qrl:test"},
+		Profile:     ProfileSingle,
+	})
+	require.ErrorContains(t, err, "package failed")
+	require.True(t, client.destroyed)
+}
 
 func TestParticipantsFromServices(t *testing.T) {
 	services := map[string]kurtosis.Service{
@@ -25,24 +63,48 @@ func TestParticipantsFromServices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []Participant{
 		{
-			Index:                1,
-			ExecutionServiceName: "el-1-gqrl-qrysm", ExecutionServiceID: "el-1-gqrl-qrysm-id", ExecutionPrivateIP: "10.0.0.1",
-			ConsensusServiceName: "cl-1-qrysm-gqrl", ConsensusServiceID: "cl-1-qrysm-gqrl-id", ConsensusPrivateIP: "10.0.0.1",
-			ValidatorServiceName: "vc-1-gqrl-qrysm", ValidatorServiceID: "vc-1-gqrl-qrysm-id",
-			RPCURL: "http://127.0.0.1:3201", GraphQLURL: "http://127.0.0.1:3201/graphql", WebSocketURL: "ws://127.0.0.1:3301",
-			EngineURL: "http://127.0.0.1:3401", ConsensusURL: "http://127.0.0.1:4201", ConsensusMetricsURL: "http://127.0.0.1:4301",
-			ValidatorURL: "http://127.0.0.1:5201", ValidatorMetricsURL: "http://127.0.0.1:5301",
+			Index: 1,
+			Execution: ExecutionService{
+				ServiceInfo: ServiceInfo{Name: "el-1-gqrl-qrysm", ID: "el-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
+				RPCURL:      "http://127.0.0.1:3201", GraphQLURL: "http://127.0.0.1:3201/graphql",
+				WebSocketURL: "ws://127.0.0.1:3301", EngineURL: "http://127.0.0.1:3401",
+			},
+			Consensus: ConsensusService{
+				ServiceInfo: ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "cl-1-qrysm-gqrl-id", PrivateIP: "10.0.0.1"},
+				URL:         "http://127.0.0.1:4201", MetricsURL: "http://127.0.0.1:4301",
+			},
+			Validator: ValidatorService{
+				ServiceInfo: ServiceInfo{Name: "vc-1-gqrl-qrysm", ID: "vc-1-gqrl-qrysm-id", PrivateIP: "10.0.0.1"},
+				URL:         "http://127.0.0.1:5201", MetricsURL: "http://127.0.0.1:5301",
+			},
 		},
 		{
-			Index:                2,
-			ExecutionServiceName: "el-2-gqrl-qrysm", ExecutionServiceID: "el-2-gqrl-qrysm-id", ExecutionPrivateIP: "10.0.0.2",
-			ConsensusServiceName: "cl-2-qrysm-gqrl", ConsensusServiceID: "cl-2-qrysm-gqrl-id", ConsensusPrivateIP: "10.0.0.2",
-			ValidatorServiceName: "vc-2-gqrl-qrysm", ValidatorServiceID: "vc-2-gqrl-qrysm-id",
-			RPCURL: "http://127.0.0.1:3202", GraphQLURL: "http://127.0.0.1:3202/graphql", WebSocketURL: "ws://127.0.0.1:3302",
-			EngineURL: "http://127.0.0.1:3402", ConsensusURL: "http://127.0.0.1:4202", ConsensusMetricsURL: "http://127.0.0.1:4302",
-			ValidatorURL: "http://127.0.0.1:5202", ValidatorMetricsURL: "http://127.0.0.1:5302",
+			Index: 2,
+			Execution: ExecutionService{
+				ServiceInfo: ServiceInfo{Name: "el-2-gqrl-qrysm", ID: "el-2-gqrl-qrysm-id", PrivateIP: "10.0.0.2"},
+				RPCURL:      "http://127.0.0.1:3202", GraphQLURL: "http://127.0.0.1:3202/graphql",
+				WebSocketURL: "ws://127.0.0.1:3302", EngineURL: "http://127.0.0.1:3402",
+			},
+			Consensus: ConsensusService{
+				ServiceInfo: ServiceInfo{Name: "cl-2-qrysm-gqrl", ID: "cl-2-qrysm-gqrl-id", PrivateIP: "10.0.0.2"},
+				URL:         "http://127.0.0.1:4202", MetricsURL: "http://127.0.0.1:4302",
+			},
+			Validator: ValidatorService{
+				ServiceInfo: ServiceInfo{Name: "vc-2-gqrl-qrysm", ID: "vc-2-gqrl-qrysm-id", PrivateIP: "10.0.0.2"},
+				URL:         "http://127.0.0.1:5202", MetricsURL: "http://127.0.0.1:5302",
+			},
 		},
 	}, participants)
+}
+
+func TestParticipantIndexUsesLabel(t *testing.T) {
+	index, err := participantIndex("service-without-an-index", map[string]string{"qrl-tests.participant": "7"})
+	require.NoError(t, err)
+	require.Equal(t, 7, index)
+
+	index, err = participantIndex("el-2-gqrl-qrysm", nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, index)
 }
 
 func service(name, clientType string, rpc, ws, engine, validator uint16, metrics ...uint16) kurtosis.Service {

@@ -41,11 +41,12 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			suite.session, err = endtoendlive.Open(ctx, false)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			suite.session, err = runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(suite.session.Close)
-			suite.beacon, err = consensus.New(suite.session.Participant.ConsensusURL)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			suite.beacon = suite.session.Consensus
 			suite.chain, err = validatorops.Chain(ctx, suite.beacon)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite.key, err = validatorops.DeterministicKey(0x91)

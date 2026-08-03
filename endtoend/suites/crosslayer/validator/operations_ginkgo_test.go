@@ -11,6 +11,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
 	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
@@ -54,14 +55,14 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			suite.sessions, err = endtoendlive.OpenAll(ctx, false)
+			runtime, loadErr := endtoendlive.Load(ctx)
+			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
+			ginkgo.DeferCleanup(runtime.Close)
+			suite.sessions, err = runtime.OpenAll(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(suite.sessions).To(gomega.HaveLen(5))
 			for _, session := range suite.sessions {
-				ginkgo.DeferCleanup(session.Close)
-				beacon, err := consensus.New(session.Participant.ConsensusURL)
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
-				suite.beacons = append(suite.beacons, beacon)
+				suite.beacons = append(suite.beacons, session.Consensus)
 			}
 			suite.primary = suite.sessions[0]
 			suite.beacon = suite.beacons[0]
@@ -71,7 +72,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(active).To(gomega.BeNumerically(">=", minimumOperationsStake))
 			suite.expectedProposers = expectedValidatorPairs(suite.sessions[:genesisParticipantCount])
-			suite.services = devnet.NewServiceController(suite.primary.Environment.EnclaveName)
+			suite.services = runtime.Services
 		})
 
 		ginkgo.It("runs the supported validator lifecycle matrix", func(ctx ginkgo.SpecContext) {
@@ -131,7 +132,7 @@ var _ = ginkgo.Describe(
 
 func (suite *operationsSuite) runMassDepositChurn(ctx ginkgo.SpecContext) {
 	offline := suite.sessions[genesisParticipantCount]
-	service := offline.Participant.ValidatorServiceName
+	service := offline.Participant.Validator.Name
 	gomega.Expect(suite.services.Stop(ctx, service)).To(gomega.Succeed())
 	ginkgo.DeferCleanup(func(cleanupCtx ginkgo.SpecContext) {
 		_ = suite.services.Start(cleanupCtx, service)
@@ -197,7 +198,9 @@ func (suite *operationsSuite) runMassDepositChurn(ctx ginkgo.SpecContext) {
 		g.Expect(proposerSlot).NotTo(gomega.BeZero())
 	}).WithContext(ctx).WithTimeout(operationsTimeout).WithPolling(validatorPollInterval).Should(gomega.Succeed())
 
-	summary, err := suite.beacon.VerifyBlockSignatures(ctx, strconv.FormatUint(proposerSlot, 10))
+	verifier, err := consensusverify.New(ctx, suite.beacon)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	summary, err := verifier.VerifyBlock(ctx, strconv.FormatUint(proposerSlot, 10))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(summary.Block).To(gomega.Equal(1))
 	gomega.Expect(summary.Randao).To(gomega.Equal(1))

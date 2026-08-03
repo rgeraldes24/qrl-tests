@@ -18,8 +18,8 @@ Statuses mean:
 - **Unsupported**: the scenario depends entirely on a protocol feature or
   execution model QRL does not support.
 
-[`source-behaviors.json`](../endtoend/coverage/source-behaviors.json)
-is the machine-checked contract for every non-unsupported scenario. It records
+[`scenarios.yaml`](../endtoend/coverage/scenarios.yaml) is the machine-checked
+contract for every source scenario. It records
 individual covered, missing, failing, and unsupported behaviors and ties each
 implemented behavior to an executable Ginkgo label.
 

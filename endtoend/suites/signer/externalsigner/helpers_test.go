@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 //go:build e2e
 
@@ -9,14 +9,11 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"os"
-	"os/exec"
 	"time"
 
-	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/fixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	qrlapi "github.com/cyyber/qrl-tests/endtoend/internal/rpctypes"
+	"github.com/cyyber/qrl-tests/internal/fixture"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
@@ -28,38 +25,12 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-func restartClef(ctx context.Context) error {
-	for _, action := range []string{"stop", "start"} {
-		if err := clefService(ctx, action); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func clefService(ctx context.Context, action string) error {
-	enclave := os.Getenv("DEVNET_ENCLAVE_NAME")
-	if enclave == "" {
-		enclave = devnet.DefaultEnclaveName
-	}
-	output, err := exec.CommandContext(
-		ctx,
-		"kurtosis",
-		"service",
-		action,
-		enclave,
-		"signer-clef",
-	).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s Clef service: %w: %s", action, err, output)
-	}
-	return nil
-}
-
 func newLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
-	session, err := endtoendlive.Open(ctx, false)
+	runtime, err := endtoendlive.Load(ctx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	session, err := runtime.Primary(ctx, false)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	wallet, err := qrlwallet.RestoreFromSeedHex(fixture.RemoteSignerSeed)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())

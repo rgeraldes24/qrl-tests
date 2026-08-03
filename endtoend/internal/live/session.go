@@ -1,111 +1,190 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 // Package live opens the shared clients and wallet used by live E2E suites.
 package live
 
 import (
 	"context"
-	_ "embed"
+	"errors"
 	"fmt"
 	"math/big"
-	"strings"
+	"sync"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
+	"github.com/cyyber/qrl-tests/internal/fixture"
 	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
 )
 
-//go:embed testdata/unsafe-development-wallet.seed
-var unsafeDevelopmentWalletSeed string
+// Runtime owns the network metadata and shared resources for one live suite.
+type Runtime struct {
+	Environment devnet.Environment
+	Profile     devnet.Profile
+	Wallet      qrlwallet.Wallet
+	Address     common.Address
+	ChainID     *big.Int
+	Services    *devnet.ServiceController
+
+	manager  *devnet.Manager
+	sessions []*Session
+	tools    runenv.Tools
+}
 
 type Session struct {
-	Environment        devnet.Environment
+	*Runtime
 	Participant        devnet.Participant
 	Execution          *qrlclient.Client
 	ExecutionWebSocket *qrlclient.Client
-	Wallet             qrlwallet.Wallet
-	Address            common.Address
-	ChainID            *big.Int
+	Consensus          *consensus.Client
+
+	closeOnce sync.Once
 }
 
-func Open(ctx context.Context, withWebSocket bool) (*Session, error) {
-	environment, err := devnet.Inspect(ctx)
+// Load resolves the configured test environment and restores the disposable
+// development wallet once for the suite.
+func Load(ctx context.Context) (*Runtime, error) {
+	manifest, err := runenv.Required()
 	if err != nil {
 		return nil, err
 	}
-	return open(ctx, environment, environment.Participants[0], withWebSocket)
-}
-
-func OpenAll(ctx context.Context, withWebSocket bool) ([]*Session, error) {
-	environment, err := devnet.Inspect(ctx)
+	wallet, err := fixture.DevelopmentWallet()
+	if err != nil {
+		return nil, fmt.Errorf("restore development wallet: %w", err)
+	}
+	primary, err := manifest.Environment.Primary()
 	if err != nil {
 		return nil, err
 	}
-	sessions := make([]*Session, 0, len(environment.Participants))
-	for _, participant := range environment.Participants {
-		session, err := open(ctx, environment, participant, withWebSocket)
+	client, err := qrlclient.DialContext(ctx, primary.Execution.RPCURL)
+	if err != nil {
+		return nil, fmt.Errorf("open primary HTTP RPC: %w", err)
+	}
+	chainID, err := client.ChainID(ctx)
+	client.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read chain ID: %w", err)
+	}
+	return &Runtime{
+		Environment: manifest.Environment,
+		Profile:     manifest.Profile,
+		Wallet:      wallet,
+		Address:     common.Address(wallet.GetAddress()),
+		ChainID:     chainID,
+		Services:    devnet.NewServiceController(manifest.Environment.EnclaveName),
+		manager:     devnet.NewManager(),
+		tools:       manifest.Tools,
+	}, nil
+}
+
+func (runtime *Runtime) Primary(ctx context.Context, withWebSocket bool) (*Session, error) {
+	participant, err := runtime.Environment.Primary()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.open(ctx, participant, withWebSocket)
+}
+
+func (runtime *Runtime) OpenAll(ctx context.Context, withWebSocket bool) ([]*Session, error) {
+	sessions := make([]*Session, 0, len(runtime.Environment.Participants))
+	for _, participant := range runtime.Environment.Participants {
+		session, err := runtime.open(ctx, participant, withWebSocket)
 		if err != nil {
-			for _, opened := range sessions {
-				opened.Close()
-			}
-			return nil, fmt.Errorf("open participant %d: %w", participant.Index, err)
+			return nil, err
 		}
 		sessions = append(sessions, session)
 	}
 	return sessions, nil
 }
 
-func OpenParticipant(ctx context.Context, index int, withWebSocket bool) (*Session, error) {
-	environment, err := devnet.Inspect(ctx)
+func (runtime *Runtime) OpenParticipant(ctx context.Context, index int, withWebSocket bool) (*Session, error) {
+	participant, err := runtime.participant(index)
 	if err != nil {
 		return nil, err
 	}
-	for _, participant := range environment.Participants {
-		if participant.Index == index {
-			return open(ctx, environment, participant, withWebSocket)
-		}
-	}
-	return nil, fmt.Errorf("participant %d not found", index)
+	return runtime.open(ctx, participant, withWebSocket)
 }
 
-func open(ctx context.Context, environment devnet.Environment, participant devnet.Participant, withWebSocket bool) (*Session, error) {
-	client, err := qrlclient.DialContext(ctx, participant.RPCURL)
+func (runtime *Runtime) ConsensusClient(index int) (*consensus.Client, error) {
+	participant, err := runtime.participant(index)
 	if err != nil {
-		return nil, fmt.Errorf("dial HTTP RPC: %w", err)
+		return nil, err
 	}
-	session := &Session{
-		Environment: environment,
-		Participant: participant,
-		Execution:   client,
+	return consensus.New(participant.Consensus.URL)
+}
+
+// Refresh reloads service endpoints after a service restart.
+func (runtime *Runtime) Refresh(ctx context.Context) error {
+	environment, err := runtime.manager.Inspect(ctx, runtime.Environment.EnclaveName, runtime.Environment.Backend)
+	if err != nil {
+		return err
 	}
-	if withWebSocket {
-		session.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.WebSocketURL)
-		if err != nil {
-			session.Close()
-			return nil, fmt.Errorf("dial WebSocket RPC: %w", err)
+	runtime.Environment = environment
+	return nil
+}
+
+func (runtime *Runtime) GQRL() (string, error) {
+	if runtime.tools.GQRL == "" {
+		return "", errors.New("gqrl test tool is not configured")
+	}
+	return runtime.tools.GQRL, nil
+}
+
+func (runtime *Runtime) Clef() (string, error) {
+	if runtime.tools.Clef == "" {
+		return "", errors.New("Clef test tool is not configured")
+	}
+	return runtime.tools.Clef, nil
+}
+
+func (runtime *Runtime) participant(index int) (devnet.Participant, error) {
+	for _, participant := range runtime.Environment.Participants {
+		if participant.Index == index {
+			return participant, nil
 		}
 	}
-	session.Wallet, err = qrlwallet.RestoreFromSeedHex(strings.TrimSpace(unsafeDevelopmentWalletSeed))
+	return devnet.Participant{}, fmt.Errorf("participant %d not found", index)
+}
+
+func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant, withWebSocket bool) (*Session, error) {
+	client, err := qrlclient.DialContext(ctx, participant.Execution.RPCURL)
 	if err != nil {
-		session.Close()
-		return nil, fmt.Errorf("restore development wallet: %w", err)
+		return nil, fmt.Errorf("open participant %d HTTP RPC: %w", participant.Index, err)
 	}
-	session.Address = common.Address(session.Wallet.GetAddress())
-	session.ChainID, err = client.ChainID(ctx)
+	beacon, err := consensus.New(participant.Consensus.URL)
 	if err != nil {
-		session.Close()
-		return nil, fmt.Errorf("read chain ID: %w", err)
+		client.Close()
+		return nil, fmt.Errorf("open participant %d consensus client: %w", participant.Index, err)
 	}
+	session := &Session{Runtime: runtime, Participant: participant, Execution: client, Consensus: beacon}
+	if withWebSocket {
+		session.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
+		if err != nil {
+			session.Close()
+			return nil, fmt.Errorf("open participant %d WebSocket RPC: %w", participant.Index, err)
+		}
+	}
+	runtime.sessions = append(runtime.sessions, session)
 	return session, nil
 }
 
+func (runtime *Runtime) Close() {
+	for _, session := range runtime.sessions {
+		session.Close()
+	}
+	runtime.sessions = nil
+}
+
 func (session *Session) Close() {
-	if session.ExecutionWebSocket != nil {
-		session.ExecutionWebSocket.Close()
-	}
-	if session.Execution != nil {
-		session.Execution.Close()
-	}
+	session.closeOnce.Do(func() {
+		if session.ExecutionWebSocket != nil {
+			session.ExecutionWebSocket.Close()
+		}
+		if session.Execution != nil {
+			session.Execution.Close()
+		}
+	})
 }

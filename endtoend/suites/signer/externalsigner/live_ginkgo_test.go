@@ -1,5 +1,5 @@
-// Copyright 2026 The go-qrl Authors
-// This file is part of the go-qrl library.
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
 
 //go:build e2e
 
@@ -11,9 +11,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/fixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	qrlapi "github.com/cyyber/qrl-tests/endtoend/internal/rpctypes"
+	"github.com/cyyber/qrl-tests/internal/fixture"
 	"github.com/theQRL/go-qrl/accounts"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
@@ -49,7 +49,7 @@ var _ = ginkgo.Describe(
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			suite = newLiveSuite(ctx)
 			gomega.Expect(suite).NotTo(gomega.BeNil())
-			ginkgo.DeferCleanup(suite.session.Close)
+			ginkgo.DeferCleanup(suite.session.Runtime.Close)
 
 			var accounts []common.Address
 			err := suite.session.Execution.Client().CallContext(ctx, &accounts, "qrl_accounts")
@@ -237,11 +237,11 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(liveSpecTimeout))
 
 		ginkgo.It("fails while Clef is unavailable and recovers after restart", func(ctx ginkgo.SpecContext) {
-			gomega.Expect(clefService(ctx, "stop")).To(gomega.Succeed())
+			gomega.Expect(suite.session.Services.Stop(ctx, "signer-clef")).To(gomega.Succeed())
 			stopped := true
 			defer func() {
 				if stopped {
-					_ = clefService(context.Background(), "start")
+					_ = suite.session.Services.Start(context.Background(), "signer-clef")
 				}
 			}()
 
@@ -257,7 +257,7 @@ var _ = ginkgo.Describe(
 			)
 			gomega.Expect(err).To(gomega.HaveOccurred())
 
-			gomega.Expect(clefService(ctx, "start")).To(gomega.Succeed())
+			gomega.Expect(suite.session.Services.Start(ctx, "signer-clef")).To(gomega.Succeed())
 			stopped = false
 			gomega.Eventually(func() error {
 				var managed []common.Address
@@ -272,7 +272,7 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(liveSpecTimeout))
 
 		ginkgo.It("reconnects to Clef after the signer restarts", func(ctx ginkgo.SpecContext) {
-			gomega.Expect(restartClef(ctx)).To(gomega.Succeed())
+			gomega.Expect(suite.session.Services.Restart(ctx, "signer-clef")).To(gomega.Succeed())
 
 			message := []byte("go-qrl external signer restart E2E")
 			gomega.Eventually(func() error {

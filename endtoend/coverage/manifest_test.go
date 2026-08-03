@@ -1,7 +1,6 @@
 package coverage
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -10,32 +9,38 @@ import (
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 )
 
 type manifest struct {
-	Surface string  `json:"surface"`
-	Entries []entry `json:"entries"`
+	Surfaces []surface `yaml:"surfaces"`
+}
+
+type surface struct {
+	Name    string  `yaml:"name"`
+	Entries []entry `yaml:"entries"`
 }
 
 type entry struct {
-	ID             string `json:"id"`
-	Package        string `json:"package"`
-	Lane           string `json:"lane"`
-	Classification string `json:"classification"`
+	ID             string `yaml:"id"`
+	Package        string `yaml:"package"`
+	Lane           string `yaml:"lane"`
+	Classification string `yaml:"classification"`
 }
 
 func TestAPISurfaceManifests(t *testing.T) {
 	root := repositoryRoot(t)
-	for _, name := range []string{"execution-rpc.json", "beacon-rest.json", "validator-rest.json", "engine-rpc.json"} {
-		t.Run(name, func(t *testing.T) {
-			payload, err := os.ReadFile(filepath.Join(root, "endtoend", "coverage", name))
-			require.NoError(t, err)
-			var source manifest
-			require.NoError(t, json.Unmarshal(payload, &source))
-			require.NotEmpty(t, source.Surface)
-			require.NotEmpty(t, source.Entries)
+	payload, err := os.ReadFile(filepath.Join(root, "endtoend", "coverage", "surfaces.yaml"))
+	require.NoError(t, err)
+	var source manifest
+	require.NoError(t, yaml.Unmarshal(payload, &source))
+	require.NotEmpty(t, source.Surfaces)
+	for _, surface := range source.Surfaces {
+		t.Run(surface.Name, func(t *testing.T) {
+			require.NotEmpty(t, surface.Name)
+			require.NotEmpty(t, surface.Entries)
 			seen := make(map[string]struct{})
-			for _, item := range source.Entries {
+			for _, item := range surface.Entries {
 				require.NotEmpty(t, item.ID)
 				_, duplicate := seen[item.ID]
 				require.Falsef(t, duplicate, "duplicate entry %q", item.ID)
@@ -46,7 +51,7 @@ func TestAPISurfaceManifests(t *testing.T) {
 				}
 				lane, err := lanes.Named(item.Lane)
 				require.NoError(t, err)
-				require.Truef(t, laneSelects(lane.Packages, item.Package), "lane %s does not select %s", lane.Name, item.Package)
+				require.Truef(t, laneSelects(lane.Packages(), item.Package), "lane %s does not select %s", lane.Name, item.Package)
 				info, err := os.Stat(filepath.Join(root, item.Package[2:]))
 				require.NoError(t, err)
 				require.True(t, info.IsDir())

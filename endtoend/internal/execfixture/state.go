@@ -3,10 +3,8 @@ package execfixture
 import (
 	"context"
 	"fmt"
-	"math/big"
 
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
-	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/accounts/abi"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
@@ -17,12 +15,6 @@ import (
 type StateContract struct {
 	Address common.Address
 	Topic   common.LogTopic
-}
-
-type TransactionParameters struct {
-	FeeCap *big.Int
-	TipCap *big.Int
-	Gas    uint64
 }
 
 func DeployStateContract(ctx context.Context, session *endtoendlive.Session, topic common.LogTopic) (StateContract, error) {
@@ -37,10 +29,7 @@ func DeployStateContract(ctx context.Context, session *endtoendlive.Session, top
 	if err != nil {
 		return StateContract{}, err
 	}
-	if err := session.Execution.SendTransaction(ctx, tx); err != nil {
-		return StateContract{}, err
-	}
-	receipt, err := bind.WaitMined(ctx, session.Execution, tx)
+	receipt, err := SendAndWait(ctx, session.Execution, tx)
 	if err != nil {
 		return StateContract{}, err
 	}
@@ -48,67 +37,6 @@ func DeployStateContract(ctx context.Context, session *endtoendlive.Session, top
 		return StateContract{}, fmt.Errorf("state contract deployment failed with status %d", receipt.Status)
 	}
 	return StateContract{Address: address, Topic: topic}, nil
-}
-
-func SignCall(
-	ctx context.Context,
-	session *endtoendlive.Session,
-	nonce uint64,
-	to common.Address,
-	value *big.Int,
-	data []byte,
-) (*types.Transaction, error) {
-	parameters, err := EstimateCall(ctx, session, to, value, data)
-	if err != nil {
-		return nil, err
-	}
-	return SignCallWithParameters(session, nonce, to, value, data, parameters)
-}
-
-func EstimateCall(
-	ctx context.Context,
-	session *endtoendlive.Session,
-	to common.Address,
-	value *big.Int,
-	data []byte,
-) (TransactionParameters, error) {
-	feeCap, err := session.Execution.SuggestGasPrice(ctx)
-	if err != nil {
-		return TransactionParameters{}, err
-	}
-	tipCap, err := session.Execution.SuggestGasTipCap(ctx)
-	if err != nil {
-		return TransactionParameters{}, err
-	}
-	feeCap = new(big.Int).Mul(feeCap, big.NewInt(4))
-	if feeCap.Cmp(tipCap) < 0 {
-		feeCap.Set(tipCap)
-	}
-	gas, err := session.Execution.EstimateGas(ctx, qrl.CallMsg{
-		From: session.Address, To: &to, Value: value, Data: data,
-	})
-	if err != nil {
-		return TransactionParameters{}, err
-	}
-	return TransactionParameters{FeeCap: feeCap, TipCap: tipCap, Gas: gas + gas/5}, nil
-}
-
-func SignCallWithParameters(
-	session *endtoendlive.Session,
-	nonce uint64,
-	to common.Address,
-	value *big.Int,
-	data []byte,
-	parameters TransactionParameters,
-) (*types.Transaction, error) {
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID: session.ChainID, Nonce: nonce,
-		GasTipCap: new(big.Int).Set(parameters.TipCap),
-		GasFeeCap: new(big.Int).Set(parameters.FeeCap),
-		Gas:       parameters.Gas,
-		To:        &to, Value: value, Data: data,
-	})
-	return types.SignTx(tx, types.LatestSignerForChainID(session.ChainID), session.Wallet)
 }
 
 func FullWord(seed byte) common.StorageValue64 {

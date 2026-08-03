@@ -37,7 +37,7 @@ var _ = ginkgo.Describe(
 			runtime, err := endtoendlive.Load(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(runtime.Close)
-			sessions, err := runtime.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			for _, session := range sessions {
 				nodes = append(nodes, beaconNode{session: session, client: session.Consensus})

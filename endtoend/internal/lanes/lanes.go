@@ -131,13 +131,7 @@ func packages(names ...string) []Suite {
 }
 
 func All() []Lane {
-	result := make([]Lane, len(registry))
-	copy(result, registry)
-	for index := range result {
-		result[index].Suites = cloneSuites(result[index].Suites)
-		result[index].Tools = slices.Clone(result[index].Tools)
-	}
-	return result
+	return slices.Clone(registry)
 }
 
 func (lane Lane) ForBackend(backend devnet.Backend) (Lane, bool) {
@@ -147,7 +141,7 @@ func (lane Lane) ForBackend(backend devnet.Backend) (Lane, bool) {
 			suites = append(suites, suite)
 		}
 	}
-	lane.Suites = cloneSuites(suites)
+	lane.Suites = suites
 	return lane, len(lane.Suites) != 0
 }
 
@@ -162,21 +156,10 @@ func (lane Lane) Packages() []string {
 func Named(name string) (Lane, error) {
 	for _, lane := range registry {
 		if lane.Name == name {
-			lane.Suites = cloneSuites(lane.Suites)
-			lane.Tools = slices.Clone(lane.Tools)
 			return lane, nil
 		}
 	}
 	return Lane{}, fmt.Errorf("unknown E2E lane %q", name)
-}
-
-func cloneSuites(source []Suite) []Suite {
-	result := make([]Suite, len(source))
-	copy(result, source)
-	for index := range result {
-		result[index].Requires = slices.Clone(result[index].Requires)
-	}
-	return result
 }
 
 func supportsAll(backend devnet.Backend, required []devnet.Capability) bool {

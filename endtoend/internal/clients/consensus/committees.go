@@ -14,27 +14,27 @@ type committeeWire struct {
 }
 
 func (client *Client) Committee(ctx context.Context, stateID string, slot, index uint64) ([]uint64, error) {
-	var response dataResponse[[]committeeWire]
 	path := fmt.Sprintf(
 		"/qrl/v1/beacon/states/%s/committees?slot=%d&index=%d",
 		url.PathEscape(stateID),
 		slot,
 		index,
 	)
-	if err := client.get(ctx, path, &response); err != nil {
+	committees, err := getData[[]committeeWire](ctx, client, path)
+	if err != nil {
 		return nil, err
 	}
-	if len(response.Data) != 1 {
-		return nil, fmt.Errorf("expected one committee, got %d", len(response.Data))
+	if len(committees) != 1 {
+		return nil, fmt.Errorf("expected one committee, got %d", len(committees))
 	}
-	return response.Data[0].Validators, nil
+	return committees[0].Validators, nil
 }
 
 func (client *Client) SyncCommittee(ctx context.Context, stateID string) ([]uint64, error) {
-	var response dataResponse[committeeWire]
 	path := "/qrl/v1/beacon/states/" + url.PathEscape(stateID) + "/sync_committees"
-	if err := client.get(ctx, path, &response); err != nil {
+	committee, err := getData[committeeWire](ctx, client, path)
+	if err != nil {
 		return nil, err
 	}
-	return response.Data.Validators, nil
+	return committee.Validators, nil
 }

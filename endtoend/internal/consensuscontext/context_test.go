@@ -5,13 +5,12 @@ package consensuscontext
 
 import (
 	"context"
+	"encoding/hex"
 	"strings"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	"github.com/stretchr/testify/require"
-	"github.com/theQRL/qrysm/beacon-chain/core/signing"
-	"github.com/theQRL/qrysm/config/params"
 )
 
 type contextSource struct {
@@ -51,19 +50,20 @@ func TestContextDomains(t *testing.T) {
 	domainType := [4]byte{1, 2, 3, 4}
 	previous, err := chain.Domain(domainType, 9)
 	require.NoError(t, err)
-	wantPrevious, err := signing.ComputeDomain(domainType, []byte{0, 0, 0, 2}, append([]byte{0x11}, make([]byte, 31)...))
-	require.NoError(t, err)
-	require.Equal(t, wantPrevious, previous)
+	require.Equal(t, mustDomain(t, "010203045f4c4b0ed11ed93379263b2e23b10940f33d3d0aee534c93105e1b58"), previous)
 
 	current, err := chain.Domain(domainType, 10)
 	require.NoError(t, err)
-	wantCurrent, err := signing.ComputeDomain(domainType, []byte{0, 0, 0, 3}, append([]byte{0x11}, make([]byte, 31)...))
-	require.NoError(t, err)
-	require.Equal(t, wantCurrent, current)
+	require.Equal(t, mustDomain(t, "01020304b89638cec7278d3fffb7ecd79da316be4154b8886a92c206be6c8d33"), current)
 
 	depositDomain, err := chain.DepositDomain()
 	require.NoError(t, err)
-	wantDepositDomain, err := signing.ComputeDomain(params.BeaconConfig().DomainDeposit, []byte{0, 0, 0, 1}, nil)
+	require.Equal(t, mustDomain(t, "0300000018ae4ccbda9538839d79bb18ca09e23e24ae8c1550f56cbb3d84b053"), depositDomain)
+}
+
+func mustDomain(t *testing.T, value string) []byte {
+	t.Helper()
+	decoded, err := hex.DecodeString(value)
 	require.NoError(t, err)
-	require.Equal(t, wantDepositDomain, depositDomain)
+	return decoded
 }

@@ -30,7 +30,7 @@ func newLiveSuite(ctx context.Context) *liveSuite {
 
 	runtime, err := endtoendlive.Load(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	session, err := runtime.Primary(ctx, false)
+	session, err := runtime.Primary(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	wallet, err := qrlwallet.RestoreFromSeedHex(fixture.RemoteSignerSeed)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())

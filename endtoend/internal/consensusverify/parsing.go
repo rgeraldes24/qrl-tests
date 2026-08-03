@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	fieldparams "github.com/theQRL/qrysm/config/fieldparams"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
 	"github.com/theQRL/qrysm/consensus-types/primitives"
 	qrysmpb "github.com/theQRL/qrysm/proto/qrysm/v1alpha1"
 )
@@ -20,15 +20,15 @@ func committee(ctx context.Context, client consensusAPI, stateID string, data co
 }
 
 func beaconBlockHeader(value consensus.BeaconBlockHeader) (*qrysmpb.BeaconBlockHeader, uint64, error) {
-	parentRoot, err := decodeFixed("block header parent root", value.ParentRoot, fieldparams.RootLength)
+	parentRoot, err := decodeFixed("block header parent root", value.ParentRoot, consensuscrypto.RootLength)
 	if err != nil {
 		return nil, 0, err
 	}
-	stateRoot, err := decodeFixed("block header state root", value.StateRoot, fieldparams.RootLength)
+	stateRoot, err := decodeFixed("block header state root", value.StateRoot, consensuscrypto.RootLength)
 	if err != nil {
 		return nil, 0, err
 	}
-	bodyRoot, err := decodeFixed("block header body root", value.BodyRoot, fieldparams.RootLength)
+	bodyRoot, err := decodeFixed("block header body root", value.BodyRoot, consensuscrypto.RootLength)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -39,15 +39,15 @@ func beaconBlockHeader(value consensus.BeaconBlockHeader) (*qrysmpb.BeaconBlockH
 }
 
 func attestationData(value consensus.AttestationData) (*qrysmpb.AttestationData, uint64, error) {
-	beaconRoot, err := decodeFixed("attestation beacon block root", value.BeaconBlockRoot, fieldparams.RootLength)
+	beaconRoot, err := decodeFixed("attestation beacon block root", value.BeaconBlockRoot, consensuscrypto.RootLength)
 	if err != nil {
 		return nil, 0, err
 	}
-	sourceRoot, err := decodeFixed("attestation source root", value.Source.Root, fieldparams.RootLength)
+	sourceRoot, err := decodeFixed("attestation source root", value.Source.Root, consensuscrypto.RootLength)
 	if err != nil {
 		return nil, 0, err
 	}
-	targetRoot, err := decodeFixed("attestation target root", value.Target.Root, fieldparams.RootLength)
+	targetRoot, err := decodeFixed("attestation target root", value.Target.Root, consensuscrypto.RootLength)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -59,15 +59,15 @@ func attestationData(value consensus.AttestationData) (*qrysmpb.AttestationData,
 }
 
 func depositData(value consensus.Deposit) (*qrysmpb.Deposit_Data, error) {
-	publicKey, err := decodeFixed("deposit public key", value.PublicKey, fieldparams.MLDSA87PubkeyLength)
+	publicKey, err := decodeFixed("deposit public key", value.PublicKey, consensuscrypto.PublicKeyLength)
 	if err != nil {
 		return nil, err
 	}
-	withdrawalCredentials, err := decodeFixed("deposit withdrawal credentials", value.WithdrawalCredentials, fieldparams.FeeRecipientLength)
+	withdrawalCredentials, err := decodeFixed("deposit withdrawal credentials", value.WithdrawalCredentials, consensuscrypto.FeeRecipientSize)
 	if err != nil {
 		return nil, err
 	}
-	signature, err := decodeFixed("deposit signature", value.Signature, fieldparams.MLDSA87SignatureLength)
+	signature, err := decodeFixed("deposit signature", value.Signature, consensuscrypto.SignatureLength)
 	if err != nil {
 		return nil, err
 	}

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"strconv"
 
 	"go.yaml.in/yaml/v3"
@@ -128,9 +127,9 @@ func effectiveParametersForProfile(address string, images Images, custom []byte,
 			RemoteSignerType:  "clef",
 			RemoteSignerImage: images.Clef,
 			ValidatorCount:    configuration.validatorCount,
-			ELExtraLabels:     maps.Clone(labels),
-			CLExtraLabels:     maps.Clone(labels),
-			VCExtraLabels:     maps.Clone(labels),
+			ELExtraLabels:     labels,
+			CLExtraLabels:     labels,
+			VCExtraLabels:     labels,
 		}
 	}
 	payload, err := json.Marshal(packageParameters{

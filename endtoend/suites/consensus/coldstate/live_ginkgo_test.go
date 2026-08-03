@@ -27,7 +27,7 @@ var _ = ginkgo.Describe(
 			if runtime.Profile != devnet.ProfileCold {
 				ginkgo.Skip("cold-state coverage requires the cold profile")
 			}
-			session, err := runtime.Primary(ctx, false)
+			session, err := runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			beacon := session.Consensus
 			slotsPerEpoch, err := beacon.SpecUint(ctx, "SLOTS_PER_EPOCH")

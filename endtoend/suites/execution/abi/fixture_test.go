@@ -57,7 +57,7 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 	runtime, err := endtoendlive.Load(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	ginkgo.DeferCleanup(runtime.Close)
-	session, err := runtime.Primary(ctx, true)
+	session, err := runtime.PrimaryWithWebSocket(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	transactor, err := bind.NewKeyedTransactorWithChainID(session.Wallet, session.ChainID)

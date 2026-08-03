@@ -12,8 +12,7 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/theQRL/qrysm/beacon-chain/core/signing"
-	"github.com/theQRL/qrysm/config/params"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
 )
 
 type Source interface {
@@ -80,11 +79,17 @@ func (chain Context) Domain(domainType [4]byte, epoch uint64) ([]byte, error) {
 	if epoch < chain.forkEpoch {
 		version = chain.previousVersion
 	}
-	return signing.ComputeDomain(domainType, version[:], chain.genesisRoot[:])
+	domain := consensuscrypto.ComputeDomain(domainType, version, chain.genesisRoot)
+	return domain[:], nil
 }
 
 func (chain Context) DepositDomain() ([]byte, error) {
-	return signing.ComputeDomain(params.BeaconConfig().DomainDeposit, chain.genesisForkVersion[:], nil)
+	domain := consensuscrypto.ComputeDomain(
+		consensuscrypto.DomainDeposit,
+		chain.genesisForkVersion,
+		[consensuscrypto.RootLength]byte{},
+	)
+	return domain[:], nil
 }
 
 func (chain Context) GenesisForkVersion() [4]byte {

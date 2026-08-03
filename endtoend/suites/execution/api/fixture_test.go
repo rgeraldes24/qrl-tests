@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
@@ -47,7 +48,7 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 	runtime, err := endtoendlive.Load(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	ginkgo.DeferCleanup(runtime.Close)
-	session, err := runtime.Primary(ctx, true)
+	session, err := runtime.PrimaryWithWebSocket(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	suite := &liveSuite{
@@ -194,23 +195,27 @@ func (suite *liveSuite) signTransactionForWallet(
 
 func (suite *liveSuite) submitAndWait(ctx context.Context, tx *types.Transaction) *types.Receipt {
 	ginkgo.GinkgoHelper()
-
-	gomega.Expect(suite.client.SendTransaction(ctx, tx)).To(gomega.Succeed())
-	return suite.waitReceipt(ctx, tx.Hash())
+	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	receipt, err := execfixture.SendAndWait(waitCtx, suite.client, tx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	assertMinedReceipt(receipt)
+	return receipt
 }
 
 func (suite *liveSuite) waitReceipt(ctx context.Context, hash common.Hash) *types.Receipt {
 	ginkgo.GinkgoHelper()
 
-	var receipt *types.Receipt
-	gomega.Eventually(func() error {
-		var err error
-		receipt, err = suite.client.TransactionReceipt(ctx, hash)
-		return err
-	}).WithContext(ctx).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(
-		gomega.Succeed(),
-	)
+	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	receipt, err := execfixture.WaitReceipt(waitCtx, suite.client, hash)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	assertMinedReceipt(receipt)
+	return receipt
+}
+
+func assertMinedReceipt(receipt *types.Receipt) {
+	ginkgo.GinkgoHelper()
 	gomega.Expect(receipt).NotTo(gomega.BeNil())
 	gomega.Expect(receipt.BlockNumber).NotTo(gomega.BeNil())
-	return receipt
 }

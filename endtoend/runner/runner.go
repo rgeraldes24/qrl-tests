@@ -155,21 +155,21 @@ func (runner *Runner) supportedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
-	reportRoot, err := filepath.Abs(runner.configuration.ReportDir)
+	plan, err := newRunPlan(runner.configuration, selected, mode)
 	if err != nil {
-		return fmt.Errorf("resolve report directory: %w", err)
+		return err
 	}
-	if err := os.MkdirAll(reportRoot, 0o755); err != nil {
+	if err := os.MkdirAll(plan.reportRoot, 0o755); err != nil {
 		return fmt.Errorf("create report directory: %w", err)
 	}
-	tools, err := runner.buildTools(ctx, reportRoot, requiredTools(selected))
+	tools, err := runner.buildTools(ctx, plan.reportRoot, plan.tools)
 	if err != nil {
 		return err
 	}
 
 	var result error
-	for _, lane := range selected {
-		if err := runner.runLane(ctx, lane, mode, reportRoot, tools); err != nil {
+	for _, lane := range plan.lanes {
+		if err := runner.runLane(ctx, lane, tools); err != nil {
 			result = errors.Join(result, err)
 		}
 	}
@@ -178,26 +178,20 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 
 func (runner *Runner) runLane(
 	ctx context.Context,
-	lane lanes.Lane,
-	mode runMode,
-	reportRoot string,
+	planned laneRun,
 	tools runenv.Tools,
 ) (result error) {
-	enclaveName := runner.configuration.BaseName
-	if mode.suffixesEnclave() {
-		enclaveName += "-" + lane.Name
-	}
-	reportDir := filepath.Join(reportRoot, lane.Name)
-	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+	lane := planned.lane
+	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
 		return fmt.Errorf("lane %s: create report directory: %w", lane.Name, err)
 	}
 
 	var environment devnet.Environment
 	var err error
-	if mode.provisions() {
+	if planned.provision {
 		startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
 		environment, err = runner.networks.Start(startCtx, devnet.StartOptions{
-			EnclaveName: enclaveName,
+			EnclaveName: planned.enclaveName,
 			Backend:     runner.configuration.Backend,
 			Images:      runner.configuration.Images,
 			Profile:     lane.Profile,
@@ -209,19 +203,18 @@ func (runner *Runner) runLane(
 		defer func() {
 			stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			if err := runner.networks.Stop(stopCtx, enclaveName); err != nil {
+			if err := runner.networks.Stop(stopCtx, planned.enclaveName); err != nil {
 				result = errors.Join(result, fmt.Errorf("lane %s: stop network: %w", lane.Name, err))
 			}
 		}()
 	} else {
-		environment, err = runner.networks.Inspect(ctx, enclaveName, runner.configuration.Backend)
+		environment, err = runner.networks.Inspect(ctx, planned.enclaveName, runner.configuration.Backend)
 		if err != nil {
 			return fmt.Errorf("lane %s: inspect network: %w", lane.Name, err)
 		}
 	}
 
-	manifestPath := filepath.Join(reportDir, "environment.json")
-	if err := runenv.Write(manifestPath, runenv.Manifest{
+	if err := runenv.Write(planned.manifestPath, runenv.Manifest{
 		Lane:        lane.Name,
 		Profile:     lane.Profile,
 		Environment: environment,
@@ -230,14 +223,13 @@ func (runner *Runner) runLane(
 		return fmt.Errorf("lane %s: %w", lane.Name, err)
 	}
 
-	arguments := ginkgoArguments(lane, reportDir)
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+5*time.Minute)
 	defer cancelLane()
 	fmt.Fprintf(runner.stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
 	if err := runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
-		Args:   arguments,
-		Env:    append(os.Environ(), runenv.PathEnv+"="+manifestPath),
+		Args:   planned.arguments,
+		Env:    append(os.Environ(), runenv.PathEnv+"="+planned.manifestPath),
 		Stdout: runner.stdout,
 		Stderr: runner.stderr,
 	}); err != nil {

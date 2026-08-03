@@ -1,24 +1,16 @@
+// Copyright 2026 The qrl-tests Authors
+// This file is part of qrl-tests.
+
 package consensusverify
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
-	ssz "github.com/prysmaticlabs/fastssz"
-	"github.com/theQRL/go-bitfield"
-	"github.com/theQRL/qrysm/beacon-chain/core/signing"
-	p2ptypes "github.com/theQRL/qrysm/beacon-chain/p2p/types"
-	fieldparams "github.com/theQRL/qrysm/config/fieldparams"
-	"github.com/theQRL/qrysm/config/params"
-	"github.com/theQRL/qrysm/consensus-types/primitives"
-	"github.com/theQRL/qrysm/contracts/deposit"
-	qrysmpb "github.com/theQRL/qrysm/proto/qrysm/v1alpha1"
 )
 
 // SignatureSummary records every consensus signature verified in a block.
@@ -129,20 +121,12 @@ func (verification *Verifier) Verify(
 	}
 	summary.SyncCommittee += count
 
-	depositDomain, err := verification.chain.DepositDomain()
+	count, err = verification.verifyDeposits(block.Message.Body.Deposits)
 	if err != nil {
 		return summary, err
 	}
-	for index, item := range block.Message.Body.Deposits {
-		data, err := depositData(item.Data)
-		if err != nil {
-			return summary, fmt.Errorf("decode deposit %d: %w", index, err)
-		}
-		if err := deposit.VerifyDepositSignature(data, depositDomain); err != nil {
-			return summary, fmt.Errorf("verify deposit %d signature: %w", index, err)
-		}
-		summary.Deposits++
-	}
+	summary.Deposits += count
+
 	for index, item := range block.Message.Body.VoluntaryExits {
 		if err := verification.verifyVoluntaryExit(ctx, item.Message, item.Signature); err != nil {
 			return summary, fmt.Errorf("verify voluntary exit %d: %w", index, err)
@@ -170,206 +154,4 @@ func (verification *Verifier) Verify(
 		summary.AttesterSlashings += count1 + count2
 	}
 	return summary, nil
-}
-
-func (verification *Verifier) verifyBlockHeader(
-	ctx context.Context,
-	header consensus.BeaconBlockHeader,
-	signatureHex,
-	rootHex string,
-) error {
-	message, proposer, err := beaconBlockHeader(header)
-	if err != nil {
-		return err
-	}
-	root, err := message.HashTreeRoot()
-	if err != nil {
-		return err
-	}
-	wantRoot, err := decodeFixed("block root", rootHex, fieldparams.RootLength)
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(root[:], wantRoot) {
-		return fmt.Errorf("header root mismatch")
-	}
-	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(uint64(message.Slot)), params.BeaconConfig().DomainBeaconProposer, signatureHex)
-}
-
-func (verification *Verifier) verifySignedHeader(ctx context.Context, header consensus.SignedBeaconBlockHeader) error {
-	message, proposer, err := beaconBlockHeader(header.Message)
-	if err != nil {
-		return err
-	}
-	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(uint64(message.Slot)), params.BeaconConfig().DomainBeaconProposer, header.Signature)
-}
-
-func (verification *Verifier) verifyRandao(ctx context.Context, slot, proposer uint64, signatureHex string) error {
-	epoch := verification.chain.Epoch(slot)
-	value := make([]byte, 32)
-	binary.LittleEndian.PutUint64(value, epoch)
-	object := p2ptypes.SSZBytes(value)
-	return verification.verifyObject(ctx, &object, proposer, epoch, params.BeaconConfig().DomainRandao, signatureHex)
-}
-
-func (verification *Verifier) verifyVoluntaryExit(
-	ctx context.Context,
-	exit consensus.VoluntaryExit,
-	signatureHex string,
-) error {
-	message := &qrysmpb.VoluntaryExit{
-		Epoch: primitives.Epoch(exit.Epoch), ValidatorIndex: primitives.ValidatorIndex(exit.ValidatorIndex),
-	}
-	return verification.verifyObject(
-		ctx, message, exit.ValidatorIndex, exit.Epoch, params.BeaconConfig().DomainVoluntaryExit, signatureHex,
-	)
-}
-
-func (verification *Verifier) verifyAttestation(
-	ctx context.Context,
-	attestation consensus.Attestation,
-) (int, error) {
-	bits, err := decodeHex("attestation aggregation bits", attestation.AggregationBits)
-	if err != nil {
-		return 0, err
-	}
-	positions := bitfield.Bitlist(bits).BitIndices()
-	stateID := strconv.FormatUint(attestation.Data.Slot, 10)
-	committee, err := committee(ctx, verification.client, stateID, attestation.Data)
-	if err != nil {
-		return 0, err
-	}
-	indices := make([]uint64, len(positions))
-	for index, position := range positions {
-		if int(position) >= len(committee) {
-			return 0, fmt.Errorf("aggregation bit %d exceeds committee length %d", position, len(committee))
-		}
-		indices[index] = committee[position]
-	}
-	return verification.verifyAttestationSignatures(ctx, attestation.Data, indices, attestation.Signatures)
-}
-
-func (verification *Verifier) verifyIndexedAttestation(
-	ctx context.Context,
-	attestation consensus.IndexedAttestation,
-) (int, error) {
-	return verification.verifyAttestationSignatures(
-		ctx, attestation.Data, attestation.AttestingIndices, attestation.Signatures,
-	)
-}
-
-func (verification *Verifier) verifyAttestationSignatures(
-	ctx context.Context,
-	data consensus.AttestationData,
-	indices []uint64,
-	signatures []string,
-) (int, error) {
-	if len(indices) != len(signatures) {
-		return 0, fmt.Errorf("attestation has %d participants and %d signatures", len(indices), len(signatures))
-	}
-	message, targetEpoch, err := attestationData(data)
-	if err != nil {
-		return 0, err
-	}
-	for index, validatorIndex := range indices {
-		if err := verification.verifyObject(
-			ctx,
-			message,
-			validatorIndex,
-			targetEpoch,
-			params.BeaconConfig().DomainBeaconAttester,
-			signatures[index],
-		); err != nil {
-			return index, fmt.Errorf("participant %d: %w", validatorIndex, err)
-		}
-	}
-	return len(signatures), nil
-}
-
-func (verification *Verifier) verifySyncAggregate(
-	ctx context.Context,
-	stateID string,
-	slot uint64,
-	parentRootHex,
-	bitsHex string,
-	signatures []string,
-) (int, error) {
-	bits, err := decodeHex("sync committee bits", bitsHex)
-	if err != nil {
-		return 0, err
-	}
-	committee, err := verification.client.SyncCommittee(ctx, stateID)
-	if err != nil {
-		return 0, err
-	}
-	participants := make([]uint64, 0, len(committee))
-	for index, validatorIndex := range committee {
-		if index/8 < len(bits) && bits[index/8]&(1<<uint(index%8)) != 0 {
-			participants = append(participants, validatorIndex)
-		}
-	}
-	if len(participants) != len(signatures) {
-		return 0, fmt.Errorf("sync aggregate has %d participants and %d signatures", len(participants), len(signatures))
-	}
-	parentRoot, err := decodeFixed("parent block root", parentRootHex, fieldparams.RootLength)
-	if err != nil {
-		return 0, err
-	}
-	object := p2ptypes.SSZBytes(parentRoot)
-	epoch := uint64(0)
-	if slot > 0 {
-		epoch = verification.chain.Epoch(slot - 1)
-	}
-	for index, validatorIndex := range participants {
-		if err := verification.verifyObject(
-			ctx,
-			&object,
-			validatorIndex,
-			epoch,
-			params.BeaconConfig().DomainSyncCommittee,
-			signatures[index],
-		); err != nil {
-			return index, fmt.Errorf("participant %d: %w", validatorIndex, err)
-		}
-	}
-	return len(signatures), nil
-}
-
-func (verification *Verifier) verifyObject(
-	ctx context.Context,
-	object ssz.HashRoot,
-	validatorIndex,
-	epoch uint64,
-	domainType [4]byte,
-	signatureHex string,
-) error {
-	publicKey, err := verification.publicKey(ctx, validatorIndex)
-	if err != nil {
-		return err
-	}
-	signature, err := decodeFixed("signature", signatureHex, fieldparams.MLDSA87SignatureLength)
-	if err != nil {
-		return err
-	}
-	domain, err := verification.chain.Domain(domainType, epoch)
-	if err != nil {
-		return err
-	}
-	return signing.VerifySigningRoot(object, publicKey, signature, domain)
-}
-
-func (verification *Verifier) publicKey(ctx context.Context, validatorIndex uint64) ([]byte, error) {
-	if publicKey := verification.pubkeys[validatorIndex]; publicKey != nil {
-		return publicKey, nil
-	}
-	validator, err := verification.client.Validator(ctx, strconv.FormatUint(validatorIndex, 10))
-	if err != nil {
-		return nil, err
-	}
-	publicKey, err := decodeFixed("validator public key", validator.PublicKey, fieldparams.MLDSA87PubkeyLength)
-	if err != nil {
-		return nil, err
-	}
-	verification.pubkeys[validatorIndex] = publicKey
-	return publicKey, nil
 }

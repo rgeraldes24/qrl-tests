@@ -3,7 +3,6 @@ module github.com/cyyber/qrl-tests
 go 1.26.5
 
 require (
-	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/kurtosis-tech/kurtosis/api/golang v1.20.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1

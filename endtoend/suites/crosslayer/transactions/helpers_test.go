@@ -8,7 +8,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
-	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
 
@@ -47,8 +46,11 @@ func signTransactionAt(session *endtoendlive.Session, nonce uint64, to common.Ad
 
 func submitAndWait(ctx context.Context, session *endtoendlive.Session, tx *types.Transaction) *types.Receipt {
 	ginkgo.GinkgoHelper()
-	gomega.Expect(session.Execution.SendTransaction(ctx, tx)).To(gomega.Succeed())
-	return waitForReceipt(ctx, session, tx)
+	waitCtx, cancel := context.WithTimeout(ctx, transactionTimeout)
+	defer cancel()
+	receipt, err := execfixture.SendAndWait(waitCtx, session.Execution, tx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return receipt
 }
 
 func waitForReceipt(ctx context.Context, session *endtoendlive.Session, tx *types.Transaction) *types.Receipt {
@@ -56,7 +58,7 @@ func waitForReceipt(ctx context.Context, session *endtoendlive.Session, tx *type
 
 	waitCtx, cancel := context.WithTimeout(ctx, transactionTimeout)
 	defer cancel()
-	receipt, err := bind.WaitMined(waitCtx, session.Execution, tx)
+	receipt, err := execfixture.WaitReceipt(waitCtx, session.Execution, tx.Hash())
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(receipt).NotTo(gomega.BeNil())
 	return receipt

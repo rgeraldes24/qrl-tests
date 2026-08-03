@@ -37,7 +37,7 @@ var _ = ginkgo.Describe(
 			runtime, err := endtoendlive.Load(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(runtime.Close)
-			sessions, err := runtime.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			if len(sessions) < 2 {
 				ginkgo.Skip("resilience scenarios require the sync or multi profile")
@@ -119,7 +119,7 @@ func (suite *liveSuite) awaitSecondaryReady(ctx context.Context) {
 		if err := suite.primary.Runtime.RefreshEnvironment(ctx); err != nil {
 			return err
 		}
-		secondary, err := suite.primary.Runtime.OpenParticipant(ctx, suite.secondary.Participant.Index, false)
+		secondary, err := suite.primary.Runtime.OpenParticipant(ctx, suite.secondary.Participant.Index)
 		if err != nil {
 			return err
 		}

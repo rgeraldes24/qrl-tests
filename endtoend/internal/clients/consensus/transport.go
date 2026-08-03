@@ -15,6 +15,24 @@ type dataResponse[T any] struct {
 	Data T `json:"data"`
 }
 
+func getData[T any](ctx context.Context, client *Client, path string) (T, error) {
+	var response dataResponse[T]
+	if err := client.get(ctx, path, &response); err != nil {
+		var zero T
+		return zero, err
+	}
+	return response.Data, nil
+}
+
+func postData[T any](ctx context.Context, client *Client, path string, payload any) (T, error) {
+	var response dataResponse[T]
+	if err := client.PostJSON(ctx, path, payload, &response); err != nil {
+		var zero T
+		return zero, err
+	}
+	return response.Data, nil
+}
+
 func (client *Client) Post(ctx context.Context, path string, payload any) error {
 	return client.PostJSON(ctx, path, payload, nil)
 }

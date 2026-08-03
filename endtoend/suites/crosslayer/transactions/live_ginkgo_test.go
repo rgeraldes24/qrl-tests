@@ -44,7 +44,7 @@ var _ = ginkgo.Describe(
 			runtime, loadErr := endtoendlive.Load(ctx)
 			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(runtime.Close)
-			sessions, err = runtime.OpenAll(ctx, false)
+			sessions, err = runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 

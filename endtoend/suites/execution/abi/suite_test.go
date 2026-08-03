@@ -54,16 +54,59 @@ var _ = ginkgo.Describe(
 			fixture.assertCallRoundTrips(ctx)
 		})
 
-		ginkgo.It("round-trips integer, fixed-byte, dynamic, and container boundary values through generic ABI, generated bindings, and raw RPC", func(ctx ginkgo.SpecContext) {
-			fixture.assertBoundaryRoundTrips(ctx)
+		ginkgo.It("round-trips mixed integer and container boundaries", func(ctx ginkgo.SpecContext) {
+			fixture.assertMixedBoundaries(ctx)
+		})
+
+		for _, test := range integerEdgeCases() {
+			test := test
+			ginkgo.It("round-trips integer edges: "+test.name, func(ctx ginkgo.SpecContext) {
+				fixture.assertIntegerEdge(ctx, test)
+			})
+		}
+
+		ginkgo.It("round-trips fixed bytes across ABI word boundaries", func(ctx ginkgo.SpecContext) {
+			fixture.assertFixedBytesBoundaries(ctx)
+		})
+
+		ginkgo.It("round-trips dynamic payloads around VM word boundaries", func(ctx ginkgo.SpecContext) {
+			fixture.assertDynamicPayloadBoundaries(ctx)
+		})
+
+		ginkgo.It("round-trips full-word leaf containers", func(ctx ginkgo.SpecContext) {
+			fixture.assertLeafContainers(ctx)
+		})
+
+		ginkgo.It("round-trips containers with dynamic elements", func(ctx ginkgo.SpecContext) {
+			fixture.assertDynamicContainers(ctx)
+		})
+
+		ginkgo.It("round-trips nested composite values", func(ctx ginkgo.SpecContext) {
+			fixture.assertNestedComposites(ctx)
 		})
 
 		ginkgo.It("decodes custom and standard errors and requires a failed receipt", func(ctx ginkgo.SpecContext) {
 			fixture.assertErrors(ctx)
 		})
 
-		ginkgo.It("validates event transactions, scalar and composite encoding, indexed topics, overloads, and generated and raw filters", func(ctx ginkgo.SpecContext) {
-			fixture.assertEventsAndFilters(ctx)
+		ginkgo.It("round-trips Stored event topics, data, and generated and raw filters", func(ctx ginkgo.SpecContext) {
+			fixture.assertStoredEventAndFilters(ctx)
+		})
+
+		ginkgo.It("hashes and filters indexed dynamic event values", func(ctx ginkgo.SpecContext) {
+			fixture.assertDynamicEventAndFilters(ctx)
+		})
+
+		ginkgo.It("round-trips composite event data", func(ctx ginkgo.SpecContext) {
+			fixture.assertCompositeEvent(ctx)
+		})
+
+		ginkgo.It("encodes and filters indexed scalar event values", func(ctx ginkgo.SpecContext) {
+			fixture.assertIndexedScalarEvent(ctx)
+		})
+
+		ginkgo.It("resolves and decodes overloaded events", func(ctx ginkgo.SpecContext) {
+			fixture.assertOverloadedEvents(ctx)
 		})
 
 		ginkgo.It("round-trips and executes function values and containers through generic ABI, generated bindings, raw RPC, events, and filters", func(ctx ginkgo.SpecContext) {

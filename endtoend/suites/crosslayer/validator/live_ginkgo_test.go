@@ -47,7 +47,7 @@ var _ = ginkgo.Describe(
 			runtime, loadErr := endtoendlive.Load(ctx)
 			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(runtime.Close)
-			suite.session, err = runtime.Primary(ctx, false)
+			suite.session, err = runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite.beacon = suite.session.Consensus
 			suite.chain, err = consensuscontext.Load(ctx, suite.beacon)

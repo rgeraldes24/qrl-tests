@@ -27,7 +27,7 @@ var _ = ginkgo.Describe(
 			if runtime.Profile != devnet.ProfileOptimistic {
 				ginkgo.Skip("optimistic-sync coverage requires the optimistic profile")
 			}
-			sessions, err := runtime.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(sessions).To(gomega.HaveLen(2))
 			primary, secondary := sessions[0], sessions[1]

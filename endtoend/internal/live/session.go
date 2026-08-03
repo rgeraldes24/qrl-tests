@@ -80,18 +80,26 @@ func Load(ctx context.Context) (*Runtime, error) {
 	}, nil
 }
 
-func (runtime *Runtime) Primary(ctx context.Context, withWebSocket bool) (*Session, error) {
+func (runtime *Runtime) Primary(ctx context.Context) (*Session, error) {
 	participant, err := runtime.Environment.Primary()
 	if err != nil {
 		return nil, err
 	}
-	return runtime.open(ctx, participant, withWebSocket)
+	return runtime.open(ctx, participant, false)
 }
 
-func (runtime *Runtime) OpenAll(ctx context.Context, withWebSocket bool) ([]*Session, error) {
+func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Session, error) {
+	participant, err := runtime.Environment.Primary()
+	if err != nil {
+		return nil, err
+	}
+	return runtime.open(ctx, participant, true)
+}
+
+func (runtime *Runtime) OpenAll(ctx context.Context) ([]*Session, error) {
 	sessions := make([]*Session, 0, len(runtime.Environment.Participants))
 	for _, participant := range runtime.Environment.Participants {
-		session, err := runtime.open(ctx, participant, withWebSocket)
+		session, err := runtime.open(ctx, participant, false)
 		if err != nil {
 			return nil, err
 		}
@@ -100,12 +108,12 @@ func (runtime *Runtime) OpenAll(ctx context.Context, withWebSocket bool) ([]*Ses
 	return sessions, nil
 }
 
-func (runtime *Runtime) OpenParticipant(ctx context.Context, index int, withWebSocket bool) (*Session, error) {
+func (runtime *Runtime) OpenParticipant(ctx context.Context, index int) (*Session, error) {
 	participant, err := runtime.participant(index)
 	if err != nil {
 		return nil, err
 	}
-	return runtime.open(ctx, participant, withWebSocket)
+	return runtime.open(ctx, participant, false)
 }
 
 func (runtime *Runtime) ConsensusClient(index int) (*consensus.Client, error) {

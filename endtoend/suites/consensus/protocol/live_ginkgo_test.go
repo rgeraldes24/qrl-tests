@@ -51,7 +51,7 @@ var _ = ginkgo.Describe(
 			runtime, loadErr := endtoendlive.Load(ctx)
 			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(runtime.Close)
-			suite.sessions, err = runtime.OpenAll(ctx, false)
+			suite.sessions, err = runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			for _, session := range suite.sessions {
 				suite.beacons = append(suite.beacons, session.Consensus)

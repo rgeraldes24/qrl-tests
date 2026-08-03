@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cenkalti/backoff/v7"
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 	"github.com/cyyber/qrl-tests/internal/fixture"
 )
@@ -27,6 +26,7 @@ const (
 	DefaultStartTimeout = 30 * time.Minute
 
 	destroyConfirmationTimeout = 2 * time.Minute
+	retryInterval              = 500 * time.Millisecond
 )
 
 type StartOptions struct {
@@ -189,14 +189,18 @@ func (manager *Manager) destroyAndConfirm(ctx context.Context, client kurtosisCl
 }
 
 func retryUntil(ctx context.Context, operation func() error) error {
-	policy := backoff.NewExponentialBackOff()
-	policy.InitialInterval = 500 * time.Millisecond
-	policy.MaxInterval = 2 * time.Second
-	_, err := backoff.Retry(
-		ctx,
-		func() (struct{}, error) { return struct{}{}, operation() },
-		backoff.WithBackOff(policy),
-		backoff.WithMaxElapsedTime(0),
-	)
-	return err
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
+
+	for {
+		err := operation()
+		if err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }

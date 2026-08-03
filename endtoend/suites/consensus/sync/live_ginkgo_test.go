@@ -39,7 +39,7 @@ var _ = ginkgo.Describe(
 			if runtime.Profile != devnet.ProfileSync {
 				ginkgo.Skip("fresh sync and doppelganger coverage requires the sync profile")
 			}
-			sessions, err := runtime.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(sessions).To(gomega.HaveLen(2))
 			primary, secondary = sessions[0], sessions[1]
@@ -134,7 +134,7 @@ var _ = ginkgo.Describe(
 				if err := primary.Runtime.RefreshEnvironment(ctx); err != nil {
 					return err
 				}
-				current, err := primary.Runtime.OpenParticipant(ctx, participant.Index, false)
+				current, err := primary.Runtime.OpenParticipant(ctx, participant.Index)
 				if err != nil {
 					return err
 				}

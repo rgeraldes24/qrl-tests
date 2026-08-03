@@ -4,11 +4,8 @@
 package consensus
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strconv"
 )
@@ -45,19 +42,15 @@ type validatorIndexWire struct {
 }
 
 func (client *Client) Validator(ctx context.Context, validatorID string) (Validator, error) {
-	var response dataResponse[validatorRecordWire]
-	if err := client.get(ctx, "/qrl/v1/beacon/states/head/validators/"+url.PathEscape(validatorID), &response); err != nil {
+	record, err := getData[validatorRecordWire](ctx, client, "/qrl/v1/beacon/states/head/validators/"+url.PathEscape(validatorID))
+	if err != nil {
 		return Validator{}, err
 	}
-	return response.Data.validator(), nil
+	return record.validator(), nil
 }
 
 func (client *Client) DepositContract(ctx context.Context) (DepositContract, error) {
-	var response dataResponse[DepositContract]
-	if err := client.get(ctx, "/qrl/v1/config/deposit_contract", &response); err != nil {
-		return DepositContract{}, err
-	}
-	return response.Data, nil
+	return getData[DepositContract](ctx, client, "/qrl/v1/config/deposit_contract")
 }
 
 func (client *Client) ActiveValidatorCount(ctx context.Context) (int, error) {
@@ -66,12 +59,12 @@ func (client *Client) ActiveValidatorCount(ctx context.Context) (int, error) {
 }
 
 func (client *Client) ActiveValidatorIndices(ctx context.Context) ([]uint64, error) {
-	var response dataResponse[[]validatorIndexWire]
-	if err := client.get(ctx, "/qrl/v1/beacon/states/head/validators?status=active", &response); err != nil {
+	records, err := getData[[]validatorIndexWire](ctx, client, "/qrl/v1/beacon/states/head/validators?status=active")
+	if err != nil {
 		return nil, err
 	}
-	indices := make([]uint64, len(response.Data))
-	for index, validator := range response.Data {
+	indices := make([]uint64, len(records))
+	for index, validator := range records {
 		indices[index] = validator.Index
 	}
 	return indices, nil
@@ -82,23 +75,23 @@ func (client *Client) Validators(ctx context.Context, status string) ([]Validato
 	if status != "" {
 		path += "?status=" + url.QueryEscape(status)
 	}
-	var response dataResponse[[]validatorRecordWire]
-	if err := client.get(ctx, path, &response); err != nil {
+	records, err := getData[[]validatorRecordWire](ctx, client, path)
+	if err != nil {
 		return nil, err
 	}
-	validators := make([]Validator, len(response.Data))
-	for index, item := range response.Data {
+	validators := make([]Validator, len(records))
+	for index, item := range records {
 		validators[index] = item.validator()
 	}
 	return validators, nil
 }
 
 func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error) {
-	var response dataResponse[map[string]string]
-	if err := client.get(ctx, "/qrl/v1/config/spec", &response); err != nil {
+	values, err := getData[map[string]string](ctx, client, "/qrl/v1/config/spec")
+	if err != nil {
 		return 0, err
 	}
-	value, ok := response.Data[name]
+	value, ok := values[name]
 	if !ok {
 		return 0, fmt.Errorf("consensus spec does not define %s", name)
 	}
@@ -110,14 +103,6 @@ func (client *Client) Liveness(ctx context.Context, epoch uint64, indices []uint
 	for index, value := range indices {
 		request[index] = strconv.FormatUint(value, 10)
 	}
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return nil, err
-	}
-	var response dataResponse[[]ValidatorLiveness]
 	path := "/qrl/v1/validator/liveness/" + strconv.FormatUint(epoch, 10)
-	if err := client.do(ctx, http.MethodPost, path, bytes.NewReader(payload), &response); err != nil {
-		return nil, err
-	}
-	return response.Data, nil
+	return postData[[]ValidatorLiveness](ctx, client, path, request)
 }

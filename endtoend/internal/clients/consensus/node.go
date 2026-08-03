@@ -13,11 +13,7 @@ func (client *Client) Health(ctx context.Context) error {
 }
 
 func (client *Client) Syncing(ctx context.Context) (SyncStatus, error) {
-	var response dataResponse[SyncStatus]
-	if err := client.get(ctx, "/qrl/v1/node/syncing", &response); err != nil {
-		return SyncStatus{}, err
-	}
-	return response.Data, nil
+	return getData[SyncStatus](ctx, client, "/qrl/v1/node/syncing")
 }
 
 func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
@@ -62,27 +58,19 @@ func (client *Client) FinalizedEpoch(ctx context.Context) (uint64, error) {
 }
 
 func (client *Client) FinalizedCheckpoint(ctx context.Context) (Checkpoint, error) {
-	var response dataResponse[struct {
+	data, err := getData[struct {
 		Finalized Checkpoint `json:"finalized"`
-	}]
-	if err := client.get(ctx, "/qrl/v1/beacon/states/head/finality_checkpoints", &response); err != nil {
+	}](ctx, client, "/qrl/v1/beacon/states/head/finality_checkpoints")
+	if err != nil {
 		return Checkpoint{}, err
 	}
-	return response.Data.Finalized, nil
+	return data.Finalized, nil
 }
 
 func (client *Client) Genesis(ctx context.Context) (Genesis, error) {
-	var response dataResponse[Genesis]
-	if err := client.get(ctx, "/qrl/v1/beacon/genesis", &response); err != nil {
-		return Genesis{}, err
-	}
-	return response.Data, nil
+	return getData[Genesis](ctx, client, "/qrl/v1/beacon/genesis")
 }
 
 func (client *Client) Fork(ctx context.Context) (Fork, error) {
-	var response dataResponse[Fork]
-	if err := client.get(ctx, "/qrl/v1/beacon/states/head/fork", &response); err != nil {
-		return Fork{}, err
-	}
-	return response.Data, nil
+	return getData[Fork](ctx, client, "/qrl/v1/beacon/states/head/fork")
 }

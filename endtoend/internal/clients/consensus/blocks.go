@@ -12,19 +12,11 @@ import (
 )
 
 func (client *Client) Block(ctx context.Context, blockID string) (SignedBlock, error) {
-	var response dataResponse[SignedBlock]
-	if err := client.get(ctx, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID), &response); err != nil {
-		return SignedBlock{}, err
-	}
-	return response.Data, nil
+	return getData[SignedBlock](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
 }
 
 func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHeader, error) {
-	var response dataResponse[BlockHeader]
-	if err := client.get(ctx, "/qrl/v1/beacon/headers/"+url.PathEscape(blockID), &response); err != nil {
-		return BlockHeader{}, err
-	}
-	return response.Data, nil
+	return getData[BlockHeader](ctx, client, "/qrl/v1/beacon/headers/"+url.PathEscape(blockID))
 }
 
 func (client *Client) BlockGraffitiText(ctx context.Context, blockID string) (string, error) {

@@ -13,7 +13,6 @@ import (
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
-	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/core/types"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -34,7 +33,7 @@ var _ = ginkgo.Describe(
 			runtime, err := endtoendlive.Load(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			defer runtime.Close()
-			sessions, err := runtime.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			if len(sessions) < 4 {
 				ginkgo.Skip("the soak lane requires the four-participant chaos profile")
@@ -84,7 +83,7 @@ var _ = ginkgo.Describe(
 						if err := runtime.RefreshEnvironment(ctx); err != nil {
 							return err
 						}
-						replacement, err = runtime.OpenParticipant(ctx, participant.Index, false)
+						replacement, err = runtime.OpenParticipant(ctx, participant.Index)
 						return err
 					}).WithContext(ctx).WithTimeout(5 * time.Minute).WithPolling(time.Second).Should(gomega.Succeed())
 					sessions[1] = replacement
@@ -114,6 +113,6 @@ func awaitReceipt(ctx context.Context, session *endtoendlive.Session, tx *types.
 	ginkgo.GinkgoHelper()
 	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	_, err := bind.WaitMined(waitCtx, session.Execution, tx)
+	_, err := execfixture.WaitReceipt(waitCtx, session.Execution, tx.Hash())
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }

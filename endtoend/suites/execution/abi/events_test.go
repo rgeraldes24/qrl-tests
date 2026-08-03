@@ -86,7 +86,27 @@ func (fixture *liveFixture) assertEvent(
 	}
 }
 
-func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
+func (fixture *liveFixture) emitStoredEvents(ctx context.Context) (*types.Receipt, common.Address) {
+	ginkgo.GinkgoHelper()
+	auth := fixture.transactOpts(ctx)
+	inputs := fixture.inputs
+	storeTx, err := fixture.binding.Store(
+		auth,
+		inputs.amount,
+		inputs.delta,
+		inputs.tag,
+		auth.From,
+		inputs.payload,
+		inputs.note,
+		true,
+	)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	receipt := fixture.waitSuccessfulTransaction(ctx, storeTx)
+	gomega.Expect(receipt.Logs).To(gomega.HaveLen(2))
+	return receipt, auth.From
+}
+
+func (fixture *liveFixture) assertStoredEventAndFilters(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 
 	// Hyperion:
@@ -106,29 +126,16 @@ func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
 	// generated plus raw filters recover the same event while honoring OR,
 	// wildcard, and rejection rules.
 	ginkgo.By("round-tripping a Stored event through generated transactions, decoding, topics, and filters")
-	auth := fixture.transactOpts(ctx)
 	inputs := fixture.inputs
-	storeTx, err := fixture.binding.Store(
-		auth,
-		inputs.amount,
-		inputs.delta,
-		inputs.tag,
-		auth.From,
-		inputs.payload,
-		inputs.note,
-		true,
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	receipt := fixture.waitSuccessfulTransaction(ctx, storeTx)
-	gomega.Expect(receipt.Logs).To(gomega.HaveLen(2))
+	receipt, sender := fixture.emitStoredEvents(ctx)
 
 	end := receipt.BlockNumber.Uint64()
 	filterOpts := &bind.FilterOpts{Start: end, End: &end, Context: ctx}
-	wrongRecipient := auth.From
+	wrongRecipient := sender
 	wrongRecipient[0] ^= 0xff
 	iterator, err := fixture.binding.FilterStored(
 		filterOpts,
-		[]common.Address{wrongRecipient, auth.From},
+		[]common.Address{wrongRecipient, sender},
 		nil,
 		[]*big.Int{inputs.delta},
 	)
@@ -136,7 +143,7 @@ func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
 	defer iterator.Close()
 	gomega.Expect(iterator.Next()).To(gomega.BeTrue(), "generated Stored OR/wildcard filter missed the transaction")
 	stored := iterator.Event
-	gomega.Expect(stored.Recipient).To(gomega.Equal(auth.From))
+	gomega.Expect(stored.Recipient).To(gomega.Equal(sender))
 	gomega.Expect(stored.Amount.Cmp(inputs.amount)).To(gomega.Equal(0))
 	gomega.Expect(stored.Delta.Cmp(inputs.delta)).To(gomega.Equal(0))
 	gomega.Expect(stored.Tag).To(gomega.Equal(inputs.tag))
@@ -153,12 +160,12 @@ func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
 		data: []any{inputs.tag, inputs.payload, inputs.note, true},
 		exactTopics: []common.LogTopic{
 			common.HashToLogTopic(fixture.contractABI.Events["Stored"].ID),
-			common.BytesToLeftAlignedLogTopic(auth.From[:]),
+			common.BytesToLeftAlignedLogTopic(sender[:]),
 			common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(new(big.Int).Set(inputs.amount))),
 			common.BytesToRightAlignedLogTopic(qrlmath.U512Bytes(new(big.Int).Set(inputs.delta))),
 		},
 		want: map[string]any{
-			"recipient": auth.From,
+			"recipient": sender,
 			"amount":    inputs.amount,
 			"delta":     inputs.delta,
 			"tag":       inputs.tag,
@@ -166,9 +173,17 @@ func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
 			"note":      inputs.note,
 			"enabled":   true,
 		},
-		filter: [][]any{{auth.From}, {inputs.amount}, {inputs.delta}},
+		filter: [][]any{{sender}, {inputs.amount}, {inputs.delta}},
 		reject: [][]any{nil, nil, {big.NewInt(0)}},
 	})
+}
+
+func (fixture *liveFixture) assertDynamicEventAndFilters(ctx context.Context) {
+	ginkgo.GinkgoHelper()
+	inputs := fixture.inputs
+	receipt, _ := fixture.emitStoredEvents(ctx)
+	end := receipt.BlockNumber.Uint64()
+	filterOpts := &bind.FilterOpts{Start: end, End: &end, Context: ctx}
 
 	// Hyperion:
 	// event Dynamic(bytes indexed payload, string indexed note, uint512 amount);
@@ -210,6 +225,11 @@ func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
 	gomega.Expect(dynamicIterator.Event.Raw.TxHash).To(gomega.Equal(receipt.TxHash))
 	gomega.Expect(dynamicIterator.Next()).To(gomega.BeFalse())
 	gomega.Expect(dynamicIterator.Error()).NotTo(gomega.HaveOccurred())
+}
+
+func (fixture *liveFixture) assertCompositeEvent(ctx context.Context) {
+	ginkgo.GinkgoHelper()
+	inputs := fixture.inputs
 
 	// Hyperion:
 	// event Composite(
@@ -271,6 +291,10 @@ func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
 	gomega.Expect(composite.FixedNumbers).To(gomega.Equal(fixedNumbers))
 	gomega.Expect(composite.FixedStrings).To(gomega.Equal(fixedStrings))
 	gomega.Expect(composite.Mixed).To(gomega.Equal(mixed))
+}
+
+func (fixture *liveFixture) assertIndexedScalarEvent(ctx context.Context) {
+	ginkgo.GinkgoHelper()
 
 	// Hyperion:
 	// event IndexedScalars(bool indexed flag, bytes5 indexed code, int16 indexed delta);
@@ -312,6 +336,11 @@ func (fixture *liveFixture) assertEventsAndFilters(ctx context.Context) {
 	gomega.Expect(indexed.Flag).To(gomega.BeFalse())
 	gomega.Expect(indexed.Code).To(gomega.Equal(code))
 	gomega.Expect(indexed.Delta).To(gomega.Equal(delta))
+}
+
+func (fixture *liveFixture) assertOverloadedEvents(ctx context.Context) {
+	ginkgo.GinkgoHelper()
+	inputs := fixture.inputs
 
 	// Hyperion:
 	// event Transformed(uint16 value);

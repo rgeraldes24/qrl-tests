@@ -91,6 +91,22 @@ func TestRequiredToolsAreUnique(t *testing.T) {
 	}))
 }
 
+func TestRunPlanDescribesEachLane(t *testing.T) {
+	reports := t.TempDir()
+	selected := []lanes.Lane{
+		{Name: "single", Profile: devnet.ProfileSingle, Suites: []lanes.Suite{{Package: "./single"}}, Tools: []lanes.Tool{lanes.ToolGQRL}},
+		{Name: "multi", Profile: devnet.ProfileMulti, Suites: []lanes.Suite{{Package: "./multi"}}, Tools: []lanes.Tool{lanes.ToolGQRL, lanes.ToolClef}},
+	}
+	plan, err := newRunPlan(Config{BaseName: "qrl-tests", ReportDir: reports}, selected, provisionPerLane)
+	require.NoError(t, err)
+	require.Equal(t, []lanes.Tool{lanes.ToolGQRL, lanes.ToolClef}, plan.tools)
+	require.Len(t, plan.lanes, 2)
+	require.Equal(t, "qrl-tests-single", plan.lanes[0].enclaveName)
+	require.Equal(t, filepath.Join(reports, "single", "environment.json"), plan.lanes[0].manifestPath)
+	require.Contains(t, plan.lanes[0].arguments, "./single")
+	require.True(t, plan.lanes[0].provision)
+}
+
 func testEnvironment(name string, backend devnet.Backend) devnet.Environment {
 	return devnet.Environment{
 		EnclaveName: name,

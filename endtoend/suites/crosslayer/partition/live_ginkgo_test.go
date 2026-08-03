@@ -41,7 +41,7 @@ var _ = ginkgo.Describe(
 			runtime, err := endtoendlive.Load(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(runtime.Close)
-			sessions, err := runtime.OpenAll(ctx, false)
+			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			environment := sessions[0].Environment
 			if len(environment.Participants) < 4 {
@@ -221,12 +221,10 @@ var _ = ginkgo.Describe(
 
 func awaitReceipt(ctx context.Context, session *endtoendlive.Session, hash common.Hash) *types.Receipt {
 	ginkgo.GinkgoHelper()
-	var receipt *types.Receipt
-	gomega.Eventually(func() error {
-		var err error
-		receipt, err = session.Execution.TransactionReceipt(ctx, hash)
-		return err
-	}).WithContext(ctx).WithTimeout(partitionTimeout).WithPolling(time.Second).Should(gomega.Succeed())
+	waitCtx, cancel := context.WithTimeout(ctx, partitionTimeout)
+	defer cancel()
+	receipt, err := execfixture.WaitReceipt(waitCtx, session.Execution, hash)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return receipt
 }
 

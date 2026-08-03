@@ -20,6 +20,7 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	qrl "github.com/theQRL/go-qrl"
@@ -244,7 +245,7 @@ func (fixture *liveFixture) assertCompositeEvent(ctx context.Context) {
 	// Goal: tuples and nested fixed/dynamic arrays survive event encoding,
 	// generic decoding, and generated parsing without changing their shape.
 	ginkgo.By("round-tripping composite event data through generic and generated decoders")
-	record := EventEmitterDynamicRecord{
+	record := abifixture.EventEmitterDynamicRecord{
 		Amount:  inputs.amount,
 		Note:    inputs.note,
 		Payload: inputs.payload,

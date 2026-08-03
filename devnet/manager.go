@@ -18,6 +18,8 @@ type kurtosisClient interface {
 	EnclaveExists(context.Context, string) (bool, error)
 	CreateAndRunRemotePackage(context.Context, string, string, string) (bool, error)
 	Services(context.Context, string) (map[string]kurtosis.Service, error)
+	StartServices(context.Context, string, ...string) error
+	StopServices(context.Context, string, ...string) error
 	DestroyEnclave(context.Context, string) error
 }
 
@@ -45,7 +47,7 @@ type Manager struct {
 func NewManager() *Manager {
 	return &Manager{
 		newClient: func() (kurtosisClient, error) {
-			client, err := kurtosis.NewSDKClient()
+			client, err := kurtosis.NewClient()
 			if err != nil {
 				return nil, fmt.Errorf("connect to Kurtosis engine: %w", err)
 			}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -67,6 +68,61 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.Equal(t, "multi", manifest.Lane)
 	require.Equal(t, devnet.ProfileMulti, manifest.Profile)
 	require.Contains(t, command.Env, runenv.PathEnv+"="+manifestPath)
+	logs, err := filepath.Glob(filepath.Join(reports, "multi", "output.log"))
+	require.NoError(t, err)
+	require.Len(t, logs, 1)
+}
+
+type concurrentNetworks struct {
+	mutex       sync.Mutex
+	active, max int
+}
+
+func (networks *concurrentNetworks) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
+	networks.mutex.Lock()
+	networks.active++
+	if networks.active > networks.max {
+		networks.max = networks.active
+	}
+	networks.mutex.Unlock()
+	return testEnvironment(options.EnclaveName, options.Backend), nil
+}
+
+func (*concurrentNetworks) Inspect(_ context.Context, name string, backend devnet.Backend) (devnet.Environment, error) {
+	return testEnvironment(name, backend), nil
+}
+
+func (networks *concurrentNetworks) Stop(context.Context, string) error {
+	networks.mutex.Lock()
+	networks.active--
+	networks.mutex.Unlock()
+	return nil
+}
+
+func TestRunBoundsParallelLanes(t *testing.T) {
+	networks := new(concurrentNetworks)
+	tests := New(Config{
+		BaseName:     "qrl-tests",
+		ReportDir:    t.TempDir(),
+		Backend:      devnet.BackendKubernetes,
+		StartTimeout: time.Minute,
+		MaxParallel:  2,
+	}, nil, nil)
+	tests.networks = networks
+	tests.runCommand = func(context.Context, commandSpec) error {
+		time.Sleep(20 * time.Millisecond)
+		return nil
+	}
+
+	var selected []lanes.Lane
+	for _, name := range []string{"multi", "workloads", "lifecycle"} {
+		lane, err := lanes.Named(name)
+		require.NoError(t, err)
+		selected = append(selected, lane)
+	}
+	require.NoError(t, tests.run(t.Context(), selected, provisionPerLane))
+	require.Equal(t, 2, networks.max)
+	require.Zero(t, networks.active)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
@@ -85,25 +141,25 @@ func TestRunReturnsCleanupFailure(t *testing.T) {
 }
 
 func TestRequiredToolsAreUnique(t *testing.T) {
-	require.Equal(t, []lanes.Tool{lanes.ToolGQRL, lanes.ToolClef}, requiredTools([]lanes.Lane{
-		{Tools: []lanes.Tool{lanes.ToolGQRL, lanes.ToolClef}},
-		{Tools: []lanes.Tool{lanes.ToolGQRL}},
-	}))
+	single, err := lanes.Named("single")
+	require.NoError(t, err)
+	require.Equal(t, []lanes.Tool{lanes.ToolGQRL, lanes.ToolClef}, requiredTools([]lanes.Lane{single, single}))
 }
 
 func TestRunPlanDescribesEachLane(t *testing.T) {
 	reports := t.TempDir()
-	selected := []lanes.Lane{
-		{Name: "single", Profile: devnet.ProfileSingle, Suites: []lanes.Suite{{Package: "./single"}}, Tools: []lanes.Tool{lanes.ToolGQRL}},
-		{Name: "multi", Profile: devnet.ProfileMulti, Suites: []lanes.Suite{{Package: "./multi"}}, Tools: []lanes.Tool{lanes.ToolGQRL, lanes.ToolClef}},
-	}
+	single, err := lanes.Named("single")
+	require.NoError(t, err)
+	multi, err := lanes.Named("multi")
+	require.NoError(t, err)
+	selected := []lanes.Lane{single, multi}
 	plan, err := newRunPlan(Config{BaseName: "qrl-tests", ReportDir: reports}, selected, provisionPerLane)
 	require.NoError(t, err)
 	require.Equal(t, []lanes.Tool{lanes.ToolGQRL, lanes.ToolClef}, plan.tools)
 	require.Len(t, plan.lanes, 2)
 	require.Equal(t, "qrl-tests-single", plan.lanes[0].enclaveName)
 	require.Equal(t, filepath.Join(reports, "single", "environment.json"), plan.lanes[0].manifestPath)
-	require.Contains(t, plan.lanes[0].arguments, "./single")
+	require.Contains(t, plan.lanes[0].arguments, "./endtoend/suites/execution/abi")
 	require.True(t, plan.lanes[0].provision)
 }
 

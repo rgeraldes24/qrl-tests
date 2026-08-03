@@ -7,6 +7,7 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
@@ -29,15 +30,15 @@ func (fixture *liveFixture) assertNestedComposites(ctx context.Context) {
 	ginkgo.By("round-tripping offset-heavy arrays and nested tuples")
 	fixedMatrix := [2][2]uint16{{0, 0xffff}, {1, 0x1234}}
 	rows := [][2]uint16{{}, {1, 0xffff}, {0x1234, 0x4321}}
-	records := [2]EventEmitterDynamicRecord{
+	records := [2]abifixture.EventEmitterDynamicRecord{
 		{
 			Amount: fixture.inputs.amount, Note: fixture.inputs.note,
 			Payload: fixture.inputs.payload, Values: [][]uint16{{1, 2}, {}, {3}},
 		},
 		{Amount: new(big.Int), Note: "", Payload: []byte{}, Values: [][]uint16{}},
 	}
-	nested := EventEmitterNestedRecord{
-		FixedRecord: EventEmitterRecord{
+	nested := abifixture.EventEmitterNestedRecord{
+		FixedRecord: abifixture.EventEmitterRecord{
 			Amount: fixture.inputs.amount, Recipient: secondAddress, Tag: secondTag,
 		},
 		DynamicRecord: records[0],
@@ -62,7 +63,7 @@ func (fixture *liveFixture) assertNestedComposites(ctx context.Context) {
 	gomega.Expect(gotNested.Extra).To(gomega.Equal(nested.Extra))
 }
 
-func assertDynamicRecordEqual(got, want EventEmitterDynamicRecord, context string) {
+func assertDynamicRecordEqual(got, want abifixture.EventEmitterDynamicRecord, context string) {
 	ginkgo.GinkgoHelper()
 
 	gomega.Expect(got.Amount.Cmp(want.Amount)).To(gomega.Equal(0), context)

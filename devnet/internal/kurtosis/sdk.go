@@ -39,19 +39,19 @@ func (service Service) PublicEndpoint(portID, scheme string) (string, error) {
 	return scheme + "://" + net.JoinHostPort(service.PublicIP, strconv.Itoa(int(port))), nil
 }
 
-type SDKClient struct {
+type Client struct {
 	context *kurtosis_context.KurtosisContext
 }
 
-func NewSDKClient() (*SDKClient, error) {
+func NewClient() (*Client, error) {
 	ctx, err := kurtosis_context.NewKurtosisContextFromLocalEngine()
 	if err != nil {
 		return nil, err
 	}
-	return &SDKClient{context: ctx}, nil
+	return &Client{context: ctx}, nil
 }
 
-func (client *SDKClient) EnclaveExists(ctx context.Context, name string) (bool, error) {
+func (client *Client) EnclaveExists(ctx context.Context, name string) (bool, error) {
 	running, err := client.context.GetEnclaves(ctx)
 	if err != nil {
 		return false, fmt.Errorf("list running Kurtosis enclaves: %w", err)
@@ -60,7 +60,7 @@ func (client *SDKClient) EnclaveExists(ctx context.Context, name string) (bool, 
 	return found, nil
 }
 
-func (client *SDKClient) CreateAndRunRemotePackage(
+func (client *Client) CreateAndRunRemotePackage(
 	ctx context.Context,
 	name string,
 	locator,
@@ -82,7 +82,7 @@ func (client *SDKClient) CreateAndRunRemotePackage(
 	return true, consumeStarlarkCompletion(stream)
 }
 
-func (client *SDKClient) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
+func (client *Client) Services(ctx context.Context, enclaveName string) (map[string]Service, error) {
 	enclave, err := client.enclave(ctx, enclaveName)
 	if err != nil {
 		return nil, err
@@ -106,7 +106,7 @@ func (client *SDKClient) Services(ctx context.Context, enclaveName string) (map[
 	return result, nil
 }
 
-func (client *SDKClient) enclave(ctx context.Context, name string) (*enclaves.EnclaveContext, error) {
+func (client *Client) enclave(ctx context.Context, name string) (*enclaves.EnclaveContext, error) {
 	return client.context.GetEnclaveContext(ctx, name)
 }
 
@@ -132,7 +132,7 @@ func service(serviceContext serviceContext) Service {
 	}
 }
 
-func (client *SDKClient) DestroyEnclave(ctx context.Context, name string) error {
+func (client *Client) DestroyEnclave(ctx context.Context, name string) error {
 	return client.context.DestroyEnclave(ctx, name)
 }
 

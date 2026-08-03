@@ -6,13 +6,14 @@ package abi
 import (
 	"math/big"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
 
 type integerEdgeCase struct {
 	name  string
-	edges EventEmitterBoundaryEdges
+	edges abifixture.EventEmitterBoundaryEdges
 }
 
 func integerEdgeCases() []integerEdgeCase {
@@ -20,7 +21,7 @@ func integerEdgeCases() []integerEdgeCase {
 		{name: "zero", edges: zeroBoundaryEdges()},
 		{
 			name: "unsigned maxima and signed minima",
-			edges: EventEmitterBoundaryEdges{
+			edges: abifixture.EventEmitterBoundaryEdges{
 				Unsigned248: unsignedMaximum(248), Signed248: signedMinimum(248),
 				Unsigned256: unsignedMaximum(256), Signed256: signedMinimum(256),
 				Unsigned264: unsignedMaximum(264), Signed264: signedMinimum(264),
@@ -30,7 +31,7 @@ func integerEdgeCases() []integerEdgeCase {
 		},
 		{
 			name: "signed maxima",
-			edges: EventEmitterBoundaryEdges{
+			edges: abifixture.EventEmitterBoundaryEdges{
 				Unsigned248: big.NewInt(1), Signed248: signedMaximum(248),
 				Unsigned256: big.NewInt(1), Signed256: signedMaximum(256),
 				Unsigned264: big.NewInt(1), Signed264: signedMaximum(264),
@@ -40,7 +41,7 @@ func integerEdgeCases() []integerEdgeCase {
 		},
 		{
 			name: "negative one",
-			edges: EventEmitterBoundaryEdges{
+			edges: abifixture.EventEmitterBoundaryEdges{
 				Unsigned248: big.NewInt(1), Signed248: big.NewInt(-1),
 				Unsigned256: big.NewInt(1), Signed256: big.NewInt(-1),
 				Unsigned264: big.NewInt(1), Signed264: big.NewInt(-1),
@@ -55,8 +56,8 @@ func unsignedMaximum(bits uint) *big.Int {
 	return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), bits), big.NewInt(1))
 }
 
-func zeroBoundaryEdges() EventEmitterBoundaryEdges {
-	return EventEmitterBoundaryEdges{
+func zeroBoundaryEdges() abifixture.EventEmitterBoundaryEdges {
+	return abifixture.EventEmitterBoundaryEdges{
 		Unsigned248: new(big.Int), Signed248: new(big.Int),
 		Unsigned256: new(big.Int), Signed256: new(big.Int),
 		Unsigned264: new(big.Int), Signed264: new(big.Int),
@@ -73,7 +74,7 @@ func signedMaximum(bits uint) *big.Int {
 	return new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), bits-1), big.NewInt(1))
 }
 
-func assertBoundaryEdgesEqual(got, want EventEmitterBoundaryEdges, context string) {
+func assertBoundaryEdgesEqual(got, want abifixture.EventEmitterBoundaryEdges, context string) {
 	ginkgo.GinkgoHelper()
 
 	for _, values := range [][2]*big.Int{

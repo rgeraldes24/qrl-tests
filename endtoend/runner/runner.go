@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
@@ -30,6 +31,7 @@ type Config struct {
 	Backend      devnet.Backend
 	Images       devnet.Images
 	StartTimeout time.Duration
+	MaxParallel  int
 }
 
 type networkManager interface {
@@ -78,13 +80,14 @@ func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	if stderr == nil {
 		stderr = os.Stderr
 	}
+	outputLock := new(sync.Mutex)
 	return &Runner{
 		configuration: configuration,
 		networks:      devnet.NewManager(),
 		buildBinary:   buildBinary,
 		runCommand:    execute,
-		stdout:        stdout,
-		stderr:        stderr,
+		stdout:        &lockedWriter{lock: outputLock, writer: stdout},
+		stderr:        &lockedWriter{lock: outputLock, writer: stderr},
 	}
 }
 
@@ -171,75 +174,46 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 		return err
 	}
 
-	var result error
-	for _, lane := range plan.lanes {
-		if err := runner.runLane(ctx, lane, tools); err != nil {
-			result = errors.Join(result, err)
-		}
-	}
-	return result
+	return runner.runLanes(ctx, plan.lanes, tools)
 }
 
-func (runner *Runner) runLane(
-	ctx context.Context,
-	planned laneRun,
-	tools runenv.Tools,
-) (result error) {
-	lane := planned.lane
-	if err := os.MkdirAll(planned.reportDir, 0o755); err != nil {
-		return fmt.Errorf("lane %s: create report directory: %w", lane.Name, err)
+func (runner *Runner) runLanes(ctx context.Context, planned []laneRun, tools runenv.Tools) error {
+	limit := runner.configuration.MaxParallel
+	if limit < 2 || len(planned) < 2 {
+		var result error
+		for _, lane := range planned {
+			result = errors.Join(result, runner.runLane(ctx, lane, tools))
+		}
+		return result
 	}
 
-	var environment devnet.Environment
-	var err error
-	if planned.provision {
-		startCtx, cancelStart := context.WithTimeout(ctx, runner.configuration.StartTimeout)
-		environment, err = runner.networks.Start(startCtx, devnet.StartOptions{
-			EnclaveName: planned.enclaveName,
-			Backend:     runner.configuration.Backend,
-			Images:      runner.configuration.Images,
-			Profile:     lane.Profile,
-		})
-		cancelStart()
-		if err != nil {
-			return fmt.Errorf("lane %s: start network: %w", lane.Name, err)
-		}
-		defer func() {
-			stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			defer cancel()
-			if err := runner.networks.Stop(stopCtx, planned.enclaveName); err != nil {
-				result = errors.Join(result, fmt.Errorf("lane %s: stop network: %w", lane.Name, err))
+	if limit > len(planned) {
+		limit = len(planned)
+	}
+	semaphore := make(chan struct{}, limit)
+	results := make([]error, len(planned))
+	var group sync.WaitGroup
+	for index, lane := range planned {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				results[index] = ctx.Err()
+				return
 			}
+			results[index] = runner.runLane(ctx, lane, tools)
 		}()
-	} else {
-		environment, err = runner.networks.Inspect(ctx, planned.enclaveName, runner.configuration.Backend)
-		if err != nil {
-			return fmt.Errorf("lane %s: inspect network: %w", lane.Name, err)
-		}
 	}
+	group.Wait()
 
-	if err := runenv.Write(planned.manifestPath, runenv.Manifest{
-		Lane:        lane.Name,
-		Profile:     lane.Profile,
-		Environment: environment,
-		Tools:       tools,
-	}); err != nil {
-		return fmt.Errorf("lane %s: %w", lane.Name, err)
+	var result error
+	for _, err := range results {
+		result = errors.Join(result, err)
 	}
-
-	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+5*time.Minute)
-	defer cancelLane()
-	fmt.Fprintf(runner.stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
-	if err := runner.runCommand(laneCtx, commandSpec{
-		Path:   "go",
-		Args:   planned.arguments,
-		Env:    append(os.Environ(), runenv.PathEnv+"="+planned.manifestPath),
-		Stdout: runner.stdout,
-		Stderr: runner.stderr,
-	}); err != nil {
-		return fmt.Errorf("lane %s: %w", lane.Name, err)
-	}
-	return nil
+	return result
 }
 
 func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
@@ -266,7 +240,7 @@ func ginkgoArguments(lane lanes.Lane, reportDir string) []string {
 func requiredTools(selected []lanes.Lane) []lanes.Tool {
 	var required []lanes.Tool
 	for _, lane := range selected {
-		for _, tool := range lane.Tools {
+		for _, tool := range lane.Tools() {
 			if !slices.Contains(required, tool) {
 				required = append(required, tool)
 			}

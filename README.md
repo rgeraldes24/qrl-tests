@@ -54,5 +54,12 @@ Use distinct `DEVNET_ENCLAVE_NAME` and `E2E_REPORT_DIR` values for concurrent
 networks. Backend-specific scenarios are selected from declared capabilities;
 Docker-only partition tests are omitted on Kubernetes.
 
+`run-all` provisions lanes sequentially by default. A Kubernetes cluster can
+run multiple isolated lane enclaves concurrently:
+
+```bash
+DEVNET_BACKEND=kubernetes E2E_MAX_PARALLEL=4 make e2e-all
+```
+
 See [development network configuration](devnet/README.md), [suite ownership](endtoend/README.md),
 [scenario coverage](endtoend/coverage/README.md), and [test ownership](docs/ownership.md).

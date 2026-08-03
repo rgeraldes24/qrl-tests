@@ -28,6 +28,14 @@ func decimalSlice(name string, values []string) ([]uint64, error) {
 
 type quotedUint64s []uint64
 
+func (values quotedUint64s) MarshalJSON() ([]byte, error) {
+	encoded := make([]string, len(values))
+	for index, value := range values {
+		encoded[index] = strconv.FormatUint(value, 10)
+	}
+	return json.Marshal(encoded)
+}
+
 func (values *quotedUint64s) UnmarshalJSON(input []byte) error {
 	var encoded []string
 	if err := json.Unmarshal(input, &encoded); err != nil {
@@ -39,6 +47,18 @@ func (values *quotedUint64s) UnmarshalJSON(input []byte) error {
 	}
 	*values = parsed
 	return nil
+}
+
+func (value IndexedAttestation) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		AttestingIndices quotedUint64s   `json:"attesting_indices"`
+		Data             AttestationData `json:"data"`
+		Signatures       []string        `json:"signatures"`
+	}{
+		AttestingIndices: value.AttestingIndices,
+		Data:             value.Data,
+		Signatures:       value.Signatures,
+	})
 }
 
 func (value *IndexedAttestation) UnmarshalJSON(input []byte) error {

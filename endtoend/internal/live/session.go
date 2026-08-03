@@ -68,16 +68,17 @@ func Load(ctx context.Context) (*Runtime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read chain ID: %w", err)
 	}
-	return &Runtime{
+	runtime := &Runtime{
 		Environment: manifest.Environment,
 		Profile:     manifest.Profile,
 		Wallet:      wallet,
 		Address:     common.Address(wallet.GetAddress()),
 		ChainID:     chainID,
-		Services:    devnet.NewServiceController(manifest.Environment.EnclaveName),
 		manager:     devnet.NewManager(),
 		tools:       manifest.Tools,
-	}, nil
+	}
+	runtime.Services = runtime.manager.ServiceController(manifest.Environment.EnclaveName)
+	return runtime, nil
 }
 
 func (runtime *Runtime) Primary(ctx context.Context) (*Session, error) {

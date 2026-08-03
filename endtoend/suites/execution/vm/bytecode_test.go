@@ -11,18 +11,17 @@ import (
 )
 
 func push(data []byte) []byte {
-	code := []byte{byte(qrvm.PUSH1) + byte(len(data)-1)}
-	return append(code, data...)
+	return newProgram().Push(data).Bytes()
 }
 
 func returnTop() []byte {
-	return []byte{
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	}
+	return newProgram().
+		PushByte(0).
+		Op(qrvm.MSTORE).
+		PushByte(byte(qrvm.WordBytes)).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func pushCode(width int) ([]byte, []byte) {
@@ -30,26 +29,30 @@ func pushCode(width int) ([]byte, []byte) {
 	for index := range value {
 		value[index] = byte(index + 1)
 	}
-	code := append(push(value), returnTop()...)
+	code := newProgram().Push(value).Append(returnTop()).Bytes()
 	return code, common.LeftPadBytes(value, qrvm.WordBytes)
 }
 
 func dupCode(depth int) []byte {
-	code := make([]byte, 0, depth*2+8)
+	program := newProgram()
 	for value := 1; value <= depth; value++ {
-		code = append(code, byte(qrvm.PUSH1), byte(value))
+		program.PushByte(byte(value))
 	}
-	code = append(code, byte(qrvm.DUP1)+byte(depth-1))
-	return append(code, returnTop()...)
+	return program.
+		Op(qrvm.DUP1 + qrvm.OpCode(depth-1)).
+		Append(returnTop()).
+		Bytes()
 }
 
 func swapCode(depth int) []byte {
-	code := make([]byte, 0, (depth+1)*2+8)
+	program := newProgram()
 	for value := 1; value <= depth+1; value++ {
-		code = append(code, byte(qrvm.PUSH1), byte(value))
+		program.PushByte(byte(value))
 	}
-	code = append(code, byte(qrvm.SWAP1)+byte(depth-1))
-	return append(code, returnTop()...)
+	return program.
+		Op(qrvm.SWAP1 + qrvm.OpCode(depth-1)).
+		Append(returnTop()).
+		Bytes()
 }
 
 func memoryCode(value []byte) []byte {
@@ -57,130 +60,118 @@ func memoryCode(value []byte) []byte {
 }
 
 func memoryCodeAt(value []byte, offset byte) []byte {
-	code := append(push(value),
-		byte(qrvm.PUSH1), offset,
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), offset,
-		byte(qrvm.MLOAD),
-	)
-	return append(code, returnTop()...)
+	return newProgram().
+		Push(value).
+		PushByte(offset).
+		Op(qrvm.MSTORE).
+		PushByte(offset).
+		Op(qrvm.MLOAD).
+		Append(returnTop()).
+		Bytes()
 }
 
 func returnWordCode(value []byte) []byte {
-	return append(push(value), returnTop()...)
+	return newProgram().Push(value).Append(returnTop()).Bytes()
 }
 
 func echoCalldataCode() []byte {
-	return []byte{
-		byte(qrvm.CALLDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.CALLDATACOPY),
-		byte(qrvm.CALLDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	}
+	return newProgram().
+		Op(qrvm.CALLDATASIZE).
+		PushByte(0).
+		PushByte(0).
+		Op(qrvm.CALLDATACOPY, qrvm.CALLDATASIZE).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func calldataLoadCode(offset byte) []byte {
-	return append([]byte{
-		byte(qrvm.PUSH1), offset,
-		byte(qrvm.CALLDATALOAD),
-	}, returnTop()...)
+	return newProgram().
+		PushByte(offset).
+		Op(qrvm.CALLDATALOAD).
+		Append(returnTop()).
+		Bytes()
 }
 
 func codeCopyCode(data []byte) []byte {
-	code := []byte{
-		byte(qrvm.PUSH1), byte(len(data)),
-		byte(qrvm.PUSH2), 0, 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.CODECOPY),
-		byte(qrvm.PUSH1), byte(len(data)),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	}
-	dataOffset := len(code)
-	code[3] = byte(dataOffset >> 8)
-	code[4] = byte(dataOffset)
-	return append(code, data...)
+	return newProgram().
+		PushByte(byte(len(data))).
+		PushLabel("data", 2).
+		PushByte(0).
+		Op(qrvm.CODECOPY).
+		PushByte(byte(len(data))).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Label("data").
+		Append(data).
+		Bytes()
 }
 
 func extCodeCopyCode(target common.Address, size byte) []byte {
-	code := []byte{
-		byte(qrvm.PUSH1), size,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH64),
-	}
-	code = append(code, target[:]...)
-	return append(code,
-		byte(qrvm.EXTCODECOPY),
-		byte(qrvm.PUSH1), size,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	)
+	return newProgram().
+		PushByte(size).
+		PushByte(0).
+		PushByte(0).
+		PushAddress(target).
+		Op(qrvm.EXTCODECOPY).
+		PushByte(size).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func returnDataCopyCode(target common.Address) []byte {
-	code := []byte{
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH64),
-	}
-	code = append(code, target[:]...)
-	return append(code,
-		byte(qrvm.GAS),
-		byte(qrvm.CALL),
-		byte(qrvm.POP),
-		byte(qrvm.RETURNDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURNDATACOPY),
-		byte(qrvm.RETURNDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	)
+	return newProgram().
+		PushByte(0).
+		PushByte(0).
+		PushByte(0).
+		PushByte(0).
+		PushByte(0).
+		PushAddress(target).
+		Op(qrvm.GAS, qrvm.CALL, qrvm.POP, qrvm.RETURNDATASIZE).
+		PushByte(0).
+		PushByte(0).
+		Op(qrvm.RETURNDATACOPY, qrvm.RETURNDATASIZE).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func keccakCalldataCode() []byte {
-	return []byte{
-		byte(qrvm.CALLDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.CALLDATACOPY),
-		byte(qrvm.CALLDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.KECCAK256),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	}
+	return newProgram().
+		Op(qrvm.CALLDATASIZE).
+		PushByte(0).
+		PushByte(0).
+		Op(qrvm.CALLDATACOPY, qrvm.CALLDATASIZE).
+		PushByte(0).
+		Op(qrvm.KECCAK256).
+		PushByte(0).
+		Op(qrvm.MSTORE).
+		PushByte(byte(qrvm.WordBytes)).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func staticCallPrecompileCode(address, gas byte) []byte {
-	return []byte{
-		byte(qrvm.CALLDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.CALLDATACOPY),
-		byte(qrvm.PUSH1), 32,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.CALLDATASIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), address,
-		byte(qrvm.PUSH1), gas,
-		byte(qrvm.STATICCALL),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(2 * qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	}
+	return newProgram().
+		Op(qrvm.CALLDATASIZE).
+		PushByte(0).
+		PushByte(0).
+		Op(qrvm.CALLDATACOPY).
+		PushByte(32).
+		PushByte(0).
+		Op(qrvm.CALLDATASIZE).
+		PushByte(0).
+		PushByte(address).
+		PushByte(gas).
+		Op(qrvm.STATICCALL).
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		PushByte(byte(2 * qrvm.WordBytes)).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func patternedBytes(size int) []byte {
@@ -204,31 +195,30 @@ func patternedCreate2Salt() [qrvm.WordBytes]byte {
 }
 
 func operationCode(op qrvm.OpCode, operands ...[]byte) []byte {
-	var code []byte
+	program := newProgram()
 	for _, operand := range operands {
-		code = append(code, push(operand)...)
+		program.Push(operand)
 	}
-	code = append(code, byte(op))
-	return append(code, returnTop()...)
+	return program.Op(op).Append(returnTop()).Bytes()
 }
 
 func storageRoundTripCode(key, value []byte) []byte {
-	code := append(push(value), push(key)...)
-	code = append(code, byte(qrvm.SSTORE))
-	code = append(code, push(key)...)
-	code = append(code, byte(qrvm.SLOAD))
-	return append(code, returnTop()...)
+	return newProgram().
+		Push(value).
+		Push(key).
+		Op(qrvm.SSTORE).
+		Push(key).
+		Op(qrvm.SLOAD).
+		Append(returnTop()).
+		Bytes()
 }
 
 func addressOpcodeCode(op qrvm.OpCode, address common.Address) []byte {
-	code := []byte{byte(qrvm.PUSH64)}
-	code = append(code, address[:]...)
-	code = append(code, byte(op))
-	return append(code, returnTop()...)
+	return newProgram().PushAddress(address).Op(op).Append(returnTop()).Bytes()
 }
 
 func opcodeCode(op qrvm.OpCode) []byte {
-	return append([]byte{byte(op)}, returnTop()...)
+	return newProgram().Op(op).Append(returnTop()).Bytes()
 }
 
 func jumpDestinationCode(width int, embedded bool) []byte {
@@ -238,15 +228,21 @@ func jumpDestinationCode(width int, embedded bool) []byte {
 	if embedded {
 		target = 5
 	}
-	code := []byte{
-		byte(qrvm.PUSH2), byte(target >> 8), byte(target),
-		byte(qrvm.JUMP),
-		byte(qrvm.PUSH1) + byte(width-1),
-	}
-	code = append(code, data...)
 	if embedded {
-		return append(code, byte(qrvm.STOP))
+		return newProgram().
+			Push([]byte{byte(target >> 8), byte(target)}).
+			Op(qrvm.JUMP).
+			Push(data).
+			Op(qrvm.STOP).
+			Bytes()
 	}
-	code = append(code, byte(qrvm.JUMPDEST), byte(qrvm.PUSH1), 1)
-	return append(code, returnTop()...)
+	return newProgram().
+		PushLabel("destination", 2).
+		Op(qrvm.JUMP).
+		Push(data).
+		Label("destination").
+		Op(qrvm.JUMPDEST).
+		PushByte(1).
+		Append(returnTop()).
+		Bytes()
 }

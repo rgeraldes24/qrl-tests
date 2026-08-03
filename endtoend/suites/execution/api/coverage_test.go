@@ -17,40 +17,42 @@ const (
 	coverageInternal   = "excluded: internal compatibility callback"
 	coverageSigner     = "covered by the external signer suite"
 
-	scenarioNodeMetadata             = "node-metadata"
-	scenarioChainState               = "chain-state"
-	scenarioTransactions             = "transactions"
-	scenarioTxPool                   = "txpool"
-	scenarioRuntimeDiagnostics       = "runtime-diagnostics"
-	scenarioHistoricalLogs           = "historical-logs"
-	scenarioBlockFilter              = "block-filter"
-	scenarioPendingFilter            = "pending-filter"
-	scenarioSubscriptionEvents       = "subscription-events"
-	scenarioSubscriptionRegistration = "subscription-registration"
-	scenarioRawDebug                 = "raw-debug"
-	scenarioDebugState               = "debug-state"
-	scenarioDebugTracing             = "debug-tracing"
-	scenarioDebugErrorPaths          = "debug-error-paths"
-	scenarioGraphQLSchema            = "graphql-schema"
-	scenarioGraphQLQueries           = "graphql-queries"
-	scenarioGraphQLMutation          = "graphql-mutation"
-	scenarioGraphQLPending           = "graphql-pending"
+	scenarioNodeMetadata             scenarioID = "node-metadata"
+	scenarioChainState                          = "chain-state"
+	scenarioTransactions                        = "transactions"
+	scenarioTxPool                              = "txpool"
+	scenarioRuntimeDiagnostics                  = "runtime-diagnostics"
+	scenarioHistoricalLogs                      = "historical-logs"
+	scenarioBlockFilter                         = "block-filter"
+	scenarioPendingFilter                       = "pending-filter"
+	scenarioSubscriptionEvents                  = "subscription-events"
+	scenarioSubscriptionRegistration            = "subscription-registration"
+	scenarioRawDebug                            = "raw-debug"
+	scenarioDebugState                          = "debug-state"
+	scenarioDebugTracing                        = "debug-tracing"
+	scenarioDebugErrorPaths                     = "debug-error-paths"
+	scenarioGraphQLSchema                       = "graphql-schema"
+	scenarioGraphQLQueries                      = "graphql-queries"
+	scenarioGraphQLMutation                     = "graphql-mutation"
+	scenarioGraphQLPending                      = "graphql-pending"
 )
+
+type scenarioID string
 
 type apiCoverageEntry struct {
 	kind     string
-	scenario string
+	scenario scenarioID
 }
 
-func behavior(scenario string) apiCoverageEntry {
+func behavior(scenario scenarioID) apiCoverageEntry {
 	return apiCoverageEntry{kind: coverageBehavior, scenario: scenario}
 }
 
-func shape(scenario string) apiCoverageEntry {
+func shape(scenario scenarioID) apiCoverageEntry {
 	return apiCoverageEntry{kind: coverageShape, scenario: scenario}
 }
 
-func dispatch(scenario string) apiCoverageEntry {
+func dispatch(scenario scenarioID) apiCoverageEntry {
 	return apiCoverageEntry{kind: coverageDispatch, scenario: scenario}
 }
 
@@ -58,7 +60,7 @@ func excluded(kind string) apiCoverageEntry {
 	return apiCoverageEntry{kind: kind}
 }
 
-var scenarioDescriptions = map[string]string{
+var scenarioDescriptions = map[scenarioID]string{
 	scenarioNodeMetadata:             "covers node and network metadata APIs",
 	scenarioChainState:               "covers chain, account, state, call, proof, and fee APIs",
 	scenarioTransactions:             "covers transaction lookup and raw encoding APIs",
@@ -229,5 +231,4 @@ func TestAPICoverageManifest(t *testing.T) {
 			t.Errorf("%s is excluded but references scenario %q", method, entry.scenario)
 		}
 	}
-
 }

@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
@@ -38,9 +39,9 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	// indexed-topic rule, then delivers and decodes the event matching all rules.
 	ginkgo.By("watching a filtered event through the generated WebSocket binding")
 	auth := fixture.transactOpts(ctx)
-	watched, err := NewEventEmitter(fixture.address, fixture.wsClient)
+	watched, err := abifixture.NewEventEmitter(fixture.address, fixture.wsClient)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	events := make(chan *EventEmitterIndexedScalars, 1)
+	events := make(chan *abifixture.EventEmitterIndexedScalars, 1)
 	code, delta := [5]byte{1, 2, 3, 4, 5}, int16(-777)
 	subscription, err := watched.WatchIndexedScalars(
 		&bind.WatchOpts{Context: ctx},
@@ -89,7 +90,7 @@ func (fixture *liveFixture) assertWebSocketWatcher(ctx context.Context) {
 	// Goal: the generated WebSocket watcher hashes the original dynamic filter
 	// values, rejects a non-matching event, and decodes the matching hashes.
 	ginkgo.By("watching indexed dynamic values through the generated WebSocket binding")
-	dynamicEvents := make(chan *EventEmitterDynamic, 1)
+	dynamicEvents := make(chan *abifixture.EventEmitterDynamic, 1)
 	dynamicSubscription, err := watched.WatchDynamic(
 		&bind.WatchOpts{Context: ctx},
 		dynamicEvents,

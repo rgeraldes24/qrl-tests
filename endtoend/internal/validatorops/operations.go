@@ -2,14 +2,14 @@ package validatorops
 
 import (
 	"fmt"
-	"strconv"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
 	"github.com/theQRL/go-qrl/common/hexutil"
 )
 
-func ProposerSlashing(key *Key, validatorIndex, slot uint64, chain consensuscontext.Context) (any, error) {
+func ProposerSlashing(key *Key, validatorIndex, slot uint64, chain consensuscontext.Context) (consensus.ProposerSlashing, error) {
 	epoch := chain.Epoch(slot)
 	header1 := consensuscrypto.BeaconBlockHeader{
 		Slot: slot, ProposerIndex: validatorIndex, BodyRoot: rootWithMarker(1),
@@ -19,47 +19,45 @@ func ProposerSlashing(key *Key, validatorIndex, slot uint64, chain consensuscont
 	}
 	signature1, err := sign(key, header1, consensuscrypto.DomainBeaconProposer, epoch, chain)
 	if err != nil {
-		return nil, err
+		return consensus.ProposerSlashing{}, err
 	}
 	signature2, err := sign(key, header2, consensuscrypto.DomainBeaconProposer, epoch, chain)
 	if err != nil {
-		return nil, err
+		return consensus.ProposerSlashing{}, err
 	}
-	return map[string]any{
-		"signed_header_1": signedHeaderJSON(header1, signature1),
-		"signed_header_2": signedHeaderJSON(header2, signature2),
+	return consensus.ProposerSlashing{
+		Header1: signedHeader(header1, signature1),
+		Header2: signedHeader(header2, signature2),
 	}, nil
 }
 
-func AttesterSlashing(key *Key, validatorIndex, slot, finalizedEpoch uint64, chain consensuscontext.Context) (any, error) {
+func AttesterSlashing(key *Key, validatorIndex, slot, finalizedEpoch uint64, chain consensuscontext.Context) (consensus.AttesterSlashing, error) {
 	epoch := chain.Epoch(slot)
 	first := attestationData(slot, epoch, finalizedEpoch, 1)
 	second := attestationData(slot, epoch, finalizedEpoch, 2)
 	firstSignature, err := sign(key, first, consensuscrypto.DomainBeaconAttester, epoch, chain)
 	if err != nil {
-		return nil, err
+		return consensus.AttesterSlashing{}, err
 	}
 	secondSignature, err := sign(key, second, consensuscrypto.DomainBeaconAttester, epoch, chain)
 	if err != nil {
-		return nil, err
+		return consensus.AttesterSlashing{}, err
 	}
-	return map[string]any{
-		"attestation_1": indexedAttestationJSON(validatorIndex, first, firstSignature),
-		"attestation_2": indexedAttestationJSON(validatorIndex, second, secondSignature),
+	return consensus.AttesterSlashing{
+		Attestation1: indexedAttestation(validatorIndex, first, firstSignature),
+		Attestation2: indexedAttestation(validatorIndex, second, secondSignature),
 	}, nil
 }
 
-func VoluntaryExit(key *Key, validatorIndex, epoch uint64, chain consensuscontext.Context) (any, error) {
+func VoluntaryExit(key *Key, validatorIndex, epoch uint64, chain consensuscontext.Context) (consensus.SignedVoluntaryExit, error) {
 	exit := consensuscrypto.VoluntaryExit{Epoch: epoch, ValidatorIndex: validatorIndex}
 	signature, err := sign(key, exit, consensuscrypto.DomainVoluntaryExit, epoch, chain)
 	if err != nil {
-		return nil, err
+		return consensus.SignedVoluntaryExit{}, err
 	}
-	return map[string]any{
-		"message": map[string]string{
-			"epoch": strconv.FormatUint(epoch, 10), "validator_index": strconv.FormatUint(validatorIndex, 10),
-		},
-		"signature": hexutil.Encode(signature),
+	return consensus.SignedVoluntaryExit{
+		Message:   consensus.VoluntaryExit{Epoch: epoch, ValidatorIndex: validatorIndex},
+		Signature: hexutil.Encode(signature),
 	}, nil
 }
 
@@ -86,38 +84,40 @@ func sign(
 	return signature, nil
 }
 
-func signedHeaderJSON(header consensuscrypto.BeaconBlockHeader, signature []byte) map[string]any {
-	return map[string]any{
-		"message": map[string]string{
-			"slot":           strconv.FormatUint(header.Slot, 10),
-			"proposer_index": strconv.FormatUint(header.ProposerIndex, 10),
-			"parent_root":    hexutil.Encode(header.ParentRoot[:]),
-			"state_root":     hexutil.Encode(header.StateRoot[:]),
-			"body_root":      hexutil.Encode(header.BodyRoot[:]),
+func signedHeader(header consensuscrypto.BeaconBlockHeader, signature []byte) consensus.SignedBeaconBlockHeader {
+	return consensus.SignedBeaconBlockHeader{
+		Message: consensus.BeaconBlockHeader{
+			Slot:          header.Slot,
+			ProposerIndex: header.ProposerIndex,
+			ParentRoot:    hexutil.Encode(header.ParentRoot[:]),
+			StateRoot:     hexutil.Encode(header.StateRoot[:]),
+			BodyRoot:      hexutil.Encode(header.BodyRoot[:]),
 		},
-		"signature": hexutil.Encode(signature),
+		Signature: hexutil.Encode(signature),
 	}
 }
 
-func indexedAttestationJSON(
+func indexedAttestation(
 	validatorIndex uint64,
 	data consensuscrypto.AttestationData,
 	signature []byte,
-) map[string]any {
-	return map[string]any{
-		"attesting_indices": []string{strconv.FormatUint(validatorIndex, 10)},
-		"data": map[string]any{
-			"slot":              strconv.FormatUint(data.Slot, 10),
-			"index":             strconv.FormatUint(data.CommitteeIndex, 10),
-			"beacon_block_root": hexutil.Encode(data.BeaconBlockRoot[:]),
-			"source": map[string]string{
-				"epoch": strconv.FormatUint(data.Source.Epoch, 10), "root": hexutil.Encode(data.Source.Root[:]),
+) consensus.IndexedAttestation {
+	return consensus.IndexedAttestation{
+		AttestingIndices: []uint64{validatorIndex},
+		Data: consensus.AttestationData{
+			Slot:            data.Slot,
+			CommitteeIndex:  data.CommitteeIndex,
+			BeaconBlockRoot: hexutil.Encode(data.BeaconBlockRoot[:]),
+			Source: consensus.Checkpoint{
+				Epoch: data.Source.Epoch,
+				Root:  hexutil.Encode(data.Source.Root[:]),
 			},
-			"target": map[string]string{
-				"epoch": strconv.FormatUint(data.Target.Epoch, 10), "root": hexutil.Encode(data.Target.Root[:]),
+			Target: consensus.Checkpoint{
+				Epoch: data.Target.Epoch,
+				Root:  hexutil.Encode(data.Target.Root[:]),
 			},
 		},
-		"signatures": []string{hexutil.Encode(signature)},
+		Signatures: []string{hexutil.Encode(signature)},
 	}
 }
 

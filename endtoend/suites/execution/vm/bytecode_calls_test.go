@@ -11,93 +11,80 @@ import (
 )
 
 func revertingStorageCode() []byte {
-	return []byte{
-		byte(qrvm.PUSH1), 1,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.SSTORE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.REVERT),
-	}
+	return newProgram().
+		PushByte(1).
+		PushByte(0).
+		Op(qrvm.SSTORE).
+		PushByte(0).
+		PushByte(0).
+		Op(qrvm.REVERT).
+		Bytes()
 }
 
 func failingCallCode(op qrvm.OpCode, target common.Address) []byte {
-	code := []byte{
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-	}
+	program := newProgram().
+		PushByte(0).
+		PushByte(0).
+		PushByte(0).
+		PushByte(0)
 	if op == qrvm.CALL {
-		code = append(code, byte(qrvm.PUSH1), 7)
+		program.PushByte(7)
 	}
-	code = append(code, byte(qrvm.PUSH64))
-	code = append(code, target[:]...)
-	code = append(code,
-		byte(qrvm.GAS),
-		byte(op),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-	)
+	program.
+		PushAddress(target).
+		Op(qrvm.GAS, op).
+		PushByte(0).
+		Op(qrvm.MSTORE)
 	switch op {
 	case qrvm.CALL:
-		code = append(code, byte(qrvm.PUSH64))
-		code = append(code, target[:]...)
-		code = append(code, byte(qrvm.BALANCE))
+		program.PushAddress(target).Op(qrvm.BALANCE)
 	case qrvm.DELEGATECALL:
-		code = append(code, byte(qrvm.PUSH1), 0, byte(qrvm.SLOAD))
+		program.PushByte(0).Op(qrvm.SLOAD)
 	default:
-		code = append(code, byte(qrvm.RETURNDATASIZE))
+		program.Op(qrvm.RETURNDATASIZE)
 	}
-	return append(code,
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.SELFBALANCE),
-		byte(qrvm.PUSH1), byte(2*qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(3*qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	)
+	return program.
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MSTORE, qrvm.SELFBALANCE).
+		PushByte(byte(2 * qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		PushByte(byte(3 * qrvm.WordBytes)).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func failingCreateCode(op qrvm.OpCode, child common.Address, salt [qrvm.WordBytes]byte) ([]byte, []byte) {
 	initCode := revertingStorageCode()
-	code := append(push(initCode),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-	)
+	program := newProgram().
+		Push(initCode).
+		PushByte(0).
+		Op(qrvm.MSTORE)
 	if op == qrvm.CREATE2 {
-		code = append(code, push(salt[:])...)
+		program.Push(salt[:])
 	}
-	code = append(code,
-		byte(qrvm.PUSH1), byte(len(initCode)),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes-len(initCode)),
-		byte(qrvm.PUSH1), 7,
-		byte(op),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH64),
-	)
-	code = append(code, child[:]...)
-	code = append(code,
-		byte(qrvm.EXTCODESIZE),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH64),
-	)
-	code = append(code, child[:]...)
-	return append(code,
-		byte(qrvm.BALANCE),
-		byte(qrvm.PUSH1), byte(2*qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.SELFBALANCE),
-		byte(qrvm.PUSH1), byte(3*qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH2), 1, 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	), initCode
+	code := program.
+		PushByte(byte(len(initCode))).
+		PushByte(byte(qrvm.WordBytes-len(initCode))).
+		PushByte(7).
+		Op(op).
+		PushByte(0).
+		Op(qrvm.MSTORE).
+		PushAddress(child).
+		Op(qrvm.EXTCODESIZE).
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		PushAddress(child).
+		Op(qrvm.BALANCE).
+		PushByte(byte(2*qrvm.WordBytes)).
+		Op(qrvm.MSTORE, qrvm.SELFBALANCE).
+		PushByte(byte(3 * qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		Push([]byte{1, 0}).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
+	return code, initCode
 }
 
 func callCode(op qrvm.OpCode, target common.Address) []byte {
@@ -105,107 +92,95 @@ func callCode(op qrvm.OpCode, target common.Address) []byte {
 }
 
 func callCodeWithValue(op qrvm.OpCode, target common.Address, value byte) []byte {
-	code := []byte{
-		byte(qrvm.PUSH1), byte(3 * qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-	}
+	program := newProgram().
+		PushByte(byte(3 * qrvm.WordBytes)).
+		PushByte(0).
+		PushByte(0).
+		PushByte(0)
 	if op == qrvm.CALL {
-		code = append(code, byte(qrvm.PUSH1), value)
+		program.PushByte(value)
 	}
-	code = append(code, byte(qrvm.PUSH64))
-	code = append(code, target[:]...)
-	return append(code,
-		byte(qrvm.GAS),
-		byte(op),
-		byte(qrvm.PUSH1), byte(3*qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH2), 1, 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	)
+	return program.
+		PushAddress(target).
+		Op(qrvm.GAS, op).
+		PushByte(byte(3 * qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		Push([]byte{1, 0}).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func callContextCode() []byte {
-	return []byte{
-		byte(qrvm.ADDRESS),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.CALLER),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.CALLVALUE),
-		byte(qrvm.PUSH1), byte(2 * qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(3 * qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	}
+	return newProgram().
+		Op(qrvm.ADDRESS).
+		PushByte(0).
+		Op(qrvm.MSTORE, qrvm.CALLER).
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MSTORE, qrvm.CALLVALUE).
+		PushByte(byte(2 * qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		PushByte(byte(3 * qrvm.WordBytes)).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func callValueContextCode() []byte {
-	return []byte{
-		byte(qrvm.CALLVALUE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.SELFBALANCE),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(2 * qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	}
+	return newProgram().
+		Op(qrvm.CALLVALUE).
+		PushByte(0).
+		Op(qrvm.MSTORE, qrvm.SELFBALANCE).
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		PushByte(byte(2 * qrvm.WordBytes)).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 }
 
 func createCode(op qrvm.OpCode, value byte, salt [qrvm.WordBytes]byte) ([]byte, []byte) {
 	childRuntime := returnWordCode([]byte{0x2a})
-	childInit := append(push(childRuntime),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(len(childRuntime)),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes-len(childRuntime)),
-		byte(qrvm.RETURN),
-	)
-	code := append(push(childInit),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-	)
+	childInit := newProgram().
+		Push(childRuntime).
+		PushByte(0).
+		Op(qrvm.MSTORE).
+		PushByte(byte(len(childRuntime))).
+		PushByte(byte(qrvm.WordBytes - len(childRuntime))).
+		Op(qrvm.RETURN).
+		Bytes()
+	program := newProgram().
+		Push(childInit).
+		PushByte(0).
+		Op(qrvm.MSTORE)
 	if op == qrvm.CREATE2 {
-		code = append(code, push(salt[:])...)
+		program.Push(salt[:])
 	}
-	code = append(code,
-		byte(qrvm.PUSH1), byte(len(childInit)),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes-len(childInit)),
-		byte(qrvm.PUSH1), value,
-		byte(op),
-		byte(qrvm.DUP1),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.DUP1),
-		byte(qrvm.EXTCODESIZE),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.POP),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MLOAD),
-		byte(qrvm.BALANCE),
-		byte(qrvm.PUSH2), 1, 0,
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.PUSH1), byte(2*qrvm.WordBytes),
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.PUSH1), byte(qrvm.WordBytes),
-		byte(qrvm.MLOAD),
-		byte(qrvm.GAS),
-		byte(qrvm.CALL),
-		byte(qrvm.PUSH1), byte(3*qrvm.WordBytes),
-		byte(qrvm.MSTORE),
-		byte(qrvm.PUSH2), 1, 64,
-		byte(qrvm.PUSH1), 0,
-		byte(qrvm.RETURN),
-	)
+	code := program.
+		PushByte(byte(len(childInit))).
+		PushByte(byte(qrvm.WordBytes-len(childInit))).
+		PushByte(value).
+		Op(op, qrvm.DUP1).
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MSTORE, qrvm.DUP1, qrvm.EXTCODESIZE).
+		PushByte(0).
+		Op(qrvm.MSTORE, qrvm.POP).
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MLOAD, qrvm.BALANCE).
+		Push([]byte{1, 0}).
+		Op(qrvm.MSTORE).
+		PushByte(byte(qrvm.WordBytes)).
+		PushByte(byte(2*qrvm.WordBytes)).
+		PushByte(0).
+		PushByte(0).
+		PushByte(0).
+		PushByte(byte(qrvm.WordBytes)).
+		Op(qrvm.MLOAD, qrvm.GAS, qrvm.CALL).
+		PushByte(byte(3 * qrvm.WordBytes)).
+		Op(qrvm.MSTORE).
+		Push([]byte{1, 64}).
+		PushByte(0).
+		Op(qrvm.RETURN).
+		Bytes()
 	return code, childInit
 }

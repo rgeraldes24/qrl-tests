@@ -67,6 +67,7 @@ func runnerFlags() []cli.Flag {
 		&cli.StringFlag{Name: "source-dir", Usage: "go-qrl source checkout", EnvVars: []string{"GO_QRL_SOURCE_DIR"}},
 		enclaveNameFlag(),
 		&cli.StringFlag{Name: "report-dir", Usage: "E2E report directory", Value: runner.DefaultReportDir, EnvVars: []string{"E2E_REPORT_DIR"}},
+		&cli.IntFlag{Name: "max-parallel", Usage: "maximum concurrently provisioned E2E lanes", Value: 1, EnvVars: []string{"E2E_MAX_PARALLEL"}},
 		backendFlag(),
 		&cli.DurationFlag{Name: "start-timeout", Usage: "network start budget", Value: devnet.DefaultStartTimeout, EnvVars: []string{"DEVNET_START_TIMEOUT"}},
 	}
@@ -78,12 +79,16 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 	if err != nil {
 		return runner.Config{}, err
 	}
+	if command.Int("max-parallel") < 1 {
+		return runner.Config{}, fmt.Errorf("max-parallel must be at least 1")
+	}
 	return runner.Config{
 		SourceDir:    command.String("source-dir"),
 		BaseName:     command.String("enclave-name"),
 		ReportDir:    command.String("report-dir"),
 		Backend:      backend,
 		StartTimeout: command.Duration("start-timeout"),
+		MaxParallel:  command.Int("max-parallel"),
 		Images:       imagesFrom(command),
 	}, nil
 }

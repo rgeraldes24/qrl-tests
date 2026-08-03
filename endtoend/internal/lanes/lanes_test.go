@@ -16,6 +16,14 @@ import (
 
 func TestRegistry(t *testing.T) {
 	root := repositoryRoot(t)
+	registered := make(map[SuiteID]Suite)
+	for _, suite := range RegisteredSuites() {
+		require.NotEmpty(t, suite.ID)
+		require.NotEmpty(t, suite.Package)
+		_, duplicate := registered[suite.ID]
+		require.Falsef(t, duplicate, "duplicate suite %q", suite.ID)
+		registered[suite.ID] = suite
+	}
 	seen := make(map[string]struct{})
 	for _, lane := range All() {
 		require.NotEmpty(t, lane.Name)
@@ -25,7 +33,9 @@ func TestRegistry(t *testing.T) {
 		require.NotEmpty(t, lane.Profile)
 		require.NotEmpty(t, lane.Suites)
 		require.Positive(t, lane.Timeout)
-		for _, pattern := range lane.Packages() {
+		for index, pattern := range lane.Packages() {
+			_, ok := registered[lane.Suites[index]]
+			require.Truef(t, ok, "lane %s references unknown suite %q", lane.Name, lane.Suites[index])
 			path := strings.TrimSuffix(strings.TrimPrefix(pattern, "./"), "/...")
 			info, err := os.Stat(filepath.Join(root, path))
 			require.NoErrorf(t, err, "lane %s package %s", lane.Name, pattern)

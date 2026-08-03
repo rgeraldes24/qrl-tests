@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi"
@@ -67,7 +68,7 @@ func (fixture *liveFixture) assertErrors(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 
 	inputs := fixture.inputs
-	record := EventEmitterRecord{
+	record := abifixture.EventEmitterRecord{
 		Amount:    inputs.amount,
 		Recipient: fixture.from,
 		Tag:       inputs.tag,

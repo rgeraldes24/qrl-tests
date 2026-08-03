@@ -23,10 +23,36 @@ var _ = ginkgo.BeforeSuite(func(ctx ginkgo.SpecContext) {
 	suite = setupLiveSuite(ctx)
 })
 
-func liveIt(scenario string, assertion func(*liveSuite, context.Context)) {
+type liveScenario struct {
+	id        scenarioID
+	assertion func(*liveSuite, context.Context)
+}
+
+var liveScenarios = []liveScenario{
+	{scenarioNodeMetadata, (*liveSuite).assertNodeMetadata},
+	{scenarioChainState, (*liveSuite).assertChainState},
+	{scenarioTransactions, (*liveSuite).assertTransactions},
+	{scenarioTxPool, (*liveSuite).assertTxPool},
+	{scenarioRuntimeDiagnostics, (*liveSuite).assertRuntimeDiagnostics},
+	{scenarioHistoricalLogs, (*liveSuite).assertHistoricalLogs},
+	{scenarioBlockFilter, (*liveSuite).assertBlockFilter},
+	{scenarioPendingFilter, (*liveSuite).assertPendingFilter},
+	{scenarioSubscriptionEvents, (*liveSuite).assertSubscriptionEvents},
+	{scenarioSubscriptionRegistration, (*liveSuite).assertSubscriptionRegistration},
+	{scenarioRawDebug, (*liveSuite).assertRawDebug},
+	{scenarioDebugState, (*liveSuite).assertDebugState},
+	{scenarioDebugTracing, (*liveSuite).assertDebugTracing},
+	{scenarioDebugErrorPaths, (*liveSuite).assertDebugErrorPaths},
+	{scenarioGraphQLSchema, (*liveSuite).assertGraphQLSchema},
+	{scenarioGraphQLQueries, (*liveSuite).assertGraphQLQueries},
+	{scenarioGraphQLMutation, (*liveSuite).assertGraphQLMutation},
+	{scenarioGraphQLPending, (*liveSuite).assertGraphQLPending},
+}
+
+func liveIt(scenario scenarioID, assertion func(*liveSuite, context.Context)) {
 	ginkgo.It(scenarioDescriptions[scenario], func(ctx ginkgo.SpecContext) {
 		assertion(suite, ctx)
-	}, ginkgo.Label(scenario))
+	}, ginkgo.Label(string(scenario)))
 }
 
 var _ = ginkgo.Describe(
@@ -36,23 +62,8 @@ var _ = ginkgo.Describe(
 	ginkgo.ContinueOnFailure,
 	ginkgo.Label("e2e", "live", "api", "mutates-chain"),
 	func() {
-		liveIt(scenarioNodeMetadata, (*liveSuite).assertNodeMetadata)
-		liveIt(scenarioChainState, (*liveSuite).assertChainState)
-		liveIt(scenarioTransactions, (*liveSuite).assertTransactions)
-		liveIt(scenarioTxPool, (*liveSuite).assertTxPool)
-		liveIt(scenarioRuntimeDiagnostics, (*liveSuite).assertRuntimeDiagnostics)
-		liveIt(scenarioHistoricalLogs, (*liveSuite).assertHistoricalLogs)
-		liveIt(scenarioBlockFilter, (*liveSuite).assertBlockFilter)
-		liveIt(scenarioPendingFilter, (*liveSuite).assertPendingFilter)
-		liveIt(scenarioSubscriptionEvents, (*liveSuite).assertSubscriptionEvents)
-		liveIt(scenarioSubscriptionRegistration, (*liveSuite).assertSubscriptionRegistration)
-		liveIt(scenarioRawDebug, (*liveSuite).assertRawDebug)
-		liveIt(scenarioDebugState, (*liveSuite).assertDebugState)
-		liveIt(scenarioDebugTracing, (*liveSuite).assertDebugTracing)
-		liveIt(scenarioDebugErrorPaths, (*liveSuite).assertDebugErrorPaths)
-		liveIt(scenarioGraphQLSchema, (*liveSuite).assertGraphQLSchema)
-		liveIt(scenarioGraphQLQueries, (*liveSuite).assertGraphQLQueries)
-		liveIt(scenarioGraphQLMutation, (*liveSuite).assertGraphQLMutation)
-		liveIt(scenarioGraphQLPending, (*liveSuite).assertGraphQLPending)
+		for _, scenario := range liveScenarios {
+			liveIt(scenario.id, scenario.assertion)
+		}
 	},
 )

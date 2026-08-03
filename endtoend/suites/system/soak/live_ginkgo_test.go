@@ -13,7 +13,6 @@ import (
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
-	"github.com/theQRL/go-qrl/core/types"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -66,8 +65,10 @@ var _ = ginkgo.Describe(
 					word := execfixture.FullWord(byte(cycle*len(sessions) + transactionIndex + 1))
 					tx, err := execfixture.SignCall(ctx, sessions[0], nonce, contract.Address, big.NewInt(int64(cycle+1)), word[:])
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
-					gomega.Expect(sessions[0].Execution.SendTransaction(ctx, tx)).To(gomega.Succeed())
-					awaitReceipt(ctx, sessions[0], tx)
+					waitCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+					_, err = execfixture.SendAndWait(waitCtx, sessions[0].Execution, tx)
+					cancel()
+					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				}
 
 				if cycle%2 == 0 {
@@ -108,11 +109,3 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(soakTimeout), ginkgo.Label("behavior:system:soak-recovery"))
 	},
 )
-
-func awaitReceipt(ctx context.Context, session *endtoendlive.Session, tx *types.Transaction) {
-	ginkgo.GinkgoHelper()
-	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-	defer cancel()
-	_, err := execfixture.WaitReceipt(waitCtx, session.Execution, tx.Hash())
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-}

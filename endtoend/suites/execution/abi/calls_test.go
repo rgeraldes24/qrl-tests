@@ -20,6 +20,7 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	qrl "github.com/theQRL/go-qrl"
@@ -87,13 +88,13 @@ func (fixture *liveFixture) assertCallRoundTrips(ctx context.Context) {
 	//     external pure returns (DynamicRecord, DynamicRecord[], uint16[][][]);
 	// Goal: generated bindings preserve nested tuples, arrays, and empty values.
 	ginkgo.By("round-tripping nested tuples and arrays through generated bindings")
-	nested := EventEmitterDynamicRecord{
+	nested := abifixture.EventEmitterDynamicRecord{
 		Amount:  inputs.amount,
 		Note:    inputs.note,
 		Payload: inputs.payload,
 		Values:  [][]uint16{{1, 2}, {}, {3}},
 	}
-	records := []EventEmitterDynamicRecord{
+	records := []abifixture.EventEmitterDynamicRecord{
 		nested,
 		{Amount: new(big.Int), Note: "", Payload: []byte{}, Values: [][]uint16{}},
 	}

@@ -18,10 +18,9 @@ package abi
 
 import (
 	"context"
-	_ "embed"
 	"math/big"
-	"strings"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -31,16 +30,6 @@ import (
 	"github.com/theQRL/go-qrl/core/types"
 	"github.com/theQRL/go-qrl/qrlclient"
 )
-
-// Regenerate the source-controlled Hyperion artifacts and generated binding.
-// The compiler must be cyyber/hyperion@2b9a0f1d.
-//
-//go:generate sh -c "hypc --version 2>&1 | grep -Fq commit.2b9a0f1d || { echo 'hypc from cyyber/hyperion@2b9a0f1d is required; found:' >&2; hypc --version >&2; exit 1; }"
-//go:generate hypc --abi --bin --optimize --optimize-runs 1 --no-cbor-metadata --overwrite -o testdata testdata/EventEmitter.hyp
-//go:generate go run github.com/theQRL/go-qrl/cmd/abigen --abi testdata/EventEmitter.abi --bin testdata/EventEmitter.bin --pkg abi --type EventEmitter --out contract.go
-
-//go:embed testdata/EventEmitter.abi
-var eventEmitterABIJSON string
 
 type liveSuite struct {
 	client      *qrlclient.Client
@@ -77,7 +66,7 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 		inputs.payload[index] = byte((index*29 + 7) & 0xff)
 	}
 
-	parsed, err := abi.JSON(strings.NewReader(eventEmitterABIJSON))
+	parsed, err := abifixture.EventEmitterMetaData.GetAbi()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return &liveSuite{
@@ -85,7 +74,7 @@ func setupLiveSuite(ctx context.Context) *liveSuite {
 		wsClient:    session.ExecutionWebSocket,
 		from:        transactor.From,
 		signer:      transactor.Signer,
-		contractABI: parsed,
+		contractABI: *parsed,
 		inputs:      inputs,
 	}
 }
@@ -97,13 +86,13 @@ func (suite *liveSuite) deployEventEmitter(ctx context.Context) *liveFixture {
 	initial := new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 500), big.NewInt(1337))
 	deploymentNote := "dynamic constructor value: " + suite.inputs.note
 	deploymentPayload := append([]byte(nil), suite.inputs.payload...)
-	deploymentRecord := EventEmitterRecord{
+	deploymentRecord := abifixture.EventEmitterRecord{
 		Amount:    suite.inputs.amount,
 		Recipient: suite.from,
 		Tag:       suite.inputs.tag,
 	}
 	deploymentNumbers := []uint16{0, 1, 0xffff, 0x1234}
-	address, tx, binding, err := DeployEventEmitter(
+	address, tx, binding, err := abifixture.DeployEventEmitter(
 		deploymentAuth,
 		suite.client,
 		initial,
@@ -163,7 +152,7 @@ type liveFixture struct {
 	deploymentBlock *big.Int
 	address         common.Address
 	contract        *bind.BoundContract
-	binding         *EventEmitter
+	binding         *abifixture.EventEmitter
 	initial         *big.Int
 }
 

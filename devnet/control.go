@@ -6,52 +6,67 @@ package devnet
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 )
 
 type ServiceController struct {
+	manager *Manager
 	enclave string
-	run     func(context.Context, ...string) error
 }
 
-func NewServiceController(enclave string) *ServiceController {
-	return &ServiceController{enclave: enclave, run: runKurtosis}
+func (manager *Manager) ServiceController(enclave string) *ServiceController {
+	return &ServiceController{manager: manager, enclave: enclave}
 }
 
 func (controller *ServiceController) Stop(ctx context.Context, services ...string) error {
-	return controller.serviceCommand(ctx, "stop", services)
+	client, err := controller.client("stop", services)
+	if err != nil {
+		return err
+	}
+	if err := client.StopServices(ctx, controller.enclave, services...); err != nil {
+		return fmt.Errorf("kurtosis service stop: %w", err)
+	}
+	return nil
 }
 
 func (controller *ServiceController) Start(ctx context.Context, services ...string) error {
-	return controller.serviceCommand(ctx, "start", services)
+	client, err := controller.client("start", services)
+	if err != nil {
+		return err
+	}
+	if err := client.StartServices(ctx, controller.enclave, services...); err != nil {
+		return fmt.Errorf("kurtosis service start: %w", err)
+	}
+	return nil
 }
 
 func (controller *ServiceController) Restart(ctx context.Context, services ...string) error {
-	if err := controller.Stop(ctx, services...); err != nil {
+	client, err := controller.client("restart", services)
+	if err != nil {
 		return err
 	}
-	return controller.Start(ctx, services...)
+	if err := client.StopServices(ctx, controller.enclave, services...); err != nil {
+		return fmt.Errorf("kurtosis service stop: %w", err)
+	}
+	if err := client.StartServices(ctx, controller.enclave, services...); err != nil {
+		return fmt.Errorf("kurtosis service start: %w", err)
+	}
+	return nil
 }
 
-func (controller *ServiceController) serviceCommand(ctx context.Context, action string, services []string) error {
+func (controller *ServiceController) client(action string, services []string) (kurtosisClient, error) {
+	if controller.manager == nil {
+		return nil, fmt.Errorf("%s service: network manager is nil", action)
+	}
 	if strings.TrimSpace(controller.enclave) == "" {
-		return fmt.Errorf("%s service: enclave name is empty", action)
+		return nil, fmt.Errorf("%s service: enclave name is empty", action)
 	}
 	if len(services) == 0 {
-		return fmt.Errorf("%s service: no service names supplied", action)
+		return nil, fmt.Errorf("%s service: no service names supplied", action)
 	}
-	arguments := append([]string{"service", action, controller.enclave}, services...)
-	if err := controller.run(ctx, arguments...); err != nil {
-		return fmt.Errorf("kurtosis service %s: %w", action, err)
-	}
-	return nil
-}
-
-func runKurtosis(ctx context.Context, arguments ...string) error {
-	output, err := exec.CommandContext(ctx, "kurtosis", arguments...).CombinedOutput()
+	client, err := controller.manager.newClient()
 	if err != nil {
-		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+		return nil, err
 	}
-	return nil
+	return client, nil
 }

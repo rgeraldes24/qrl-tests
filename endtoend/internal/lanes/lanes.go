@@ -7,6 +7,7 @@ package lanes
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
@@ -15,10 +16,9 @@ import (
 type Lane struct {
 	Name        string
 	Profile     devnet.Profile
-	Suites      []Suite
+	Suites      []SuiteID
 	LabelFilter string
 	Timeout     time.Duration
-	Tools       []Tool
 }
 
 type Tool string
@@ -28,106 +28,142 @@ const (
 	ToolClef Tool = "clef"
 )
 
+type SuiteID string
+
+const (
+	SuiteExecutionABI        SuiteID = "execution-abi"
+	SuiteExecutionAPI        SuiteID = "execution-api"
+	SuiteExecutionConsole    SuiteID = "execution-console"
+	SuiteExecutionVM         SuiteID = "execution-vm"
+	SuiteExternalSigner      SuiteID = "external-signer"
+	SuiteClef                SuiteID = "clef"
+	SuiteConsensusAPI        SuiteID = "consensus-api"
+	SuiteConsensusProtocol   SuiteID = "consensus-protocol"
+	SuiteEngine              SuiteID = "engine"
+	SuiteNetwork             SuiteID = "network"
+	SuiteTransactions        SuiteID = "transactions"
+	SuiteValidator           SuiteID = "validator"
+	SuiteResilience          SuiteID = "resilience"
+	SuitePartition           SuiteID = "partition"
+	SuiteConsensusSync       SuiteID = "consensus-sync"
+	SuiteExecutionSync       SuiteID = "execution-sync"
+	SuiteConsensusColdState  SuiteID = "consensus-cold-state"
+	SuiteConsensusOptimistic SuiteID = "consensus-optimistic"
+	SuiteSoak                SuiteID = "soak"
+)
+
 type Suite struct {
+	ID       SuiteID
 	Package  string
 	Requires []devnet.Capability
+	Tools    []Tool
+}
+
+var suites = map[SuiteID]Suite{
+	SuiteExecutionABI:        {ID: SuiteExecutionABI, Package: "./endtoend/suites/execution/abi"},
+	SuiteExecutionAPI:        {ID: SuiteExecutionAPI, Package: "./endtoend/suites/execution/api"},
+	SuiteExecutionConsole:    {ID: SuiteExecutionConsole, Package: "./endtoend/suites/execution/console", Tools: []Tool{ToolGQRL}},
+	SuiteExecutionVM:         {ID: SuiteExecutionVM, Package: "./endtoend/suites/execution/vm"},
+	SuiteExternalSigner:      {ID: SuiteExternalSigner, Package: "./endtoend/suites/signer/externalsigner"},
+	SuiteClef:                {ID: SuiteClef, Package: "./endtoend/suites/signer/clef", Tools: []Tool{ToolClef}},
+	SuiteConsensusAPI:        {ID: SuiteConsensusAPI, Package: "./endtoend/suites/consensus/api"},
+	SuiteConsensusProtocol:   {ID: SuiteConsensusProtocol, Package: "./endtoend/suites/consensus/protocol"},
+	SuiteEngine:              {ID: SuiteEngine, Package: "./endtoend/suites/crosslayer/engine"},
+	SuiteNetwork:             {ID: SuiteNetwork, Package: "./endtoend/suites/crosslayer/network"},
+	SuiteTransactions:        {ID: SuiteTransactions, Package: "./endtoend/suites/crosslayer/transactions"},
+	SuiteValidator:           {ID: SuiteValidator, Package: "./endtoend/suites/crosslayer/validator"},
+	SuiteResilience:          {ID: SuiteResilience, Package: "./endtoend/suites/crosslayer/resilience"},
+	SuitePartition:           {ID: SuitePartition, Package: "./endtoend/suites/crosslayer/partition", Requires: []devnet.Capability{devnet.CapabilityNetworkPartition}},
+	SuiteConsensusSync:       {ID: SuiteConsensusSync, Package: "./endtoend/suites/consensus/sync"},
+	SuiteExecutionSync:       {ID: SuiteExecutionSync, Package: "./endtoend/suites/execution/sync"},
+	SuiteConsensusColdState:  {ID: SuiteConsensusColdState, Package: "./endtoend/suites/consensus/coldstate"},
+	SuiteConsensusOptimistic: {ID: SuiteConsensusOptimistic, Package: "./endtoend/suites/consensus/optimistic"},
+	SuiteSoak:                {ID: SuiteSoak, Package: "./endtoend/suites/system/soak", Requires: []devnet.Capability{devnet.CapabilityNetworkPartition}},
 }
 
 var registry = []Lane{
 	{
 		Name:    "single",
 		Profile: devnet.ProfileSingle,
-		Suites: packages(
-			"./endtoend/suites/execution/abi",
-			"./endtoend/suites/execution/api",
-			"./endtoend/suites/execution/console",
-			"./endtoend/suites/execution/vm",
-			"./endtoend/suites/signer/...",
-			"./endtoend/suites/consensus/api",
-			"./endtoend/suites/consensus/protocol",
-			"./endtoend/suites/crosslayer/engine",
-		),
+		Suites: []SuiteID{
+			SuiteExecutionABI,
+			SuiteExecutionAPI,
+			SuiteExecutionConsole,
+			SuiteExecutionVM,
+			SuiteExternalSigner,
+			SuiteClef,
+			SuiteConsensusAPI,
+			SuiteConsensusProtocol,
+			SuiteEngine,
+		},
 		LabelFilter: "!scenario-full && !profile-operations",
 		Timeout:     90 * time.Minute,
-		Tools:       []Tool{ToolGQRL, ToolClef},
 	},
 	{
 		Name:        "multi",
 		Profile:     devnet.ProfileMulti,
-		Suites:      packages("./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/transactions"),
+		Suites:      []SuiteID{SuiteNetwork, SuiteTransactions},
 		LabelFilter: "!scenario-full",
 		Timeout:     90 * time.Minute,
 	},
 	{
 		Name:        "workloads",
 		Profile:     devnet.ProfileMulti,
-		Suites:      packages("./endtoend/suites/crosslayer/transactions"),
+		Suites:      []SuiteID{SuiteTransactions},
 		LabelFilter: "scenario-full",
 		Timeout:     3 * time.Hour,
 	},
 	{
 		Name:        "lifecycle",
 		Profile:     devnet.ProfileSingle,
-		Suites:      packages("./endtoend/suites/crosslayer/validator"),
+		Suites:      []SuiteID{SuiteValidator},
 		LabelFilter: "!profile-operations",
 		Timeout:     2 * time.Hour,
 	},
 	{
 		Name:    "chaos",
 		Profile: devnet.ProfileChaos,
-		Suites: []Suite{
-			{Package: "./endtoend/suites/crosslayer/network"},
-			{Package: "./endtoend/suites/crosslayer/resilience"},
-			{Package: "./endtoend/suites/crosslayer/partition", Requires: []devnet.Capability{devnet.CapabilityNetworkPartition}},
-		},
+		Suites:  []SuiteID{SuiteNetwork, SuiteResilience, SuitePartition},
 		Timeout: 2 * time.Hour,
 	},
 	{
 		Name:    "consensus-sync",
 		Profile: devnet.ProfileSync,
-		Suites:  packages("./endtoend/suites/consensus/sync"),
+		Suites:  []SuiteID{SuiteConsensusSync},
 		Timeout: 45 * time.Minute,
 	},
 	{
 		Name:    "execution-sync",
 		Profile: devnet.ProfileExecutionSync,
-		Suites:  packages("./endtoend/suites/execution/sync"),
+		Suites:  []SuiteID{SuiteExecutionSync},
 		Timeout: 45 * time.Minute,
 	},
 	{
 		Name:        "operations",
 		Profile:     devnet.ProfileOperations,
-		Suites:      packages("./endtoend/suites/crosslayer/validator"),
+		Suites:      []SuiteID{SuiteValidator},
 		LabelFilter: "profile-operations",
 		Timeout:     4 * time.Hour,
 	},
 	{
 		Name:    "cold-state",
 		Profile: devnet.ProfileCold,
-		Suites:  packages("./endtoend/suites/consensus/coldstate"),
+		Suites:  []SuiteID{SuiteConsensusColdState},
 		Timeout: 45 * time.Minute,
 	},
 	{
 		Name:    "optimistic",
 		Profile: devnet.ProfileOptimistic,
-		Suites:  packages("./endtoend/suites/consensus/optimistic"),
+		Suites:  []SuiteID{SuiteConsensusOptimistic},
 		Timeout: 45 * time.Minute,
 	},
 	{
 		Name:        "soak",
 		Profile:     devnet.ProfileChaos,
-		Suites:      []Suite{{Package: "./endtoend/suites/system/soak", Requires: []devnet.Capability{devnet.CapabilityNetworkPartition}}},
+		Suites:      []SuiteID{SuiteSoak},
 		LabelFilter: "scenario-full",
 		Timeout:     4 * time.Hour,
 	},
-}
-
-func packages(names ...string) []Suite {
-	result := make([]Suite, len(names))
-	for index, name := range names {
-		result[index].Package = name
-	}
-	return result
 }
 
 func All() []Lane {
@@ -135,21 +171,45 @@ func All() []Lane {
 }
 
 func (lane Lane) ForBackend(backend devnet.Backend) (Lane, bool) {
-	suites := make([]Suite, 0, len(lane.Suites))
-	for _, suite := range lane.Suites {
+	selected := make([]SuiteID, 0, len(lane.Suites))
+	for _, id := range lane.Suites {
+		suite := suites[id]
 		if supportsAll(backend, suite.Requires) {
-			suites = append(suites, suite)
+			selected = append(selected, id)
 		}
 	}
-	lane.Suites = suites
+	lane.Suites = selected
 	return lane, len(lane.Suites) != 0
 }
 
 func (lane Lane) Packages() []string {
 	result := make([]string, len(lane.Suites))
-	for index, suite := range lane.Suites {
-		result[index] = suite.Package
+	for index, id := range lane.Suites {
+		result[index] = suites[id].Package
 	}
+	return result
+}
+
+func (lane Lane) Tools() []Tool {
+	var result []Tool
+	for _, id := range lane.Suites {
+		for _, tool := range suites[id].Tools {
+			if !slices.Contains(result, tool) {
+				result = append(result, tool)
+			}
+		}
+	}
+	return result
+}
+
+func RegisteredSuites() []Suite {
+	result := make([]Suite, 0, len(suites))
+	for _, suite := range suites {
+		result = append(result, suite)
+	}
+	slices.SortFunc(result, func(left, right Suite) int {
+		return strings.Compare(string(left.ID), string(right.ID))
+	})
 	return result
 }
 

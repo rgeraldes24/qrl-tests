@@ -47,3 +47,34 @@ func TestSignedBlockJSONRejectsInvalidNestedNumber(t *testing.T) {
 	var block SignedBlock
 	require.Error(t, json.Unmarshal(input, &block))
 }
+
+func TestIndexedAttestationJSON(t *testing.T) {
+	want := IndexedAttestation{
+		AttestingIndices: []uint64{7, 8},
+		Data: AttestationData{
+			Slot:            9,
+			CommitteeIndex:  10,
+			BeaconBlockRoot: "0x01",
+			Source:          Checkpoint{Epoch: 11, Root: "0x02"},
+			Target:          Checkpoint{Epoch: 12, Root: "0x03"},
+		},
+		Signatures: []string{"0x04"},
+	}
+	payload, err := json.Marshal(want)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"attesting_indices":["7","8"],
+		"data":{
+			"slot":"9",
+			"index":"10",
+			"beacon_block_root":"0x01",
+			"source":{"epoch":"11","root":"0x02"},
+			"target":{"epoch":"12","root":"0x03"}
+		},
+		"signatures":["0x04"]
+	}`, string(payload))
+
+	var got IndexedAttestation
+	require.NoError(t, json.Unmarshal(payload, &got))
+	require.Equal(t, want, got)
+}

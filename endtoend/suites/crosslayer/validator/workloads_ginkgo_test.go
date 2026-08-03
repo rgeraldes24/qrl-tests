@@ -12,7 +12,6 @@ import (
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
-	"github.com/theQRL/qrysm/crypto/ml_dsa_87"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -69,7 +68,7 @@ func (suite *operationsSuite) submitExit(
 	ctx ginkgo.SpecContext,
 	submitClient *consensus.Client,
 	scanner *operationScanner,
-	key ml_dsa_87.MLDSA87Key,
+	key *validatorops.Key,
 	index uint64,
 ) uint64 {
 	ginkgo.GinkgoHelper()
@@ -95,7 +94,7 @@ func (suite *operationsSuite) submitSlashing(
 	ctx ginkgo.SpecContext,
 	submitClient *consensus.Client,
 	scanner *operationScanner,
-	key ml_dsa_87.MLDSA87Key,
+	key *validatorops.Key,
 	index uint64,
 	proposer bool,
 ) uint64 {
@@ -104,7 +103,7 @@ func (suite *operationsSuite) submitSlashing(
 	validator, err := suite.beacon.Validator(ctx, strconv.FormatUint(index, 10))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(validator.Slashed).To(gomega.BeFalse())
-	gomega.Expect(strings.EqualFold(validator.PublicKey, hexutil.Encode(key.PublicKey().Marshal()))).To(gomega.BeTrue())
+	gomega.Expect(strings.EqualFold(validator.PublicKey, hexutil.Encode(key.PublicKey()))).To(gomega.BeTrue())
 	head, err := suite.beacon.Head(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	var operation any

@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"strconv"
 
+	walletcommon "github.com/theQRL/go-qrllib/wallet/common"
 	qrlmisc "github.com/theQRL/go-qrllib/wallet/misc"
-	"github.com/theQRL/qrysm/crypto/ml_dsa_87"
+	walletmldsa "github.com/theQRL/go-qrllib/wallet/ml_dsa_87"
 	"golang.org/x/crypto/sha3"
 )
 
 const genesisMnemonic = "veto waiter rail aroma aunt chess fiend than sahara unwary punk dawn belong agent sane reefy loyal from judas clean paste rho madam poor pay convoy duty circa hybrid circus exempt splash"
 
-func GenesisKey(index uint64) (ml_dsa_87.MLDSA87Key, error) {
+type Key struct {
+	wallet *walletmldsa.Wallet
+}
+
+func GenesisKey(index uint64) (*Key, error) {
 	seed, err := qrlmisc.MnemonicToBin(genesisMnemonic)
 	if err != nil {
 		return nil, fmt.Errorf("decode genesis validator mnemonic: %w", err)
@@ -21,17 +26,42 @@ func GenesisKey(index uint64) (ml_dsa_87.MLDSA87Key, error) {
 	hash := sha3.NewShake256()
 	_, _ = hash.Write(seed)
 	_, _ = hash.Write([]byte(path))
-	derived := make([]byte, 48)
+	derived := make([]byte, walletcommon.SeedSize)
 	if _, err := hash.Read(derived); err != nil {
 		return nil, fmt.Errorf("derive genesis validator %d: %w", index, err)
 	}
-	return ml_dsa_87.SecretKeyFromSeed(derived)
+	return keyFromSeed(derived)
 }
 
-func DeterministicKey(marker byte) (ml_dsa_87.MLDSA87Key, error) {
-	seed := make([]byte, 48)
+func DeterministicKey(marker byte) (*Key, error) {
+	seed := make([]byte, walletcommon.SeedSize)
 	for index := range seed {
 		seed[index] = marker + byte(index)
 	}
-	return ml_dsa_87.SecretKeyFromSeed(seed)
+	return keyFromSeed(seed)
+}
+
+func keyFromSeed(input []byte) (*Key, error) {
+	seed, err := walletcommon.ToSeed(input)
+	if err != nil {
+		return nil, err
+	}
+	wallet, err := walletmldsa.NewWalletFromSeed(seed)
+	if err != nil {
+		return nil, err
+	}
+	return &Key{wallet: wallet}, nil
+}
+
+func (key *Key) PublicKey() []byte {
+	publicKey := key.wallet.GetPK()
+	return publicKey[:]
+}
+
+func (key *Key) Sign(message []byte) ([]byte, error) {
+	signature, err := key.wallet.Sign(message)
+	if err != nil {
+		return nil, err
+	}
+	return signature[:], nil
 }

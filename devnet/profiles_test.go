@@ -20,7 +20,6 @@ func TestBuiltInProfiles(t *testing.T) {
 	}{
 		{ProfileSingle, 1, 64},
 		{ProfileMulti, 4, 64},
-		{ProfileLifecycle, 1, 64},
 		{ProfileChaos, 4, 64},
 		{ProfileSync, 2, 64},
 		{ProfileOperations, 5, 812},

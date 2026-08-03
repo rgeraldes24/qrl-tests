@@ -13,7 +13,6 @@ import (
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
-	"github.com/theQRL/qrysm/crypto/ml_dsa_87"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -29,7 +28,7 @@ type liveSuite struct {
 	beacon    *consensus.Client
 	chain     consensuscontext.Context
 	depositor *validatorops.Depositor
-	key       ml_dsa_87.MLDSA87Key
+	key       *validatorops.Key
 	publicKey string
 	validator consensus.Validator
 }
@@ -56,7 +55,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite.key, err = validatorops.DeterministicKey(0x91)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			suite.publicKey = hexutil.Encode(suite.key.PublicKey().Marshal())
+			suite.publicKey = hexutil.Encode(suite.key.PublicKey())
 		})
 
 		ginkgo.It("submits deposits for two distinct validators", func(ctx ginkgo.SpecContext) {
@@ -67,7 +66,7 @@ var _ = ginkgo.Describe(
 			for _, marker := range []byte{0x81, 0x82} {
 				key, err := validatorops.DeterministicKey(marker)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
-				publicKeys = append(publicKeys, hexutil.Encode(key.PublicKey().Marshal()))
+				publicKeys = append(publicKeys, hexutil.Encode(key.PublicKey()))
 
 				_, err = suite.depositor.Deposit(ctx, key, maximum)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())

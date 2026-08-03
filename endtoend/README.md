@@ -11,7 +11,7 @@ endpoints and prebuilt helper binaries; suites do not provision infrastructure.
 | `single` | `single` | Execution APIs, ABI, console, VM, signing, consensus APIs, protocol, and Engine |
 | `multi` | `multi` | Multi-client networking and transactions |
 | `workloads` | `multi` | Long transaction-volume and calldata workloads |
-| `lifecycle` | `lifecycle` | Validator deposits, activation, exits, withdrawals, and slashings |
+| `lifecycle` | `single` | Validator deposits, activation, exits, withdrawals, and slashings |
 | `chaos` | `chaos` | Outages, partitions, restart, and recovery |
 | `consensus-sync` | `sync` | Fresh consensus sync and validator protection |
 | `execution-sync` | `execution-sync` | Fresh execution sync and state persistence |
@@ -45,6 +45,10 @@ Add the package under `suites/<domain>/<suite>`, register it in
 `coverage/`. Live bootstrap code uses the `e2e` build tag and
 `internal/live.Session` for participant endpoints, clients, the development
 wallet, and chain ID.
+
+Files that register or execute live scenarios use the `e2e` build tag.
+Deterministic fixture, encoding, and helper tests remain untagged so the default
+`go test ./...` run continues to validate them without a network.
 
 Keep construction paths local when they are the behavior under test. Shared
 network inspection, process building, fixture data, stability checks, and

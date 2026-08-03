@@ -43,7 +43,7 @@ func (suite *operationsSuite) runMassDepositChurn(ctx ginkgo.SpecContext) {
 		keyIndex := uint64(minimumOperationsStake + offset)
 		key, err := validatorops.GenesisKey(keyIndex)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		publicKeys[offset] = hexutil.Encode(key.PublicKey().Marshal())
+		publicKeys[offset] = hexutil.Encode(key.PublicKey())
 		_, err = suite.depositor.Deposit(ctx, key, maximum)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}

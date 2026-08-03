@@ -74,26 +74,20 @@ func (chain Context) Epoch(slot uint64) uint64 {
 	return slot / chain.SlotsPerEpoch
 }
 
-func (chain Context) Domain(domainType [4]byte, epoch uint64) ([]byte, error) {
+func (chain Context) Domain(domainType [4]byte, epoch uint64) [consensuscrypto.RootLength]byte {
 	version := chain.currentVersion
 	if epoch < chain.forkEpoch {
 		version = chain.previousVersion
 	}
-	domain := consensuscrypto.ComputeDomain(domainType, version, chain.genesisRoot)
-	return domain[:], nil
+	return consensuscrypto.ComputeDomain(domainType, version, chain.genesisRoot)
 }
 
-func (chain Context) DepositDomain() ([]byte, error) {
-	domain := consensuscrypto.ComputeDomain(
+func (chain Context) DepositDomain() [consensuscrypto.RootLength]byte {
+	return consensuscrypto.ComputeDomain(
 		consensuscrypto.DomainDeposit,
 		chain.genesisForkVersion,
 		[consensuscrypto.RootLength]byte{},
 	)
-	return domain[:], nil
-}
-
-func (chain Context) GenesisForkVersion() [4]byte {
-	return chain.genesisForkVersion
 }
 
 func decodeFixed(name, value string, result []byte) error {

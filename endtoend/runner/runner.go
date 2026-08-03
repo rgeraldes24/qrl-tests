@@ -18,6 +18,7 @@ import (
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
+	"github.com/cyyber/qrl-tests/endtoend/internal/sourcecheck"
 )
 
 const DefaultReportDir = "reports"
@@ -157,6 +158,9 @@ func (runner *Runner) supportedLane(name string) (lanes.Lane, error) {
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
 	plan, err := newRunPlan(runner.configuration, selected, mode)
 	if err != nil {
+		return err
+	}
+	if err := sourcecheck.GoQRL(ctx, runner.configuration.SourceDir); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(plan.reportRoot, 0o755); err != nil {

@@ -10,15 +10,12 @@ import (
 	"errors"
 	"fmt"
 
-	ssz "github.com/prysmaticlabs/fastssz"
 	walletcommon "github.com/theQRL/go-qrllib/wallet/common"
 	walletmldsa "github.com/theQRL/go-qrllib/wallet/ml_dsa_87"
 )
 
 const (
 	RootLength       = sha256.Size
-	PublicKeyLength  = walletmldsa.PKSize
-	SignatureLength  = walletmldsa.SigSize
 	FeeRecipientSize = walletcommon.AddressSize
 )
 
@@ -35,13 +32,6 @@ type Root [RootLength]byte
 
 func (root Root) HashTreeRoot() ([RootLength]byte, error) {
 	return root, nil
-}
-
-func (root Root) HashTreeRootWith(hasher *ssz.Hasher) error {
-	index := hasher.Index()
-	hasher.PutBytes(root[:])
-	hasher.Merkleize(index)
-	return nil
 }
 
 func ComputeDomain(domainType [4]byte, forkVersion [4]byte, genesisValidatorsRoot [RootLength]byte) [RootLength]byte {
@@ -63,7 +53,7 @@ func SigningRoot(objectRoot, domain [RootLength]byte) [RootLength]byte {
 	return sha256.Sum256(signingData[:])
 }
 
-func VerifySigningRoot(object ssz.HashRoot, publicKey, signature []byte, domain [RootLength]byte) error {
+func VerifySigningRoot(object HashRoot, publicKey, signature []byte, domain [RootLength]byte) error {
 	objectRoot, err := object.HashTreeRoot()
 	if err != nil {
 		return fmt.Errorf("compute object root: %w", err)

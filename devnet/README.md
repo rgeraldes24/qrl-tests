@@ -47,7 +47,7 @@ as Docker. Network-partition scenarios are currently Docker-only.
 | `DEVNET_CONSENSUS_IMAGE` | pinned Qrysm beacon image | Consensus client image |
 | `DEVNET_VALIDATOR_IMAGE` | pinned Qrysm validator image | Validator client image |
 | `DEVNET_GENESIS_IMAGE` | pinned QRL genesis image | Genesis generator image |
-| `DEVNET_PROFILE` | `single` | Built-in `single`, `multi`, `lifecycle`, `chaos`, `sync`, `execution-sync`, `operations`, `cold`, or `optimistic` profile |
+| `DEVNET_PROFILE` | `single` | Built-in `single`, `multi`, `chaos`, `sync`, `execution-sync`, `operations`, `cold`, or `optimistic` profile |
 | `DEVNET_START_TIMEOUT` | `30m` (CLI default) | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
 
@@ -102,7 +102,8 @@ port. Readiness requires advancing blocks and a funded development wallet.
 
 Most built-in profiles allocate 64 genesis validators. `multi` and `chaos`
 split them across four client pairs, `sync` and `optimistic` split them across
-two, and `lifecycle` and `cold` provide dedicated single-client lanes.
+two, and `cold` provides a dedicated single-client lane. The validator
+lifecycle lane reuses the `single` profile.
 `execution-sync` starts a producing source client and an isolated empty
 execution client that is connected during the test. The
 destructive `operations` profile starts 512 validators across four active

@@ -69,7 +69,7 @@ func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain cons
 	validator, err := beacon.Validator(ctx, strconv.FormatUint(index, 10))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(validator.Slashed).To(gomega.BeFalse())
-	gomega.Expect(strings.EqualFold(validator.PublicKey, hexutil.Encode(key.PublicKey().Marshal()))).To(gomega.BeTrue())
+	gomega.Expect(strings.EqualFold(validator.PublicKey, hexutil.Encode(key.PublicKey()))).To(gomega.BeTrue())
 	initialBalance := validator.Balance
 	initialWithdrawableEpoch := validator.WithdrawableEpoch
 

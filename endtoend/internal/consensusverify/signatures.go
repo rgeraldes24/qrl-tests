@@ -8,12 +8,11 @@ import (
 	"strconv"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
-	ssz "github.com/prysmaticlabs/fastssz"
 )
 
 func (verification *Verifier) verifyObject(
 	ctx context.Context,
-	object ssz.HashRoot,
+	object consensuscrypto.HashRoot,
 	validatorIndex,
 	epoch uint64,
 	domainType [4]byte,
@@ -27,11 +26,8 @@ func (verification *Verifier) verifyObject(
 	if err != nil {
 		return err
 	}
-	domain, err := verification.chain.Domain(domainType, epoch)
-	if err != nil {
-		return err
-	}
-	return consensuscrypto.VerifySigningRoot(object, publicKey, signature, [consensuscrypto.RootLength]byte(domain))
+	domain := verification.chain.Domain(domainType, epoch)
+	return consensuscrypto.VerifySigningRoot(object, publicKey, signature, domain)
 }
 
 func (verification *Verifier) publicKey(ctx context.Context, validatorIndex uint64) ([]byte, error) {

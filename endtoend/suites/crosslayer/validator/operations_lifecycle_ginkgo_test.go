@@ -11,7 +11,6 @@ import (
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
 	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
-	"github.com/theQRL/qrysm/crypto/ml_dsa_87"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -39,12 +38,12 @@ func (suite *operationsSuite) runLifecycleMatrix(ctx ginkgo.SpecContext) {
 	maximum, err := suite.beacon.SpecUint(ctx, "MAX_EFFECTIVE_BALANCE")
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-	keys := make([]ml_dsa_87.MLDSA87Key, lifecycleValidatorCount)
+	keys := make([]*validatorops.Key, lifecycleValidatorCount)
 	publicKeys := make([]string, lifecycleValidatorCount)
 	for index := range keys {
 		keys[index], err = validatorops.DeterministicKey(0xa0 + byte(index))
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		publicKeys[index] = hexutil.Encode(keys[index].PublicKey().Marshal())
+		publicKeys[index] = hexutil.Encode(keys[index].PublicKey())
 		amount := maximum
 		if index == 0 || index == 5 {
 			amount = maximum / 2

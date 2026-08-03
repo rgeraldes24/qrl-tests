@@ -6,24 +6,37 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/theQRL/go-qrl/accounts/abi"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
 	"github.com/theQRL/go-qrl/params"
-	"github.com/theQRL/qrysm/contracts/deposit"
-	"github.com/theQRL/qrysm/crypto/ml_dsa_87"
 )
 
+const depositContractABI = `[
+  {"anonymous":false,"inputs":[{"indexed":false,"name":"pubkey","type":"bytes"},{"indexed":false,"name":"withdrawal_credentials","type":"bytes"},{"indexed":false,"name":"amount","type":"bytes"},{"indexed":false,"name":"signature","type":"bytes"},{"indexed":false,"name":"index","type":"bytes"}],"name":"DepositEvent","type":"event"},
+  {"inputs":[{"name":"pubkey","type":"bytes"},{"name":"withdrawal_credentials","type":"bytes"},{"name":"signature","type":"bytes"},{"name":"deposit_data_root","type":"bytes32"}],"name":"deposit","outputs":[],"stateMutability":"payable","type":"function"}
+]`
+
+type depositEvent struct {
+	PublicKey             []byte `abi:"pubkey"`
+	WithdrawalCredentials []byte `abi:"withdrawal_credentials"`
+	Amount                []byte `abi:"amount"`
+	Signature             []byte `abi:"signature"`
+	Index                 []byte `abi:"index"`
+}
+
 type Depositor struct {
-	session     *endtoendlive.Session
-	contract    *deposit.DepositContract
-	address     common.Address
-	forkVersion [4]byte
-	domain      []byte
+	session  *endtoendlive.Session
+	contract *bind.BoundContract
+	address  common.Address
+	domain   [consensuscrypto.RootLength]byte
 }
 
 func NewDepositor(
@@ -40,34 +53,26 @@ func NewDepositor(
 	if err != nil {
 		return nil, fmt.Errorf("parse deposit contract address: %w", err)
 	}
-	contract, err := deposit.NewDepositContract(address, session.Execution)
+	parsed, err := abi.JSON(strings.NewReader(depositContractABI))
 	if err != nil {
-		return nil, fmt.Errorf("bind deposit contract: %w", err)
-	}
-	domain, err := chain.DepositDomain()
-	if err != nil {
-		return nil, fmt.Errorf("build deposit signature domain: %w", err)
+		return nil, fmt.Errorf("parse deposit contract ABI: %w", err)
 	}
 	return &Depositor{
-		session:     session,
-		contract:    contract,
-		address:     address,
-		forkVersion: chain.GenesisForkVersion(),
-		domain:      domain,
+		session:  session,
+		contract: bind.NewBoundContract(address, parsed, session.Execution, session.Execution, session.Execution),
+		address:  address,
+		domain:   chain.DepositDomain(),
 	}, nil
 }
 
 func (depositor *Depositor) Deposit(
 	ctx context.Context,
-	key ml_dsa_87.MLDSA87Key,
+	key *Key,
 	amountInShor uint64,
 ) (*types.Receipt, error) {
-	data, root, err := deposit.DepositInput(key, depositor.session.Address, amountInShor, depositor.forkVersion[:])
+	data, root, err := depositInput(key, depositor.session.Address, amountInShor, depositor.domain)
 	if err != nil {
-		return nil, fmt.Errorf("build deposit input: %w", err)
-	}
-	if err := deposit.VerifyDepositSignature(data, depositor.domain); err != nil {
-		return nil, fmt.Errorf("verify generated deposit signature: %w", err)
+		return nil, err
 	}
 	auth, err := bind.NewKeyedTransactorWithChainID(depositor.session.Wallet, depositor.session.ChainID)
 	if err != nil {
@@ -75,7 +80,14 @@ func (depositor *Depositor) Deposit(
 	}
 	auth.Context = ctx
 	auth.Value = new(big.Int).Mul(new(big.Int).SetUint64(amountInShor), big.NewInt(params.Shor))
-	transaction, err := depositor.contract.Deposit(auth, data.PublicKey, data.WithdrawalCredentials, data.Signature, root)
+	transaction, err := depositor.contract.Transact(
+		auth,
+		"deposit",
+		data.PublicKey,
+		data.WithdrawalCredentials,
+		data.Signature,
+		root,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("submit deposit: %w", err)
 	}
@@ -91,11 +103,11 @@ func (depositor *Depositor) Deposit(
 		if log.Address != depositor.address {
 			continue
 		}
-		event, err := depositor.contract.ParseDepositEvent(*log)
-		if err != nil {
+		var event depositEvent
+		if err := depositor.contract.UnpackLog(&event, "DepositEvent", *log); err != nil {
 			return nil, fmt.Errorf("decode deposit event: %w", err)
 		}
-		if !bytes.Equal(event.Pubkey, data.PublicKey) ||
+		if !bytes.Equal(event.PublicKey, data.PublicKey) ||
 			!bytes.Equal(event.WithdrawalCredentials, data.WithdrawalCredentials) ||
 			!bytes.Equal(event.Signature, data.Signature) {
 			return nil, errors.New("deposit event does not match the signed deposit data")
@@ -106,4 +118,40 @@ func (depositor *Depositor) Deposit(
 		return nil, errors.New("successful deposit receipt has no deposit event")
 	}
 	return receipt, nil
+}
+
+func depositInput(
+	key *Key,
+	withdrawalAddress common.Address,
+	amount uint64,
+	domain [consensuscrypto.RootLength]byte,
+) (consensuscrypto.DepositData, [consensuscrypto.RootLength]byte, error) {
+	message := consensuscrypto.DepositMessage{
+		PublicKey:             key.PublicKey(),
+		WithdrawalCredentials: withdrawalAddress.Bytes(),
+		Amount:                amount,
+	}
+	root, err := message.HashTreeRoot()
+	if err != nil {
+		return consensuscrypto.DepositData{}, [consensuscrypto.RootLength]byte{}, err
+	}
+	signingRoot := consensuscrypto.SigningRoot(root, domain)
+	signature, err := key.Sign(signingRoot[:])
+	if err != nil {
+		return consensuscrypto.DepositData{}, [consensuscrypto.RootLength]byte{}, err
+	}
+	if err := consensuscrypto.Verify(signingRoot, message.PublicKey, signature); err != nil {
+		return consensuscrypto.DepositData{}, [consensuscrypto.RootLength]byte{}, fmt.Errorf(
+			"verify generated deposit signature: %w",
+			err,
+		)
+	}
+	data := consensuscrypto.DepositData{
+		PublicKey:             message.PublicKey,
+		WithdrawalCredentials: message.WithdrawalCredentials,
+		Amount:                message.Amount,
+		Signature:             signature,
+	}
+	dataRoot, err := data.HashTreeRoot()
+	return data, dataRoot, err
 }

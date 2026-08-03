@@ -45,25 +45,21 @@ func TestContextDomains(t *testing.T) {
 	chain, err := Load(t.Context(), source)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), chain.Epoch(17))
-	require.Equal(t, [4]byte{0, 0, 0, 1}, chain.GenesisForkVersion())
 
 	domainType := [4]byte{1, 2, 3, 4}
-	previous, err := chain.Domain(domainType, 9)
-	require.NoError(t, err)
+	previous := chain.Domain(domainType, 9)
 	require.Equal(t, mustDomain(t, "010203045f4c4b0ed11ed93379263b2e23b10940f33d3d0aee534c93105e1b58"), previous)
 
-	current, err := chain.Domain(domainType, 10)
-	require.NoError(t, err)
+	current := chain.Domain(domainType, 10)
 	require.Equal(t, mustDomain(t, "01020304b89638cec7278d3fffb7ecd79da316be4154b8886a92c206be6c8d33"), current)
 
-	depositDomain, err := chain.DepositDomain()
-	require.NoError(t, err)
+	depositDomain := chain.DepositDomain()
 	require.Equal(t, mustDomain(t, "0300000018ae4ccbda9538839d79bb18ca09e23e24ae8c1550f56cbb3d84b053"), depositDomain)
 }
 
-func mustDomain(t *testing.T, value string) []byte {
+func mustDomain(t *testing.T, value string) [32]byte {
 	t.Helper()
 	decoded, err := hex.DecodeString(value)
 	require.NoError(t, err)
-	return decoded
+	return [32]byte(decoded)
 }

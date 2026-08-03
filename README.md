@@ -17,6 +17,9 @@ make e2e-compile
 make e2e-run E2E_LANE=single
 ```
 
+The runner verifies that its linked go-qrl module matches
+`GO_QRL_SOURCE_DIR` before starting a lane.
+
 `e2e-run` provisions the lane's network profile, runs the lane, and removes the
 network. Run every supported lane with:
 

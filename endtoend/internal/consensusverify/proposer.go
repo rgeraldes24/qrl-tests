@@ -11,8 +11,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
-	"github.com/theQRL/qrysm/consensus-types/primitives"
-	qrysmpb "github.com/theQRL/qrysm/proto/qrysm/v1alpha1"
 )
 
 func (verification *Verifier) verifyBlockHeader(
@@ -36,7 +34,7 @@ func (verification *Verifier) verifyBlockHeader(
 	if !bytes.Equal(root[:], wantRoot) {
 		return fmt.Errorf("header root mismatch")
 	}
-	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(uint64(message.Slot)), consensuscrypto.DomainBeaconProposer, signatureHex)
+	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(message.Slot), consensuscrypto.DomainBeaconProposer, signatureHex)
 }
 
 func (verification *Verifier) verifySignedHeader(ctx context.Context, header consensus.SignedBeaconBlockHeader) error {
@@ -44,7 +42,7 @@ func (verification *Verifier) verifySignedHeader(ctx context.Context, header con
 	if err != nil {
 		return err
 	}
-	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(uint64(message.Slot)), consensuscrypto.DomainBeaconProposer, header.Signature)
+	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(message.Slot), consensuscrypto.DomainBeaconProposer, header.Signature)
 }
 
 func (verification *Verifier) verifyRandao(ctx context.Context, slot, proposer uint64, signatureHex string) error {
@@ -60,9 +58,7 @@ func (verification *Verifier) verifyVoluntaryExit(
 	exit consensus.VoluntaryExit,
 	signatureHex string,
 ) error {
-	message := &qrysmpb.VoluntaryExit{
-		Epoch: primitives.Epoch(exit.Epoch), ValidatorIndex: primitives.ValidatorIndex(exit.ValidatorIndex),
-	}
+	message := consensuscrypto.VoluntaryExit{Epoch: exit.Epoch, ValidatorIndex: exit.ValidatorIndex}
 	return verification.verifyObject(
 		ctx, message, exit.ValidatorIndex, exit.Epoch, consensuscrypto.DomainVoluntaryExit, signatureHex,
 	)

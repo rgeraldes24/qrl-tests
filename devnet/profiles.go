@@ -10,7 +10,6 @@ type Profile string
 const (
 	ProfileSingle        Profile = "single"
 	ProfileMulti         Profile = "multi"
-	ProfileLifecycle     Profile = "lifecycle"
 	ProfileChaos         Profile = "chaos"
 	ProfileSync          Profile = "sync"
 	ProfileOperations    Profile = "operations"
@@ -32,9 +31,8 @@ type participantSpec struct {
 }
 
 var profileSpecs = map[Profile]profileSpec{
-	ProfileSingle:    {participants: []participantSpec{{validatorCount: 64}}},
-	ProfileMulti:     {participants: []participantSpec{{validatorCount: 16}, {validatorCount: 16}, {validatorCount: 16}, {validatorCount: 16}}},
-	ProfileLifecycle: {participants: []participantSpec{{validatorCount: 64}}},
+	ProfileSingle: {participants: []participantSpec{{validatorCount: 64}}},
+	ProfileMulti:  {participants: []participantSpec{{validatorCount: 16}, {validatorCount: 16}, {validatorCount: 16}, {validatorCount: 16}}},
 	ProfileChaos: {
 		participants: []participantSpec{
 			{validatorCount: 16, clExtraParams: []string{}},

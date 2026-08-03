@@ -67,7 +67,7 @@ var registry = []Lane{
 	},
 	{
 		Name:        "lifecycle",
-		Profile:     devnet.ProfileLifecycle,
+		Profile:     devnet.ProfileSingle,
 		Suites:      packages("./endtoend/suites/crosslayer/validator"),
 		LabelFilter: "!profile-operations",
 		Timeout:     2 * time.Hour,

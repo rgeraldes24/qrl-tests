@@ -81,7 +81,7 @@ var _ = ginkgo.Describe(
 					var replacement *endtoendlive.Session
 					gomega.Eventually(func() error {
 						var err error
-						if err := runtime.Refresh(ctx); err != nil {
+						if err := runtime.RefreshEnvironment(ctx); err != nil {
 							return err
 						}
 						replacement, err = runtime.OpenParticipant(ctx, participant.Index, false)

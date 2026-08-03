@@ -116,7 +116,7 @@ var _ = ginkgo.Describe(
 func (suite *liveSuite) awaitSecondaryReady(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 	gomega.Eventually(func() error {
-		if err := suite.primary.Runtime.Refresh(ctx); err != nil {
+		if err := suite.primary.Runtime.RefreshEnvironment(ctx); err != nil {
 			return err
 		}
 		secondary, err := suite.primary.Runtime.OpenParticipant(ctx, suite.secondary.Participant.Index, false)

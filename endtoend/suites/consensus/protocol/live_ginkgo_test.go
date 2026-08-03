@@ -184,7 +184,7 @@ var _ = ginkgo.Describe(
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					balanceBefore, err := suite.sessions[0].Execution.BalanceAt(ctx, recipient, parent.Number())
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
-					balanceAfter, err := suite.sessions[0].Execution.BalanceAt(ctx, recipient, newUint(payload.BlockNumber))
+					balanceAfter, err := suite.sessions[0].Execution.BalanceAt(ctx, recipient, new(big.Int).SetUint64(payload.BlockNumber))
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 					gomega.Expect(balanceAfter).To(gomega.BeNumerically(">", balanceBefore))
 				}
@@ -280,8 +280,4 @@ func metricValues(families map[string]*dto.MetricFamily, name string) []float64 
 		}
 	}
 	return values
-}
-
-func newUint(value uint64) *big.Int {
-	return new(big.Int).SetUint64(value)
 }

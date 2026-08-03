@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/build"
 	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
 )
@@ -81,11 +80,20 @@ func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	return &Runner{
 		configuration: configuration,
 		networks:      devnet.NewManager(),
-		buildBinary:   build.Binary,
+		buildBinary:   buildBinary,
 		runCommand:    execute,
 		stdout:        stdout,
 		stderr:        stderr,
 	}
+}
+
+func buildBinary(ctx context.Context, sourceDir, packagePath, output string) error {
+	command := exec.CommandContext(ctx, "go", "build", "-o", output, packagePath)
+	command.Dir = sourceDir
+	if commandOutput, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("build %s: %w\n%s", packagePath, err, commandOutput)
+	}
+	return nil
 }
 
 func execute(ctx context.Context, specification commandSpec) error {

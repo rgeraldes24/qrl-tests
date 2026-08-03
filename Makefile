@@ -18,7 +18,7 @@ NETWORK_IMAGE_TARGETS := $(if $(filter docker,$(DEVNET_BACKEND)),network-image c
 
 export GO_QRL_SOURCE_DIR DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
 export DEVNET_CONSENSUS_IMAGE DEVNET_VALIDATOR_IMAGE DEVNET_GENESIS_IMAGE
-export DEVNET_ENCLAVE_NAME DEVNET_PROFILE DEVNET_START_TIMEOUT DEVNET_PARAMS_FILE
+export DEVNET_ENCLAVE_NAME DEVNET_START_TIMEOUT
 export E2E_REPORT_DIR
 
 test:
@@ -55,7 +55,8 @@ network-preflight:
 	kurtosis engine start
 
 network-start: $(NETWORK_IMAGE_TARGETS) network-preflight
-	$(GO) run ./cmd/qrl-tests network start
+	DEVNET_PROFILE="$(DEVNET_PROFILE)" DEVNET_PARAMS_FILE="$(DEVNET_PARAMS_FILE)" \
+		$(GO) run ./cmd/qrl-tests network start
 
 network-stop:
 	$(GO) run ./cmd/qrl-tests network stop

@@ -60,7 +60,29 @@ func (manager *Manager) Inspect(ctx context.Context, name string, backend Backen
 	if err != nil {
 		return Environment{}, err
 	}
-	return manager.inspect(ctx, name, backend)
+	client, err := manager.newClient()
+	if err != nil {
+		return Environment{}, err
+	}
+	found, err := client.EnclaveExists(ctx, name)
+	if err != nil {
+		return Environment{}, err
+	}
+	if !found {
+		return Environment{}, errors.New("network is not running")
+	}
+	environment, err := resolveEnvironment(ctx, client, name, backend)
+	if err != nil {
+		return Environment{}, err
+	}
+	primary, err := environment.Primary()
+	if err != nil {
+		return Environment{}, err
+	}
+	if err := manager.probe(ctx, primary.Execution.RPCURL, fixture.DevelopmentWalletAddress); err != nil {
+		return Environment{}, err
+	}
+	return environment, nil
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (Environment, error) {
@@ -129,32 +151,6 @@ func (manager *Manager) startFailure(client kurtosisClient, name string, created
 		return errors.Join(result, fmt.Errorf("clean up failed network: %w", err))
 	}
 	return result
-}
-
-func (manager *Manager) inspect(ctx context.Context, name string, backend Backend) (Environment, error) {
-	client, err := manager.newClient()
-	if err != nil {
-		return Environment{}, err
-	}
-	found, err := client.EnclaveExists(ctx, name)
-	if err != nil {
-		return Environment{}, err
-	}
-	if !found {
-		return Environment{}, errors.New("network is not running")
-	}
-	environment, err := resolveEnvironment(ctx, client, name, backend)
-	if err != nil {
-		return Environment{}, err
-	}
-	primary, err := environment.Primary()
-	if err != nil {
-		return Environment{}, err
-	}
-	if err := manager.probe(ctx, primary.Execution.RPCURL, fixture.DevelopmentWalletAddress); err != nil {
-		return Environment{}, err
-	}
-	return environment, nil
 }
 
 func (manager *Manager) Stop(ctx context.Context, name string) error {

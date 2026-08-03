@@ -1,6 +1,7 @@
 package consensusverify
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -45,12 +46,13 @@ type Verifier struct {
 }
 
 type consensusAPI interface {
-	GetJSON(context.Context, string, any) error
 	Block(context.Context, string) (consensus.SignedBlock, error)
 	BlockHeader(context.Context, string) (consensus.BlockHeader, error)
+	Committee(context.Context, string, uint64, uint64) ([]uint64, error)
 	Genesis(context.Context) (consensus.Genesis, error)
 	Fork(context.Context) (consensus.Fork, error)
 	SpecUint(context.Context, string) (uint64, error)
+	SyncCommittee(context.Context, string) ([]uint64, error)
 	Validator(context.Context, string) (consensus.Validator, error)
 }
 
@@ -205,7 +207,7 @@ func (verification *Verifier) verifyBlockHeader(
 	if err != nil {
 		return err
 	}
-	if !equalBytes(root[:], wantRoot) {
+	if !bytes.Equal(root[:], wantRoot) {
 		return fmt.Errorf("header root mismatch")
 	}
 	return verification.verifyObject(ctx, message, proposer, uint64(message.Slot)/verification.slots, params.BeaconConfig().DomainBeaconProposer, signatureHex)
@@ -322,7 +324,7 @@ func (verification *Verifier) verifySyncAggregate(
 	if err != nil {
 		return 0, err
 	}
-	committee, err := syncCommittee(ctx, verification.client, stateID)
+	committee, err := verification.client.SyncCommittee(ctx, stateID)
 	if err != nil {
 		return 0, err
 	}

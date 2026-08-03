@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -26,38 +25,7 @@ func committee(ctx context.Context, client consensusAPI, stateID string, data co
 	if err != nil {
 		return nil, err
 	}
-	var response struct {
-		Data []struct {
-			Index      string   `json:"index"`
-			Slot       string   `json:"slot"`
-			Validators []string `json:"validators"`
-		} `json:"data"`
-	}
-	path := fmt.Sprintf(
-		"/qrl/v1/beacon/states/%s/committees?slot=%d&index=%d",
-		url.PathEscape(stateID),
-		slot,
-		index,
-	)
-	if err := client.GetJSON(ctx, path, &response); err != nil {
-		return nil, err
-	}
-	if len(response.Data) != 1 {
-		return nil, fmt.Errorf("expected one committee, got %d", len(response.Data))
-	}
-	return decimalSlice("committee validator", response.Data[0].Validators)
-}
-
-func syncCommittee(ctx context.Context, client consensusAPI, stateID string) ([]uint64, error) {
-	var response struct {
-		Data struct {
-			Validators []string `json:"validators"`
-		} `json:"data"`
-	}
-	if err := client.GetJSON(ctx, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/sync_committees", &response); err != nil {
-		return nil, err
-	}
-	return decimalSlice("sync committee validator", response.Data.Validators)
+	return client.Committee(ctx, stateID, slot, index)
 }
 
 func beaconBlockHeader(value consensus.BeaconBlockHeader) (*qrysmpb.BeaconBlockHeader, uint64, error) {
@@ -145,18 +113,6 @@ func depositData(value consensus.DepositData) (*qrysmpb.Deposit_Data, error) {
 	}, nil
 }
 
-func decimalSlice(name string, values []string) ([]uint64, error) {
-	result := make([]uint64, len(values))
-	for index, value := range values {
-		parsed, err := decimal(name, value)
-		if err != nil {
-			return nil, err
-		}
-		result[index] = parsed
-	}
-	return result, nil
-}
-
 func decimal(name, value string) (uint64, error) {
 	parsed, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
@@ -182,16 +138,4 @@ func decodeHex(name, value string) ([]byte, error) {
 		return nil, fmt.Errorf("decode %s: %w", name, err)
 	}
 	return decoded, nil
-}
-
-func equalBytes(left, right []byte) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
 }

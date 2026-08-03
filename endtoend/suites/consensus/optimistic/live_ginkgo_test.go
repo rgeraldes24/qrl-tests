@@ -81,7 +81,7 @@ var _ = ginkgo.Describe(
 			)
 			gomega.Expect(services.Start(ctx, participant.Consensus.Name)).To(gomega.Succeed())
 			gomega.Eventually(func() error {
-				return runtime.Refresh(ctx)
+				return runtime.RefreshEnvironment(ctx)
 			}).WithContext(ctx).WithTimeout(optimisticTimeout).WithPolling(time.Second).Should(gomega.Succeed())
 			secondaryBeacon, err = runtime.ConsensusClient(participant.Index)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())

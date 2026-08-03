@@ -13,6 +13,18 @@ func decimal(name, value string) (uint64, error) {
 	return parsed, nil
 }
 
+func decimalSlice(name string, values []string) ([]uint64, error) {
+	result := make([]uint64, len(values))
+	for index, value := range values {
+		parsed, err := decimal(name, value)
+		if err != nil {
+			return nil, err
+		}
+		result[index] = parsed
+	}
+	return result, nil
+}
+
 func parseValidator(
 	indexValue,
 	balanceValue,

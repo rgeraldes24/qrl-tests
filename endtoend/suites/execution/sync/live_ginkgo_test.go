@@ -106,7 +106,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(services.Restart(ctx, secondary.Participant.Execution.Name)).To(gomega.Succeed())
 			var replacement *endtoendlive.Session
 			gomega.Eventually(func() error {
-				if err := primary.Runtime.Refresh(ctx); err != nil {
+				if err := primary.Runtime.RefreshEnvironment(ctx); err != nil {
 					return err
 				}
 				var err error

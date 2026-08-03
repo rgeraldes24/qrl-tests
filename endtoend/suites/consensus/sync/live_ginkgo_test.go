@@ -131,7 +131,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(services.Start(ctx, participant.Execution.Name, participant.Consensus.Name)).To(gomega.Succeed())
 			var refreshed *endtoendlive.Session
 			gomega.Eventually(func() error {
-				if err := primary.Runtime.Refresh(ctx); err != nil {
+				if err := primary.Runtime.RefreshEnvironment(ctx); err != nil {
 					return err
 				}
 				current, err := primary.Runtime.OpenParticipant(ctx, participant.Index, false)

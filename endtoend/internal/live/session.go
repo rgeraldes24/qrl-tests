@@ -116,8 +116,8 @@ func (runtime *Runtime) ConsensusClient(index int) (*consensus.Client, error) {
 	return consensus.New(participant.Consensus.URL)
 }
 
-// Refresh reloads service endpoints after a service restart.
-func (runtime *Runtime) Refresh(ctx context.Context) error {
+// RefreshEnvironment reloads service endpoints after a service restart.
+func (runtime *Runtime) RefreshEnvironment(ctx context.Context) error {
 	environment, err := runtime.manager.Inspect(ctx, runtime.Environment.EnclaveName, runtime.Environment.Backend)
 	if err != nil {
 		return err

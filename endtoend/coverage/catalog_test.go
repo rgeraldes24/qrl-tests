@@ -6,6 +6,7 @@ package coverage
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -48,18 +49,6 @@ func TestScenarioInventoryIsExhaustive(t *testing.T) {
 			}
 		}
 	}
-}
-
-func TestScenarioDocumentationIsCurrent(t *testing.T) {
-	root := repositoryRoot(t)
-	catalog, err := Load(filepath.Join(root, "endtoend/coverage/scenarios.yaml"))
-	require.NoError(t, err)
-	documentPath := filepath.Join(root, "docs/scenario-coverage.md")
-	document, err := os.ReadFile(documentPath)
-	require.NoError(t, err)
-	updated, err := ReplaceScenarioInventory(string(document), RenderScenarioInventory(catalog))
-	require.NoError(t, err)
-	require.Equal(t, string(document), updated, "run `go generate ./endtoend/coverage`")
 }
 
 func suiteSources(t *testing.T, root string) map[string]string {
@@ -112,4 +101,11 @@ func selectedByLane(root string, files []string) bool {
 		}
 	}
 	return false
+}
+
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../.."))
 }

@@ -4,17 +4,11 @@
 package coverage
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
-
-//go:generate go run ./internal/gendocs
-
-const SourceTableHeading = "## Source Scenario Inventory"
 
 type Catalog struct {
 	Version             int        `yaml:"version"`
@@ -46,30 +40,4 @@ func Load(path string) (Catalog, error) {
 		return Catalog{}, fmt.Errorf("decode scenario catalog: %w", err)
 	}
 	return catalog, nil
-}
-
-func RenderScenarioInventory(catalog Catalog) string {
-	var output bytes.Buffer
-	fmt.Fprintln(&output, SourceTableHeading)
-	fmt.Fprintln(&output)
-	fmt.Fprintln(&output, "| Source scenario | Disposition | QRL replacement or reason |")
-	fmt.Fprintln(&output, "| --- | --- | --- |")
-	for _, scenario := range catalog.Scenarios {
-		fmt.Fprintf(&output, "| `%s` | %s | %s |\n", scenario.ID, scenario.Disposition, scenario.Replacement)
-	}
-	return strings.TrimSpace(output.String())
-}
-
-func ReplaceScenarioInventory(document string, inventory string) (string, error) {
-	start := strings.Index(document, SourceTableHeading)
-	if start < 0 {
-		return "", fmt.Errorf("documentation section %q not found", SourceTableHeading)
-	}
-	rest := document[start+len(SourceTableHeading):]
-	next := strings.Index(rest, "\n## ")
-	if next < 0 {
-		return strings.TrimSpace(document[:start]) + "\n\n" + inventory + "\n", nil
-	}
-	end := start + len(SourceTableHeading) + next + 1
-	return strings.TrimSpace(document[:start]) + "\n\n" + inventory + "\n\n" + strings.TrimLeft(document[end:], "\n"), nil
 }

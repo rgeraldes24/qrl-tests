@@ -4,13 +4,14 @@
 package devnet
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"strconv"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -35,11 +36,11 @@ const (
 
 type parameterShape struct {
 	Participants []struct {
-		ExecutionImage string `json:"el_image"`
-	} `json:"participants"`
+		ExecutionImage string `json:"el_image" yaml:"el_image"`
+	} `json:"participants" yaml:"participants"`
 	Network struct {
-		PrefundedAccounts map[string]json.RawMessage `json:"prefunded_accounts"`
-	} `json:"network_params"`
+		PrefundedAccounts map[string]any `json:"prefunded_accounts" yaml:"prefunded_accounts"`
+	} `json:"network_params" yaml:"network_params"`
 }
 
 // The qrl-package parameter schema, as far as the built-in profile uses it.
@@ -231,7 +232,11 @@ func normalizeProfile(profile Profile) (Profile, error) {
 }
 
 func renderCustomParameters(payload []byte, address, executionImage string) (string, error) {
-	shape, err := decodeParameterShape(payload)
+	var document yaml.Node
+	if err := yaml.Unmarshal(payload, &document); err != nil {
+		return "", errors.New("parameters file must contain one YAML mapping")
+	}
+	shape, err := decodeParameterShape(&document)
 	if err != nil {
 		return "", err
 	}
@@ -248,31 +253,51 @@ func renderCustomParameters(payload []byte, address, executionImage string) (str
 		)
 	}
 
-	encodedImagePlaceholder, _ := json.Marshal(executionImagePlaceholder)
-	encodedExecutionImage, _ := json.Marshal(executionImage)
-	rendered := bytes.ReplaceAll(payload, encodedImagePlaceholder, encodedExecutionImage)
-	encodedWalletPlaceholder, _ := json.Marshal(walletAddressPlaceholder)
-	encodedAddress, _ := json.Marshal(address)
-	rendered = bytes.ReplaceAll(rendered, encodedWalletPlaceholder, encodedAddress)
-
-	renderedShape, err := decodeParameterShape(rendered)
+	replaceParameterTokens(&document, map[string]string{
+		executionImagePlaceholder: executionImage,
+		walletAddressPlaceholder:  address,
+	})
+	rendered, err := yaml.Marshal(&document)
 	if err != nil {
-		return "", errors.New("rendered parameters must contain one JSON object")
+		return "", fmt.Errorf("encode rendered parameters: %w", err)
+	}
+
+	var renderedDocument yaml.Node
+	if err := yaml.Unmarshal(rendered, &renderedDocument); err != nil {
+		return "", errors.New("rendered parameters must contain one YAML mapping")
+	}
+	renderedShape, err := decodeParameterShape(&renderedDocument)
+	if err != nil {
+		return "", errors.New("rendered parameters must contain one YAML mapping")
 	}
 	if len(renderedShape.Participants) == 0 ||
 		renderedShape.Participants[0].ExecutionImage != executionImage {
-		return "", errors.New("execution-image token must use its literal JSON spelling")
+		return "", errors.New("execution-image token was not replaced")
 	}
 	if _, ok := renderedShape.Network.PrefundedAccounts[address]; !ok {
-		return "", errors.New("wallet-address token must use its literal JSON spelling")
+		return "", errors.New("wallet-address token was not replaced")
 	}
 	return string(rendered), nil
 }
 
-func decodeParameterShape(payload []byte) (parameterShape, error) {
+func decodeParameterShape(document *yaml.Node) (parameterShape, error) {
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return parameterShape{}, errors.New("parameters file must contain one YAML mapping")
+	}
 	var shape parameterShape
-	if err := json.Unmarshal(payload, &shape); err != nil {
-		return parameterShape{}, errors.New("parameters file must contain one JSON object")
+	if err := document.Decode(&shape); err != nil {
+		return parameterShape{}, errors.New("parameters file must contain one YAML mapping")
 	}
 	return shape, nil
+}
+
+func replaceParameterTokens(node *yaml.Node, replacements map[string]string) {
+	if node.Kind == yaml.ScalarNode {
+		if replacement, ok := replacements[node.Value]; ok {
+			node.Value = replacement
+		}
+	}
+	for _, child := range node.Content {
+		replaceParameterTokens(child, replacements)
+	}
 }

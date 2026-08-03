@@ -71,7 +71,7 @@ func newApp(networks controller) *cli.App {
 					},
 					&cli.StringFlag{
 						Name:  "params-file",
-						Usage: "complete JSON qrl-package parameters; omit for the built-in single-node profile",
+						Usage: "complete YAML or JSON qrl-package parameters; omit for the built-in single-node profile",
 					},
 					&cli.DurationFlag{
 						Name:  "timeout",

@@ -22,7 +22,7 @@ qrl-package, and waits for readiness. It does not run the test suites.
 | `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Tag for the locally built execution image |
 | `DEVNET_PROFILE` | `single` | Built-in `single`, `multi`, `lifecycle`, `chaos`, `sync`, `execution-sync`, `operations`, `cold`, or `optimistic` profile |
 | `DEVNET_START_TIMEOUT` | `30m` (CLI default) | Network startup budget |
-| `DEVNET_PARAMS_FILE` | unset | Complete qrl-package JSON parameters |
+| `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
 
 `DEVNET_ENCLAVE_NAME` is optional. Without it, every command uses
 `go-qrl-devnet`. Set it only to use another enclave name, and use the same value
@@ -40,7 +40,8 @@ from different source trees also need different `DEVNET_EXECUTION_IMAGE` tags.
 ## Custom parameters
 
 `DEVNET_PARAMS_FILE` replaces the selected built-in profile with a complete
-qrl-package JSON argument object. Two exact JSON string tokens are substituted:
+qrl-package YAML argument object. Existing JSON parameter files remain
+supported. Two exact scalar tokens are substituted:
 
 ```text
 __DEVNET_EXECUTION_IMAGE__
@@ -51,41 +52,13 @@ The first participant's `el_image` must use the image token.
 `network_params.prefunded_accounts` must contain the wallet token as a key; the
 wallet token may also be used as a value, such as `withdrawal_address`.
 
-For example, save the following as `devnet-params.json`:
-
-```json
-{
-  "participants": [
-    {
-      "el_image": "__DEVNET_EXECUTION_IMAGE__",
-      "el_extra_params": ["--graphql", "--graphql.vhosts=*"],
-      "cl_image": "qrledger/qrysm:beacon-chain-8b80fa0c3f5a",
-      "cl_extra_params": ["--min-sync-peers=0", "--minimum-peers-per-subnet=0"],
-      "vc_image": "qrledger/qrysm:validator-8b80fa0c3f5a"
-    }
-  ],
-  "network_params": {
-    "network_id": "1337",
-    "seconds_per_slot": 5,
-    "execution_follow_distance": 8,
-    "prefunded_accounts": {
-      "__DEVNET_WALLET_ADDRESS__": {
-        "balance": "2000000QRL"
-      }
-    },
-    "withdrawal_address": "__DEVNET_WALLET_ADDRESS__",
-    "light_kdf_enabled": true
-  },
-  "qrl_genesis_generator_params": {
-    "image": "qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a"
-  }
-}
-```
+The checked-in [`network_params.yaml`](network_params.yaml) is a complete
+single-participant example using both tokens.
 
 Start the network with the custom parameters:
 
 ```bash
-DEVNET_PARAMS_FILE=devnet-params.json make network-start
+DEVNET_PARAMS_FILE=devnet/network_params.yaml make network-start
 ```
 
 The controller discovers every execution, consensus, and validator participant

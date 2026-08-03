@@ -5,10 +5,12 @@ package devnet
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestDefaultParameters(t *testing.T) {
@@ -38,31 +40,57 @@ func TestDefaultParameters(t *testing.T) {
 
 func TestCustomParameterTokens(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
-	custom := []byte(`{
-		"participants":[{"el_image":"__DEVNET_EXECUTION_IMAGE__","custom":9007199254740993}],
-		"network_params":{
-			"prefunded_accounts":{"__DEVNET_WALLET_ADDRESS__":{"balance":"1QRL"}},
-			"withdrawal_address":"__DEVNET_WALLET_ADDRESS__"
-		},
-		"untouched":"prefix-__DEVNET_EXECUTION_IMAGE__"
-	}`)
+	custom := []byte(`participants:
+  - el_image: __DEVNET_EXECUTION_IMAGE__
+    custom: 9007199254740993
+network_params:
+  prefunded_accounts:
+    __DEVNET_WALLET_ADDRESS__:
+      balance: 1QRL
+  withdrawal_address: __DEVNET_WALLET_ADDRESS__
+untouched: prefix-__DEVNET_EXECUTION_IMAGE__
+`)
 	rendered, err := effectiveParameters(address, "registry.example/qrl:test", custom)
 	require.NoError(t, err)
-	require.Contains(t, rendered, `"custom":9007199254740993`)
-	require.Contains(t, rendered, `"el_image":"registry.example/qrl:test"`)
-	require.Contains(t, rendered, `"`+address+`":{"balance":"1QRL"}`)
-	require.Contains(t, rendered, `"withdrawal_address":"`+address+`"`)
-	require.Contains(t, rendered, `"untouched":"prefix-__DEVNET_EXECUTION_IMAGE__"`)
+	require.Contains(t, rendered, `custom: 9007199254740993`)
+	require.Contains(t, rendered, `el_image: registry.example/qrl:test`)
+	require.Contains(t, rendered, `untouched: prefix-__DEVNET_EXECUTION_IMAGE__`)
+	shape := decodedParameterShape(t, rendered)
+	require.Equal(t, "registry.example/qrl:test", shape.Participants[0].ExecutionImage)
+	require.Contains(t, shape.Network.PrefundedAccounts, address)
+}
+
+func TestCustomJSONParametersRemainSupported(t *testing.T) {
+	address := "Q" + strings.Repeat("e", 128)
+	custom := []byte(`{
+		"participants":[{"el_image":"__DEVNET_EXECUTION_IMAGE__"}],
+		"network_params":{"prefunded_accounts":{"__DEVNET_WALLET_ADDRESS__":{}}}
+	}`)
+	rendered, err := effectiveParameters(address, "image", custom)
+	require.NoError(t, err)
+	shape := decodedParameterShape(t, rendered)
+	require.Equal(t, "image", shape.Participants[0].ExecutionImage)
+	require.Contains(t, shape.Network.PrefundedAccounts, address)
+}
+
+func TestNetworkParametersTemplate(t *testing.T) {
+	address := "Q" + strings.Repeat("f", 128)
+	payload, err := os.ReadFile("network_params.yaml")
+	require.NoError(t, err)
+
+	rendered, err := effectiveParameters(address, "local/go-qrl:test", payload)
+	require.NoError(t, err)
+	shape := decodedParameterShape(t, rendered)
+	require.Equal(t, "local/go-qrl:test", shape.Participants[0].ExecutionImage)
+	require.Contains(t, shape.Network.PrefundedAccounts, address)
 }
 
 func TestInvalidCustomParameters(t *testing.T) {
 	address := "Q" + strings.Repeat("c", 128)
 	for name, custom := range map[string][]byte{
-		"malformed":       []byte(`{`),
-		"missing image":   []byte(`{"participants":[{"el_image":"image"}],"network_params":{"prefunded_accounts":{"__DEVNET_WALLET_ADDRESS__":{}}}}`),
-		"missing wallet":  []byte(`{"participants":[{"el_image":"__DEVNET_EXECUTION_IMAGE__"}],"network_params":{"prefunded_accounts":{}}}`),
-		"escaped image":   []byte(`{"participants":[{"el_image":"__DEVNET_EXECUTION_IMAG\u0045__"}],"network_params":{"prefunded_accounts":{"__DEVNET_WALLET_ADDRESS__":{}}}}`),
-		"escaped wallet":  []byte(`{"participants":[{"el_image":"__DEVNET_EXECUTION_IMAGE__"}],"network_params":{"prefunded_accounts":{"__DEVNET_WALLET_ADDR\u0045SS__":{}}}}`),
+		"malformed":       []byte(`participants: [`),
+		"missing image":   []byte("participants:\n  - el_image: image\nnetwork_params:\n  prefunded_accounts:\n    __DEVNET_WALLET_ADDRESS__: {}\n"),
+		"missing wallet":  []byte("participants:\n  - el_image: __DEVNET_EXECUTION_IMAGE__\nnetwork_params:\n  prefunded_accounts: {}\n"),
 		"top-level array": []byte(`[]`),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -70,6 +98,15 @@ func TestInvalidCustomParameters(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+func decodedParameterShape(t *testing.T, payload string) parameterShape {
+	t.Helper()
+	var document yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(payload), &document))
+	shape, err := decodeParameterShape(&document)
+	require.NoError(t, err)
+	return shape
 }
 
 func TestBuiltInProfiles(t *testing.T) {

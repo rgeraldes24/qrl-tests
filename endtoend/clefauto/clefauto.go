@@ -1,8 +1,8 @@
 // Copyright 2026 The go-qrl Authors
 // This file is part of the go-qrl library.
 
-// Command clefauto runs Clef with an automated UI for disposable E2E networks.
-package main
+// Package clefauto runs Clef with an automated UI for disposable E2E networks.
+package clefauto
 
 import (
 	"context"
@@ -10,10 +10,8 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/fixture"
@@ -62,13 +60,11 @@ func (*automatedUI) OnInputRequired(signercore.UserInputRequest) (signercore.Use
 	return signercore.UserInputResponse{Text: fixture.RemoteSignerPassword}, nil
 }
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	args, cleanup, err := clefArgs(ctx, os.Args[1:])
+// Run starts Clef with the disposable-network automated UI.
+func Run(ctx context.Context, arguments []string) error {
+	args, cleanup, err := clefArgs(ctx, arguments)
 	if err != nil {
-		exit(err)
+		return err
 	}
 	defer cleanup()
 
@@ -77,26 +73,27 @@ func main() {
 
 	input, err := command.StdinPipe()
 	if err != nil {
-		exit(err)
+		return err
 	}
 	output, err := command.StdoutPipe()
 	if err != nil {
-		exit(err)
+		return err
 	}
 	client, err := rpc.DialIO(ctx, output, input)
 	if err != nil {
-		exit(err)
+		return err
 	}
 	defer client.Close()
 	if err := client.RegisterName("ui", new(automatedUI)); err != nil {
-		exit(err)
+		return err
 	}
 	if err := command.Start(); err != nil {
-		exit(err)
+		return err
 	}
 	if err := command.Wait(); err != nil && ctx.Err() == nil {
-		exit(err)
+		return err
 	}
+	return nil
 }
 
 func clefArgs(ctx context.Context, args []string) ([]string, func(), error) {
@@ -145,9 +142,4 @@ func clefArgs(ctx context.Context, args []string) ([]string, func(), error) {
 		configured = append(configured, "--keystore="+keystorePath)
 	}
 	return append(configured, "--stdio-ui"), cleanup, nil
-}
-
-func exit(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
 }

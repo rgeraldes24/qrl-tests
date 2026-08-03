@@ -18,7 +18,7 @@ Statuses mean:
 - **Unsupported**: the scenario depends entirely on a protocol feature or
   execution model QRL does not support.
 
-[`source-behaviors.json`](../coverage/source-behaviors.json)
+[`source-behaviors.json`](../endtoend/coverage/source-behaviors.json)
 is the machine-checked contract for every non-unsupported scenario. It records
 individual covered, missing, failing, and unsupported behaviors and ties each
 implemented behavior to an executable Ginkgo label.
@@ -39,8 +39,7 @@ implemented behavior to an executable Ginkgo label.
 | `resilience` | Implemented | Native client stop, restart, outage, and catch-up behavior |
 | `validator` | Implemented | Deposit, top-up, activation, voluntary exit, execution withdrawal, slashings, and slashing economics |
 | `partition` | Failing | Partition and competing-head behaviors execute, but Qrysm peers remain split after healing and finality does not resume |
-| `beaconapi` | Implemented | Beacon node, state, configuration, pool, event-stream, and signature-verification APIs |
-| `validatorapi` | Implemented | Attester, proposer, sync-committee duty, liveness, and legacy/standard assignment parity APIs |
+| `consensus/api` | Implemented | Beacon node, state, configuration, pool, event-stream, signature-verification, validator-duty, liveness, and legacy/standard assignment parity APIs |
 | `protocol` | Implemented | Genesis, peer, metrics, execution-data, fee-recipient, sync participation, and signature invariants |
 | `sync` | Implemented | Fresh database sync and doppelganger protection |
 | `execution-sync` | Implemented | Fresh execution sync with exact block, receipt, code, balance, full-width storage/log/proof, and restart persistence checks |

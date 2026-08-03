@@ -37,5 +37,5 @@ func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../.."))
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
 }

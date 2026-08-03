@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cyyber/qrl-tests/internal/rpcjson"
+	"github.com/cyyber/qrl-tests/devnet/internal/rpcjson"
 )
 
 const chainAdvancementWindow = 30 * time.Second

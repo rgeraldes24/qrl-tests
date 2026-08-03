@@ -1,7 +1,8 @@
 // Copyright 2026 The go-qrl Authors
 // This file is part of the go-qrl library.
 
-package main
+// Package runner executes the registered end-to-end test lanes.
+package runner
 
 import (
 	"cmp"
@@ -15,7 +16,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/internal/lanes"
+	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 )
 
 const (
@@ -23,14 +24,8 @@ const (
 	defaultReportDir      = "reports"
 )
 
-func main() {
-	if err := run(context.Background(), os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-
-func run(ctx context.Context, arguments []string) error {
+// Run executes an E2E runner command.
+func Run(ctx context.Context, arguments []string) error {
 	if len(arguments) == 0 {
 		return errors.New("usage: e2e list | run <lane> | run-all")
 	}

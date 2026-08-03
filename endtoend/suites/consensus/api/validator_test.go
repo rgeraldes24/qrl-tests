@@ -1,6 +1,6 @@
 //go:build e2e
 
-package validatorapi
+package api
 
 import (
 	"strconv"

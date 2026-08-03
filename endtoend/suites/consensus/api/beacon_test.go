@@ -1,6 +1,6 @@
 //go:build e2e
 
-package beaconapi
+package api
 
 import (
 	"encoding/json"

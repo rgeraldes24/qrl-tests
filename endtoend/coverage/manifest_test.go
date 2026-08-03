@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/internal/lanes"
+	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +28,7 @@ func TestAPISurfaceManifests(t *testing.T) {
 	root := repositoryRoot(t)
 	for _, name := range []string{"execution-rpc.json", "beacon-rest.json", "validator-rest.json", "engine-rpc.json"} {
 		t.Run(name, func(t *testing.T) {
-			payload, err := os.ReadFile(filepath.Join(root, "coverage", name))
+			payload, err := os.ReadFile(filepath.Join(root, "endtoend", "coverage", name))
 			require.NoError(t, err)
 			var source manifest
 			require.NoError(t, json.Unmarshal(payload, &source))
@@ -68,5 +68,5 @@ func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), ".."))
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../.."))
 }

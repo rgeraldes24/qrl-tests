@@ -22,7 +22,7 @@ The repository exposes profile-oriented lanes:
 | Lane | Network profile | Coverage |
 | --- | --- | --- |
 | `make e2e-core` | `single` | Client APIs, ABI, console, signing, Engine, transactions, and VM |
-| `go run ./endtoend/cmd/e2e run workloads` | `multi` | Long transaction-volume and calldata workloads |
+| `go run ./cmd/e2e run workloads` | `multi` | Long transaction-volume and calldata workloads |
 | `make e2e-consensus` | `single` or `multi` | Beacon/validator APIs, signatures, protocol state, peers, metrics, and fee recipients |
 | `make e2e-validator` | `lifecycle` | Deposits, activation, exits, withdrawals, and slashings |
 | `make e2e-validator-operations` | `operations` | Multi-client deposit, exit, and slashing workloads |
@@ -36,9 +36,9 @@ The repository exposes profile-oriented lanes:
 
 Start the network with the corresponding `DEVNET_PROFILE` before running an
 individual lane. `make e2e-all` instead provisions a fresh matching network for
-every registered lane. List that registry with `go run ./endtoend/cmd/e2e list`.
+every registered lane. List that registry with `go run ./cmd/e2e list`.
 
-The coverage inventories under [`coverage/`](../coverage) are executable:
+The coverage inventories under [`coverage/`](coverage) are executable:
 repository tests fail when a supported source scenario lacks a matching Ginkgo
 label or an API manifest points at a package outside its configured lane.
 
@@ -66,8 +66,7 @@ The [ABI](suites/execution/abi/README.md),
 [VM/precompile](suites/execution/vm/README.md),
 [Clef](suites/signer/clef/README.md),
 [external signer](suites/signer/externalsigner/README.md),
-[beacon API](suites/consensus/beaconapi/README.md),
-[validator API](suites/consensus/validatorapi/README.md),
+[consensus API](suites/consensus/api/README.md),
 [consensus protocol](suites/consensus/protocol/README.md),
 [fresh sync](suites/consensus/sync/README.md),
 [execution sync](suites/execution/sync/README.md),

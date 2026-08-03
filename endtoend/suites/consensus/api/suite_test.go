@@ -1,6 +1,6 @@
 //go:build e2e
 
-package validatorapi
+package api
 
 import (
 	"testing"
@@ -11,5 +11,5 @@ import (
 
 func TestE2E(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-	ginkgo.RunSpecs(t, "Validator API live E2E suite")
+	ginkgo.RunSpecs(t, "Consensus API live E2E suite")
 }

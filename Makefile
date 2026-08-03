@@ -41,7 +41,7 @@ network-start: network-image clef-image
 		exit 1; \
 	}
 	kurtosis engine start
-	$(GO) run ./devnet/cmd/devnet start \
+	$(GO) run ./cmd/devnet start \
 		--execution-image "$(DEVNET_EXECUTION_IMAGE)" \
 		--profile "$(DEVNET_PROFILE)" \
 		$(if $(DEVNET_ENCLAVE_NAME),--enclave-name "$(DEVNET_ENCLAVE_NAME)") \
@@ -49,7 +49,7 @@ network-start: network-image clef-image
 		$(if $(DEVNET_PARAMS_FILE),--params-file "$(DEVNET_PARAMS_FILE)")
 
 network-stop:
-	$(GO) run ./devnet/cmd/devnet stop $(if $(DEVNET_ENCLAVE_NAME),--enclave-name "$(DEVNET_ENCLAVE_NAME)")
+	$(GO) run ./cmd/devnet stop $(if $(DEVNET_ENCLAVE_NAME),--enclave-name "$(DEVNET_ENCLAVE_NAME)")
 
 e2e-test:
 	@test -n "$(strip $(GO_QRL_SOURCE_DIR))" || { echo "GO_QRL_SOURCE_DIR must point to a go-qrl checkout" >&2; exit 2; }
@@ -76,7 +76,7 @@ e2e-test:
 e2e-execution: E2E_PACKAGES=./endtoend/suites/execution/abi ./endtoend/suites/execution/api ./endtoend/suites/execution/console ./endtoend/suites/execution/vm
 e2e-execution: e2e-test
 
-e2e-consensus: E2E_PACKAGES=./endtoend/suites/consensus/beaconapi ./endtoend/suites/consensus/validatorapi ./endtoend/suites/consensus/protocol
+e2e-consensus: E2E_PACKAGES=./endtoend/suites/consensus/api ./endtoend/suites/consensus/protocol
 e2e-consensus: e2e-test
 
 e2e-crosslayer: E2E_PACKAGES=./endtoend/suites/crosslayer/...
@@ -91,7 +91,7 @@ e2e-all: network-image clef-image
 	DEVNET_ENCLAVE_NAME="$(DEVNET_ENCLAVE_NAME)" \
 	GO_QRL_SOURCE_DIR="$(GO_QRL_SOURCE_DIR)" \
 	E2E_REPORT_DIR="$(E2E_REPORT_DIR)" \
-	$(GO) run ./endtoend/cmd/e2e run-all
+	$(GO) run ./cmd/e2e run-all
 
 e2e-core: E2E_PACKAGES=./endtoend/suites/execution/abi ./endtoend/suites/execution/api ./endtoend/suites/execution/console ./endtoend/suites/execution/vm ./endtoend/suites/signer/... ./endtoend/suites/crosslayer/engine ./endtoend/suites/crosslayer/network ./endtoend/suites/crosslayer/transactions
 e2e-core: e2e-test

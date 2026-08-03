@@ -1,0 +1,11 @@
+{
+  "surface": "beacon-rest",
+  "entries": [
+    {"id": "node-and-config", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"},
+    {"id": "beacon-state", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"},
+    {"id": "operation-pools", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"},
+    {"id": "event-stream", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"},
+    {"id": "chain-reorg-event", "package": "./endtoend/suites/crosslayer/partition", "lane": "chaos", "classification": "behavior"},
+    {"id": "legacy-parity", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"}
+  ]
+}

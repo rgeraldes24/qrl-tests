@@ -1,0 +1,9 @@
+{
+  "surface": "validator-rest",
+  "entries": [
+    {"id": "attester-duties", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"},
+    {"id": "proposer-duties", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"},
+    {"id": "sync-duties", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"},
+    {"id": "liveness", "package": "./endtoend/suites/consensus/api", "lane": "single", "classification": "behavior"}
+  ]
+}

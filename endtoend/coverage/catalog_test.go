@@ -1,19 +1,18 @@
 // Copyright 2026 The go-qrl Authors
 // This file is part of the go-qrl library.
 
-package scenarios
+package coverage
 
 import (
 	"bufio"
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/internal/lanes"
+	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,9 +20,9 @@ const sourceTableHeading = "## Source Scenario Inventory"
 
 func TestScenarioInventoryIsExhaustive(t *testing.T) {
 	root := repositoryRoot(t)
-	source := scenarioNames(t, filepath.Join(root, "coverage/source-scenarios.txt"))
+	source := scenarioNames(t, filepath.Join(root, "endtoend/coverage/source-scenarios.txt"))
 	coverage := coverageRows(t, filepath.Join(root, "docs/scenario-coverage.md"))
-	contracts := behaviorContracts(t, filepath.Join(root, "coverage/source-behaviors.json"))
+	contracts := behaviorContracts(t, filepath.Join(root, "endtoend/coverage/source-behaviors.json"))
 	suites := suiteSources(t, root)
 
 	require.Len(t, source, 79)
@@ -202,11 +201,4 @@ func scenarioNames(t *testing.T, path string) map[string]struct{} {
 	}
 	require.NoError(t, scanner.Err())
 	return names
-}
-
-func repositoryRoot(t *testing.T) string {
-	t.Helper()
-	_, filename, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "../.."))
 }

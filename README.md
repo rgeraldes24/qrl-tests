@@ -34,6 +34,9 @@ make e2e-all
 
 `e2e-all` provisions and removes each network automatically. Use the individual
 `network-start`, suite, and `network-stop` commands when iterating on one lane.
+The equivalent Kubernetes entry points are `network-start-k8s` and
+`e2e-all-k8s`; they require registry images and a selected Kurtosis cluster with
+its gateway running. See [`devnet/README.md`](devnet/README.md).
 
 Normal runs exclude long `scenario-full` workloads. Run the full QRL network
 scenarios against a multi-client network with:

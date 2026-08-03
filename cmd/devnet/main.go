@@ -60,6 +60,11 @@ func newApp(networks controller) *cli.App {
 				Flags: []cli.Flag{
 					enclaveName,
 					&cli.StringFlag{
+						Name:  "backend",
+						Usage: "Kurtosis backend: docker or kubernetes",
+						Value: string(devnet.BackendDocker),
+					},
+					&cli.StringFlag{
 						Name:  "profile",
 						Usage: "built-in network profile: single, multi, lifecycle, chaos, sync, execution-sync, operations, cold, or optimistic",
 						Value: string(devnet.ProfileSingle),
@@ -68,6 +73,26 @@ func newApp(networks controller) *cli.App {
 						Name:     "execution-image",
 						Usage:    "execution image reference",
 						Required: true,
+					},
+					&cli.StringFlag{
+						Name:  "clef-image",
+						Usage: "Clef image reference",
+						Value: devnet.DefaultClefImage,
+					},
+					&cli.StringFlag{
+						Name:  "consensus-image",
+						Usage: "consensus client image reference",
+						Value: devnet.DefaultConsensusImage,
+					},
+					&cli.StringFlag{
+						Name:  "validator-image",
+						Usage: "validator client image reference",
+						Value: devnet.DefaultValidatorImage,
+					},
+					&cli.StringFlag{
+						Name:  "genesis-image",
+						Usage: "genesis generator image reference",
+						Value: devnet.DefaultGenesisImage,
 					},
 					&cli.StringFlag{
 						Name:  "params-file",
@@ -94,10 +119,17 @@ func newApp(networks controller) *cli.App {
 					ctx, cancel := context.WithTimeout(command.Context, command.Duration("timeout"))
 					defer cancel()
 					if err := networks.Start(ctx, devnet.StartOptions{
-						EnclaveName:    command.String("enclave-name"),
-						ExecutionImage: command.String("execution-image"),
-						Parameters:     parameters,
-						Profile:        devnet.Profile(command.String("profile")),
+						EnclaveName: command.String("enclave-name"),
+						Backend:     devnet.Backend(command.String("backend")),
+						Images: devnet.Images{
+							Execution: command.String("execution-image"),
+							Clef:      command.String("clef-image"),
+							Consensus: command.String("consensus-image"),
+							Validator: command.String("validator-image"),
+							Genesis:   command.String("genesis-image"),
+						},
+						Parameters: parameters,
+						Profile:    devnet.Profile(command.String("profile")),
 					}); err != nil {
 						return err
 					}

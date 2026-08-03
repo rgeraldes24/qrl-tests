@@ -53,6 +53,11 @@ Suites are also grouped by protocol boundary:
 
 Run every implemented domain with `make e2e-all`.
 
+Use `make e2e-all-k8s` with registry-backed `DEVNET_*_IMAGE` values to run all
+supported lane lifecycles on the selected Kubernetes cluster. The runner
+reports and skips the partition and soak lanes because their current fault
+injection uses Docker container network namespaces.
+
 ## Adding a suite
 
 Add suites under `suites/<domain>/<suite>`. Live bootstrap files use the `e2e`

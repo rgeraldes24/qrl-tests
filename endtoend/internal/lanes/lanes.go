@@ -18,6 +18,7 @@ type Lane struct {
 	Packages    []string
 	LabelFilter string
 	Timeout     time.Duration
+	DockerOnly  bool
 }
 
 var registry = []Lane{
@@ -59,10 +60,11 @@ var registry = []Lane{
 		Timeout:     2 * time.Hour,
 	},
 	{
-		Name:     "chaos",
-		Profile:  devnet.ProfileChaos,
-		Packages: []string{"./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/resilience", "./endtoend/suites/crosslayer/partition"},
-		Timeout:  2 * time.Hour,
+		Name:       "chaos",
+		Profile:    devnet.ProfileChaos,
+		Packages:   []string{"./endtoend/suites/crosslayer/network", "./endtoend/suites/crosslayer/resilience", "./endtoend/suites/crosslayer/partition"},
+		Timeout:    2 * time.Hour,
+		DockerOnly: true,
 	},
 	{
 		Name:     "consensus-sync",
@@ -101,6 +103,7 @@ var registry = []Lane{
 		Packages:    []string{"./endtoend/suites/system/soak"},
 		LabelFilter: "scenario-full",
 		Timeout:     4 * time.Hour,
+		DockerOnly:  true,
 	},
 }
 

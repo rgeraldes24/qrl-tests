@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"strconv"
-	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -20,12 +19,11 @@ const (
 	prefundBalance   = "2000000QRL"
 
 	executionImagePlaceholder = "__DEVNET_EXECUTION_IMAGE__"
+	clefImagePlaceholder      = "__DEVNET_CLEF_IMAGE__"
+	consensusImagePlaceholder = "__DEVNET_CONSENSUS_IMAGE__"
+	validatorImagePlaceholder = "__DEVNET_VALIDATOR_IMAGE__"
+	genesisImagePlaceholder   = "__DEVNET_GENESIS_IMAGE__"
 	walletAddressPlaceholder  = "__DEVNET_WALLET_ADDRESS__"
-
-	consensusImage    = "qrledger/qrysm:beacon-chain-8b80fa0c3f5a"
-	validatorImage    = "qrledger/qrysm:validator-8b80fa0c3f5a"
-	genesisImage      = "qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a"
-	remoteSignerImage = "local/go-qrl-clef:devnet"
 
 	rpcPortID           = "rpc"
 	webSocketPortID     = "ws"
@@ -34,13 +32,27 @@ const (
 	graphQLPath         = "/graphql"
 )
 
+const (
+	DefaultExecutionImage = "local/go-qrl:devnet"
+	DefaultClefImage      = "local/go-qrl-clef:devnet"
+	DefaultConsensusImage = "qrledger/qrysm:beacon-chain-8b80fa0c3f5a"
+	DefaultValidatorImage = "qrledger/qrysm:validator-8b80fa0c3f5a"
+	DefaultGenesisImage   = "qrledger/qrysm:qrl-genesis-generator-360410c72353-8b80fa0c3f5a"
+)
+
 type parameterShape struct {
 	Participants []struct {
-		ExecutionImage string `json:"el_image" yaml:"el_image"`
+		ExecutionImage    string `json:"el_image" yaml:"el_image"`
+		ConsensusImage    string `json:"cl_image" yaml:"cl_image"`
+		ValidatorImage    string `json:"vc_image" yaml:"vc_image"`
+		RemoteSignerImage string `json:"remote_signer_image" yaml:"remote_signer_image"`
 	} `json:"participants" yaml:"participants"`
 	Network struct {
 		PrefundedAccounts map[string]any `json:"prefunded_accounts" yaml:"prefunded_accounts"`
 	} `json:"network_params" yaml:"network_params"`
+	Genesis struct {
+		Image string `json:"image" yaml:"image"`
+	} `json:"qrl_genesis_generator_params" yaml:"qrl_genesis_generator_params"`
 }
 
 // The qrl-package parameter schema, as far as the built-in profile uses it.
@@ -88,15 +100,16 @@ type generatorParams struct {
 }
 
 func effectiveParameters(address, executionImage string, custom []byte) (string, error) {
-	return effectiveParametersForProfile(address, executionImage, custom, ProfileSingle)
+	return effectiveParametersForProfile(address, Images{Execution: executionImage}.withDefaults(), custom, ProfileSingle)
 }
 
-func effectiveParametersForProfile(address, executionImage string, custom []byte, profile Profile) (string, error) {
-	if strings.TrimSpace(executionImage) == "" {
-		return "", errors.New("execution image is empty")
+func effectiveParametersForProfile(address string, images Images, custom []byte, profile Profile) (string, error) {
+	images = images.withDefaults()
+	if err := images.validate(BackendDocker); err != nil {
+		return "", err
 	}
 	if custom != nil {
-		return renderCustomParameters(custom, address, executionImage)
+		return renderCustomParameters(custom, address, images)
 	}
 	profile, err := normalizeProfile(profile)
 	if err != nil {
@@ -110,15 +123,15 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 			"qrl-tests.partition":   strconv.Itoa(index%2 + 1),
 		}
 		participants[index] = participant{
-			ELImage:           executionImage,
+			ELImage:           images.Execution,
 			ELExtraParams:     []string{"--graphql", "--graphql.vhosts=*"},
-			CLImage:           consensusImage,
+			CLImage:           images.Consensus,
 			CLExtraParams:     []string{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"},
-			VCImage:           validatorImage,
+			VCImage:           images.Validator,
 			VCExtraParams:     []string{},
 			UseRemoteSigner:   true,
 			RemoteSignerType:  "clef",
-			RemoteSignerImage: remoteSignerImage,
+			RemoteSignerImage: images.Clef,
 			ValidatorCount:    spec.validatorCounts[index],
 			ELExtraLabels:     maps.Clone(labels),
 			CLExtraLabels:     maps.Clone(labels),
@@ -142,7 +155,7 @@ func effectiveParametersForProfile(address, executionImage string, custom []byte
 			WithdrawalAddress:       address,
 			LightKDFEnabled:         true,
 		},
-		GenesisParams: generatorParams{Image: genesisImage},
+		GenesisParams: generatorParams{Image: images.Genesis},
 	})
 	if err != nil {
 		return "", err
@@ -231,7 +244,7 @@ func normalizeProfile(profile Profile) (Profile, error) {
 	}
 }
 
-func renderCustomParameters(payload []byte, address, executionImage string) (string, error) {
+func renderCustomParameters(payload []byte, address string, images Images) (string, error) {
 	var document yaml.Node
 	if err := yaml.Unmarshal(payload, &document); err != nil {
 		return "", errors.New("parameters file must contain one YAML mapping")
@@ -254,7 +267,11 @@ func renderCustomParameters(payload []byte, address, executionImage string) (str
 	}
 
 	replaceParameterTokens(&document, map[string]string{
-		executionImagePlaceholder: executionImage,
+		executionImagePlaceholder: images.Execution,
+		clefImagePlaceholder:      images.Clef,
+		consensusImagePlaceholder: images.Consensus,
+		validatorImagePlaceholder: images.Validator,
+		genesisImagePlaceholder:   images.Genesis,
 		walletAddressPlaceholder:  address,
 	})
 	rendered, err := yaml.Marshal(&document)
@@ -271,7 +288,7 @@ func renderCustomParameters(payload []byte, address, executionImage string) (str
 		return "", errors.New("rendered parameters must contain one YAML mapping")
 	}
 	if len(renderedShape.Participants) == 0 ||
-		renderedShape.Participants[0].ExecutionImage != executionImage {
+		renderedShape.Participants[0].ExecutionImage != images.Execution {
 		return "", errors.New("execution-image token was not replaced")
 	}
 	if _, ok := renderedShape.Network.PrefundedAccounts[address]; !ok {

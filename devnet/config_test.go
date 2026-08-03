@@ -26,12 +26,12 @@ func TestDefaultParameters(t *testing.T) {
 	network := parameters["network_params"].(map[string]any)
 	prefund := network["prefunded_accounts"].(map[string]any)[address].(map[string]any)
 	require.Equal(t, executionImage, participant["el_image"])
-	require.Equal(t, consensusImage, participant["cl_image"])
-	require.Equal(t, validatorImage, participant["vc_image"])
+	require.Equal(t, DefaultConsensusImage, participant["cl_image"])
+	require.Equal(t, DefaultValidatorImage, participant["vc_image"])
 	require.Equal(t, true, participant["use_remote_signer"])
 	require.Equal(t, "clef", participant["remote_signer_type"])
-	require.Equal(t, remoteSignerImage, participant["remote_signer_image"])
-	require.Equal(t, genesisImage, parameters["qrl_genesis_generator_params"].(map[string]any)["image"])
+	require.Equal(t, DefaultClefImage, participant["remote_signer_image"])
+	require.Equal(t, DefaultGenesisImage, parameters["qrl_genesis_generator_params"].(map[string]any)["image"])
 	require.Equal(t, "1337", network["network_id"])
 	require.Equal(t, address, network["withdrawal_address"])
 	require.Equal(t, prefundBalance, prefund["balance"])
@@ -42,6 +42,9 @@ func TestCustomParameterTokens(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
 	custom := []byte(`participants:
   - el_image: __DEVNET_EXECUTION_IMAGE__
+    cl_image: __DEVNET_CONSENSUS_IMAGE__
+    vc_image: __DEVNET_VALIDATOR_IMAGE__
+    remote_signer_image: __DEVNET_CLEF_IMAGE__
     custom: 9007199254740993
 network_params:
   prefunded_accounts:
@@ -49,6 +52,8 @@ network_params:
       balance: 1QRL
   withdrawal_address: __DEVNET_WALLET_ADDRESS__
 untouched: prefix-__DEVNET_EXECUTION_IMAGE__
+qrl_genesis_generator_params:
+  image: __DEVNET_GENESIS_IMAGE__
 `)
 	rendered, err := effectiveParameters(address, "registry.example/qrl:test", custom)
 	require.NoError(t, err)
@@ -57,6 +62,10 @@ untouched: prefix-__DEVNET_EXECUTION_IMAGE__
 	require.Contains(t, rendered, `untouched: prefix-__DEVNET_EXECUTION_IMAGE__`)
 	shape := decodedParameterShape(t, rendered)
 	require.Equal(t, "registry.example/qrl:test", shape.Participants[0].ExecutionImage)
+	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
+	require.Equal(t, DefaultConsensusImage, shape.Participants[0].ConsensusImage)
+	require.Equal(t, DefaultValidatorImage, shape.Participants[0].ValidatorImage)
+	require.Equal(t, DefaultGenesisImage, shape.Genesis.Image)
 	require.Contains(t, shape.Network.PrefundedAccounts, address)
 }
 
@@ -82,6 +91,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.NoError(t, err)
 	shape := decodedParameterShape(t, rendered)
 	require.Equal(t, "local/go-qrl:test", shape.Participants[0].ExecutionImage)
+	require.Equal(t, DefaultClefImage, shape.Participants[0].RemoteSignerImage)
 	require.Contains(t, shape.Network.PrefundedAccounts, address)
 }
 
@@ -126,7 +136,7 @@ func TestBuiltInProfiles(t *testing.T) {
 		{ProfileOptimistic, 2, 64},
 		{ProfileExecutionSync, 2, 64},
 	} {
-		payload, err := effectiveParametersForProfile(address, "image", nil, test.profile)
+		payload, err := effectiveParametersForProfile(address, Images{Execution: "image"}.withDefaults(), nil, test.profile)
 		require.NoError(t, err)
 		var parameters struct {
 			Participants []struct {

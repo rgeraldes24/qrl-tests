@@ -25,7 +25,7 @@ type liveSuite struct {
 	environment devnet.Environment
 	sessions    []*endtoendlive.Session
 	beacons     []*consensus.Client
-	partition   *devnet.NetworkPartition
+	partition   devnet.NetworkPartition
 }
 
 var _ = ginkgo.Describe(
@@ -50,7 +50,9 @@ var _ = ginkgo.Describe(
 			for _, session := range sessions {
 				ginkgo.DeferCleanup(session.Close)
 			}
-			suite = &liveSuite{environment: environment, sessions: sessions, partition: devnet.NewNetworkPartition()}
+			partition, err := devnet.NewNetworkPartition(environment.Backend)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			suite = &liveSuite{environment: environment, sessions: sessions, partition: partition}
 			for _, participant := range environment.Participants {
 				beacon, err := consensus.New(participant.ConsensusURL)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())

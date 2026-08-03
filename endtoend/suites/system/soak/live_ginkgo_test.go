@@ -47,7 +47,8 @@ var _ = ginkgo.Describe(
 			contract, err := execfixture.DeployStateContract(ctx, sessions[0], execfixture.FullTopic(0xd0))
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			services := devnet.NewServiceController(sessions[0].Environment.EnclaveName)
-			partition := devnet.NewNetworkPartition()
+			partition, err := devnet.NewNetworkPartition(sessions[0].Environment.Backend)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			ginkgo.DeferCleanup(func() {
 				cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				defer cancel()

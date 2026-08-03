@@ -13,7 +13,14 @@ import (
 
 const networkToolImage = "nicolaka/netshoot:v0.13"
 
-type NetworkPartition struct {
+var ErrNetworkPartitionUnsupported = errors.New("network partitions are not supported by the Kubernetes backend")
+
+type NetworkPartition interface {
+	Apply(context.Context, ...[]Participant) error
+	Clear(context.Context) error
+}
+
+type dockerNetworkPartition struct {
 	run   func(context.Context, ...string) (string, error)
 	rules []networkRule
 }
@@ -23,11 +30,18 @@ type networkRule struct {
 	peerIP    string
 }
 
-func NewNetworkPartition() *NetworkPartition {
-	return &NetworkPartition{run: runDocker}
+func NewNetworkPartition(backend Backend) (NetworkPartition, error) {
+	backend, err := ParseBackend(string(backend))
+	if err != nil {
+		return nil, err
+	}
+	if backend == BackendKubernetes {
+		return nil, ErrNetworkPartitionUnsupported
+	}
+	return &dockerNetworkPartition{run: runDocker}, nil
 }
 
-func (partition *NetworkPartition) Apply(ctx context.Context, groups ...[]Participant) error {
+func (partition *dockerNetworkPartition) Apply(ctx context.Context, groups ...[]Participant) error {
 	if len(groups) < 2 {
 		return errors.New("network partition requires at least two groups")
 	}
@@ -67,7 +81,7 @@ func (partition *NetworkPartition) Apply(ctx context.Context, groups ...[]Partic
 	return nil
 }
 
-func (partition *NetworkPartition) Clear(ctx context.Context) error {
+func (partition *dockerNetworkPartition) Clear(ctx context.Context) error {
 	var result error
 	for index := len(partition.rules) - 1; index >= 0; index-- {
 		result = errors.Join(result, partition.updateRule(ctx, "-D", partition.rules[index]))
@@ -76,11 +90,11 @@ func (partition *NetworkPartition) Clear(ctx context.Context) error {
 	return result
 }
 
-func (partition *NetworkPartition) clearApplied(ctx context.Context) {
+func (partition *dockerNetworkPartition) clearApplied(ctx context.Context) {
 	_ = partition.Clear(ctx)
 }
 
-func (partition *NetworkPartition) containerID(ctx context.Context, serviceID string) (string, error) {
+func (partition *dockerNetworkPartition) containerID(ctx context.Context, serviceID string) (string, error) {
 	output, err := partition.run(ctx,
 		"ps", "--all", "--quiet",
 		"--filter", "label=com.kurtosistech.guid="+serviceID,
@@ -95,7 +109,7 @@ func (partition *NetworkPartition) containerID(ctx context.Context, serviceID st
 	return identifiers[0], nil
 }
 
-func (partition *NetworkPartition) updateRule(ctx context.Context, operation string, rule networkRule) error {
+func (partition *dockerNetworkPartition) updateRule(ctx context.Context, operation string, rule networkRule) error {
 	_, err := partition.run(ctx,
 		"run", "--rm",
 		"--network", "container:"+rule.container,

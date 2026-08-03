@@ -13,7 +13,7 @@ import (
 
 func TestNetworkPartition(t *testing.T) {
 	var calls [][]string
-	partition := &NetworkPartition{
+	partition := &dockerNetworkPartition{
 		run: func(_ context.Context, arguments ...string) (string, error) {
 			calls = append(calls, arguments)
 			if arguments[0] == "ps" {
@@ -49,4 +49,10 @@ func TestNetworkPartition(t *testing.T) {
 	}
 	require.Equal(t, 4, inserts)
 	require.Equal(t, inserts, deletes)
+}
+
+func TestKubernetesNetworkPartitionUnsupported(t *testing.T) {
+	partition, err := NewNetworkPartition(BackendKubernetes)
+	require.ErrorIs(t, err, ErrNetworkPartitionUnsupported)
+	require.Nil(t, partition)
 }

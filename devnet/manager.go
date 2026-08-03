@@ -33,11 +33,12 @@ const (
 	// DevelopmentWalletAddress is funded only by the built-in disposable profile.
 	DevelopmentWalletAddress = "QBb81a0496aa34a64f96c2bCd28793165e1e6C08af0605b119cc768764901d2E4B48b5b9c049C57469CcA8a0421D2E31DF5C637a9cee8f3DA83964261B6CF9a22"
 
-	destroyConfirmationTimeout = 15 * time.Second
+	destroyConfirmationTimeout = 2 * time.Minute
 )
 
 type Environment struct {
 	EnclaveName  string
+	Backend      Backend
 	Participants []Participant
 
 	// Primary participant aliases retained for the existing single-node suites.
@@ -68,10 +69,11 @@ type Participant struct {
 }
 
 type StartOptions struct {
-	EnclaveName    string
-	ExecutionImage string
-	Parameters     []byte
-	Profile        Profile
+	EnclaveName string
+	Backend     Backend
+	Images      Images
+	Parameters  []byte
+	Profile     Profile
 }
 
 type Manager struct {
@@ -93,13 +95,25 @@ func NewManager() *Manager {
 }
 
 func Inspect(ctx context.Context) (Environment, error) {
-	return NewManager().Inspect(ctx, cmp.Or(os.Getenv("DEVNET_ENCLAVE_NAME"), DefaultEnclaveName))
+	backend, err := ParseBackend(os.Getenv("DEVNET_BACKEND"))
+	if err != nil {
+		return Environment{}, err
+	}
+	return NewManager().inspect(ctx, cmp.Or(os.Getenv("DEVNET_ENCLAVE_NAME"), DefaultEnclaveName), backend)
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) error {
+	backend, err := ParseBackend(string(options.Backend))
+	if err != nil {
+		return err
+	}
+	images := options.Images.withDefaults()
+	if err := images.validate(backend); err != nil {
+		return err
+	}
 	parameters, err := effectiveParametersForProfile(
 		DevelopmentWalletAddress,
-		options.ExecutionImage,
+		images,
 		options.Parameters,
 		options.Profile,
 	)
@@ -126,7 +140,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) error {
 
 	// Endpoints are fixed once the package run completes; only the probe has to
 	// wait for the chain to come up.
-	environment, err := resolveEnvironment(ctx, client, options.EnclaveName)
+	environment, err := resolveEnvironment(ctx, client, options.EnclaveName, backend)
 	if err != nil {
 		return fmt.Errorf("resolve network endpoints; enclave remains until stopped: %w", err)
 	}
@@ -139,6 +153,14 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) error {
 }
 
 func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
+	backend, err := ParseBackend(os.Getenv("DEVNET_BACKEND"))
+	if err != nil {
+		return Environment{}, err
+	}
+	return manager.inspect(ctx, name, backend)
+}
+
+func (manager *Manager) inspect(ctx context.Context, name string, backend Backend) (Environment, error) {
 	client, err := manager.newClient()
 	if err != nil {
 		return Environment{}, err
@@ -150,7 +172,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 	if !found {
 		return Environment{}, errors.New("network is not running")
 	}
-	environment, err := resolveEnvironment(ctx, client, name)
+	environment, err := resolveEnvironment(ctx, client, name, backend)
 	if err != nil {
 		return Environment{}, err
 	}
@@ -194,15 +216,23 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 	// trusts this result.
 	confirmCtx, cancel := context.WithTimeout(context.Background(), destroyConfirmationTimeout)
 	defer cancel()
-	if found, err := client.EnclaveExists(confirmCtx, name); err != nil {
-		return errors.Join(destroyErr, fmt.Errorf("confirm enclave destruction: %w", err))
-	} else if found {
-		return errors.Join(destroyErr, errors.New("enclave still occupies its slot"))
+	confirmErr := retryUntil(confirmCtx, func() error {
+		found, err := client.EnclaveExists(confirmCtx, name)
+		if err != nil {
+			return fmt.Errorf("confirm enclave destruction: %w", err)
+		}
+		if found {
+			return errors.New("enclave still occupies its slot")
+		}
+		return nil
+	})
+	if confirmErr != nil {
+		return errors.Join(destroyErr, confirmErr)
 	}
 	return nil
 }
 
-func resolveEnvironment(ctx context.Context, client kurtosisClient, name string) (Environment, error) {
+func resolveEnvironment(ctx context.Context, client kurtosisClient, name string, backend Backend) (Environment, error) {
 	services, err := client.Services(ctx, name)
 	if err != nil {
 		return Environment{}, err
@@ -214,6 +244,7 @@ func resolveEnvironment(ctx context.Context, client kurtosisClient, name string)
 	primary := participants[0]
 	return Environment{
 		EnclaveName:  name,
+		Backend:      backend,
 		Participants: participants,
 		RPCURL:       primary.RPCURL,
 		GraphQLURL:   primary.GraphQLURL,

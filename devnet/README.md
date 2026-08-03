@@ -1,8 +1,8 @@
 # Development network
 
 This directory provides a reusable package and CLI for a separately managed,
-Kurtosis-backed QRL development network. It requires Docker and Kurtosis CLI
-1.20.x.
+Kurtosis-backed QRL development network. It supports the local Docker backend
+and remote Kubernetes clusters with Kurtosis CLI 1.20.x.
 
 ## Run
 
@@ -14,12 +14,37 @@ make network-stop
 `network-start` builds the local go-qrl and Clef images, runs the pinned
 qrl-package, and waits for readiness. It does not run the test suites.
 
+For Kubernetes, select the Kurtosis cluster and run its gateway in a separate
+terminal. All service images must be available from a registry accessible to
+the cluster:
+
+```bash
+kurtosis cluster set <cluster>
+kurtosis gateway
+
+DEVNET_EXECUTION_IMAGE=registry.example/go-qrl:test \
+DEVNET_CLEF_IMAGE=registry.example/go-qrl-clef:test \
+make network-start-k8s
+
+DEVNET_BACKEND=kubernetes make e2e-test
+DEVNET_BACKEND=kubernetes make network-stop
+```
+
+Cluster image-pull credentials are managed outside this repository. The
+Kubernetes path uses the selected Kurtosis context and the same SDK lifecycle
+as Docker. Network-partition scenarios are currently Docker-only.
+
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `DEVNET_BACKEND` | `docker` | Kurtosis backend: `docker` or `kubernetes` |
 | `DEVNET_ENCLAVE_NAME` | `go-qrl-devnet` (CLI default) | Kurtosis enclave |
 | `DEVNET_EXECUTION_IMAGE` | `local/go-qrl:devnet` | Tag for the locally built execution image |
+| `DEVNET_CLEF_IMAGE` | `local/go-qrl-clef:devnet` | Clef image |
+| `DEVNET_CONSENSUS_IMAGE` | pinned Qrysm beacon image | Consensus client image |
+| `DEVNET_VALIDATOR_IMAGE` | pinned Qrysm validator image | Validator client image |
+| `DEVNET_GENESIS_IMAGE` | pinned QRL genesis image | Genesis generator image |
 | `DEVNET_PROFILE` | `single` | Built-in `single`, `multi`, `lifecycle`, `chaos`, `sync`, `execution-sync`, `operations`, `cold`, or `optimistic` profile |
 | `DEVNET_START_TIMEOUT` | `30m` (CLI default) | Network startup budget |
 | `DEVNET_PARAMS_FILE` | unset | Complete qrl-package YAML parameters |
@@ -41,19 +66,25 @@ from different source trees also need different `DEVNET_EXECUTION_IMAGE` tags.
 
 `DEVNET_PARAMS_FILE` replaces the selected built-in profile with a complete
 qrl-package YAML argument object. Existing JSON parameter files remain
-supported. Two exact scalar tokens are substituted:
+supported. Exact scalar tokens are substituted:
 
 ```text
 __DEVNET_EXECUTION_IMAGE__
+__DEVNET_CLEF_IMAGE__
+__DEVNET_CONSENSUS_IMAGE__
+__DEVNET_VALIDATOR_IMAGE__
+__DEVNET_GENESIS_IMAGE__
 __DEVNET_WALLET_ADDRESS__
 ```
 
-The first participant's `el_image` must use the image token.
+The first participant's `el_image` must use the execution-image token. The
+other image tokens are optional and allow the same parameter file to select
+Docker-local or registry images.
 `network_params.prefunded_accounts` must contain the wallet token as a key; the
 wallet token may also be used as a value, such as `withdrawal_address`.
 
 The checked-in [`network_params.yaml`](network_params.yaml) is a complete
-single-participant example using both tokens.
+single-participant example using all tokens.
 
 Start the network with the custom parameters:
 
@@ -93,3 +124,7 @@ disposable local development networks.
 
 After a failed start, run `make network-stop` with the same enclave name before
 retrying.
+
+Parallel networks must use distinct `DEVNET_ENCLAVE_NAME` values and report
+directories. Kurtosis enclaves provide isolation; cluster capacity and image
+pull throughput determine the practical concurrency limit.

@@ -19,10 +19,7 @@ import (
 	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 )
 
-const (
-	defaultExecutionImage = "local/go-qrl:devnet"
-	defaultReportDir      = "reports"
-)
+const defaultReportDir = "reports"
 
 // Run executes an E2E runner command.
 func Run(ctx context.Context, arguments []string) error {
@@ -49,7 +46,15 @@ func Run(ctx context.Context, arguments []string) error {
 			return errors.New("usage: e2e run-all")
 		}
 		var result error
+		backend, err := devnet.ParseBackend(os.Getenv("DEVNET_BACKEND"))
+		if err != nil {
+			return err
+		}
 		for _, lane := range lanes.All() {
+			if backend == devnet.BackendKubernetes && lane.DockerOnly {
+				fmt.Printf("=== SKIP lane=%s: requires Docker network partitions ===\n", lane.Name)
+				continue
+			}
 			if err := runLane(ctx, lane, true); err != nil {
 				result = errors.Join(result, err)
 			}
@@ -70,14 +75,28 @@ func runLane(ctx context.Context, lane lanes.Lane, suffixEnclave bool) error {
 	if suffixEnclave {
 		enclaveName += "-" + lane.Name
 	}
-	executionImage := cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_EXECUTION_IMAGE")), defaultExecutionImage)
+	backend, err := devnet.ParseBackend(os.Getenv("DEVNET_BACKEND"))
+	if err != nil {
+		return err
+	}
+	if backend == devnet.BackendKubernetes && lane.DockerOnly {
+		return fmt.Errorf("lane %s requires Docker network partitions", lane.Name)
+	}
+	images := devnet.Images{
+		Execution: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_EXECUTION_IMAGE")), devnet.DefaultExecutionImage),
+		Clef:      cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_CLEF_IMAGE")), devnet.DefaultClefImage),
+		Consensus: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_CONSENSUS_IMAGE")), devnet.DefaultConsensusImage),
+		Validator: cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_VALIDATOR_IMAGE")), devnet.DefaultValidatorImage),
+		Genesis:   cmp.Or(strings.TrimSpace(os.Getenv("DEVNET_GENESIS_IMAGE")), devnet.DefaultGenesisImage),
+	}
 
 	manager := devnet.NewManager()
 	startCtx, cancelStart := context.WithTimeout(ctx, devnet.DefaultStartTimeout)
-	err := manager.Start(startCtx, devnet.StartOptions{
-		EnclaveName:    enclaveName,
-		ExecutionImage: executionImage,
-		Profile:        lane.Profile,
+	err = manager.Start(startCtx, devnet.StartOptions{
+		EnclaveName: enclaveName,
+		Backend:     backend,
+		Images:      images,
+		Profile:     lane.Profile,
 	})
 	cancelStart()
 	if err != nil {
@@ -121,6 +140,7 @@ func runLane(ctx context.Context, lane lanes.Lane, suffixEnclave bool) error {
 	command.Stderr = os.Stderr
 	command.Env = append(os.Environ(),
 		"DEVNET_ENCLAVE_NAME="+enclaveName,
+		"DEVNET_BACKEND="+string(backend),
 		"DEVNET_PROFILE="+string(lane.Profile),
 		"GO_QRL_SOURCE_DIR="+sourceDir,
 	)

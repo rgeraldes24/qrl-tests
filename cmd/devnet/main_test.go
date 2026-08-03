@@ -79,10 +79,17 @@ func TestRun(t *testing.T) {
 
 			if test.call == "start" {
 				require.Equal(t, devnet.StartOptions{
-					EnclaveName:    enclaveName,
-					ExecutionImage: "local/go-qrl:test",
-					Parameters:     test.parameters,
-					Profile:        devnet.ProfileSingle,
+					EnclaveName: enclaveName,
+					Backend:     devnet.BackendDocker,
+					Images: devnet.Images{
+						Execution: "local/go-qrl:test",
+						Clef:      devnet.DefaultClefImage,
+						Consensus: devnet.DefaultConsensusImage,
+						Validator: devnet.DefaultValidatorImage,
+						Genesis:   devnet.DefaultGenesisImage,
+					},
+					Parameters: test.parameters,
+					Profile:    devnet.ProfileSingle,
 				}, networks.start)
 			}
 		})

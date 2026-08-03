@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
@@ -25,7 +26,8 @@ const (
 type liveSuite struct {
 	session   *endtoendlive.Session
 	beacon    *consensus.Client
-	chain     validatorops.ChainContext
+	chain     consensuscontext.Context
+	depositor *validatorops.Depositor
 	key       ml_dsa_87.MLDSA87Key
 	publicKey string
 	validator consensus.Validator
@@ -47,7 +49,9 @@ var _ = ginkgo.Describe(
 			suite.session, err = runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite.beacon = suite.session.Consensus
-			suite.chain, err = validatorops.Chain(ctx, suite.beacon)
+			suite.chain, err = consensuscontext.Load(ctx, suite.beacon)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			suite.depositor, err = validatorops.NewDepositor(ctx, suite.session, suite.beacon, suite.chain)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite.key, err = validatorops.DeterministicKey(0x91)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -64,7 +68,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				publicKeys = append(publicKeys, hexutil.Encode(key.PublicKey().Marshal()))
 
-				_, err = validatorops.Deposit(ctx, suite.session, suite.beacon, key, maximum)
+				_, err = suite.depositor.Deposit(ctx, key, maximum)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			}
 			gomega.Eventually(func(g gomega.Gomega) {
@@ -85,9 +89,9 @@ var _ = ginkgo.Describe(
 			first := maximum / 2
 			second := maximum - first
 
-			_, err = validatorops.Deposit(ctx, suite.session, suite.beacon, suite.key, first)
+			_, err = suite.depositor.Deposit(ctx, suite.key, first)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			_, err = validatorops.Deposit(ctx, suite.session, suite.beacon, suite.key, second)
+			_, err = suite.depositor.Deposit(ctx, suite.key, second)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Eventually(func(g gomega.Gomega) {
 				validator, err := suite.beacon.Validator(ctx, suite.publicKey)

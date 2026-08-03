@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	ssz "github.com/prysmaticlabs/fastssz"
 	"github.com/theQRL/go-bitfield"
 	"github.com/theQRL/qrysm/beacon-chain/core/signing"
@@ -39,37 +40,25 @@ func (summary SignatureSummary) Total() int {
 
 type Verifier struct {
 	client  consensusAPI
-	genesis consensus.Genesis
-	fork    consensus.Fork
-	slots   uint64
+	chain   consensuscontext.Context
 	pubkeys map[uint64][]byte
 }
 
 type consensusAPI interface {
+	consensuscontext.Source
 	Block(context.Context, string) (consensus.SignedBlock, error)
 	BlockHeader(context.Context, string) (consensus.BlockHeader, error)
 	Committee(context.Context, string, uint64, uint64) ([]uint64, error)
-	Genesis(context.Context) (consensus.Genesis, error)
-	Fork(context.Context) (consensus.Fork, error)
-	SpecUint(context.Context, string) (uint64, error)
 	SyncCommittee(context.Context, string) ([]uint64, error)
 	Validator(context.Context, string) (consensus.Validator, error)
 }
 
 func New(ctx context.Context, client consensusAPI) (*Verifier, error) {
-	genesis, err := client.Genesis(ctx)
+	chain, err := consensuscontext.Load(ctx, client)
 	if err != nil {
 		return nil, err
 	}
-	fork, err := client.Fork(ctx)
-	if err != nil {
-		return nil, err
-	}
-	slots, err := client.SpecUint(ctx, "SLOTS_PER_EPOCH")
-	if err != nil {
-		return nil, err
-	}
-	return &Verifier{client: client, genesis: genesis, fork: fork, slots: slots, pubkeys: make(map[uint64][]byte)}, nil
+	return &Verifier{client: client, chain: chain, pubkeys: make(map[uint64][]byte)}, nil
 }
 
 // VerifyBlock fetches blockID and verifies every consensus signature it carries.
@@ -146,7 +135,7 @@ func (verification *Verifier) Verify(
 	}
 	summary.SyncCommittee += count
 
-	depositDomain, err := verification.depositDomain()
+	depositDomain, err := verification.chain.DepositDomain()
 	if err != nil {
 		return summary, err
 	}
@@ -210,7 +199,7 @@ func (verification *Verifier) verifyBlockHeader(
 	if !bytes.Equal(root[:], wantRoot) {
 		return fmt.Errorf("header root mismatch")
 	}
-	return verification.verifyObject(ctx, message, proposer, uint64(message.Slot)/verification.slots, params.BeaconConfig().DomainBeaconProposer, signatureHex)
+	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(uint64(message.Slot)), params.BeaconConfig().DomainBeaconProposer, signatureHex)
 }
 
 func (verification *Verifier) verifySignedHeader(ctx context.Context, header consensus.SignedBeaconBlockHeader) error {
@@ -218,11 +207,11 @@ func (verification *Verifier) verifySignedHeader(ctx context.Context, header con
 	if err != nil {
 		return err
 	}
-	return verification.verifyObject(ctx, message, proposer, uint64(message.Slot)/verification.slots, params.BeaconConfig().DomainBeaconProposer, header.Signature)
+	return verification.verifyObject(ctx, message, proposer, verification.chain.Epoch(uint64(message.Slot)), params.BeaconConfig().DomainBeaconProposer, header.Signature)
 }
 
 func (verification *Verifier) verifyRandao(ctx context.Context, slot, proposer uint64, signatureHex string) error {
-	epoch := slot / verification.slots
+	epoch := verification.chain.Epoch(slot)
 	value := make([]byte, 32)
 	binary.LittleEndian.PutUint64(value, epoch)
 	object := p2ptypes.SSZBytes(value)
@@ -344,7 +333,7 @@ func (verification *Verifier) verifySyncAggregate(
 	object := p2ptypes.SSZBytes(parentRoot)
 	epoch := uint64(0)
 	if slot > 0 {
-		epoch = (slot - 1) / verification.slots
+		epoch = verification.chain.Epoch(slot - 1)
 	}
 	for index, validatorIndex := range participants {
 		if err := verification.verifyObject(
@@ -377,7 +366,7 @@ func (verification *Verifier) verifyObject(
 	if err != nil {
 		return err
 	}
-	domain, err := verification.domain(domainType, epoch)
+	domain, err := verification.chain.Domain(domainType, epoch)
 	if err != nil {
 		return err
 	}
@@ -398,28 +387,4 @@ func (verification *Verifier) publicKey(ctx context.Context, validatorIndex uint
 	}
 	verification.pubkeys[validatorIndex] = publicKey
 	return publicKey, nil
-}
-
-func (verification *Verifier) domain(domainType [4]byte, epoch uint64) ([]byte, error) {
-	version := verification.fork.CurrentVersion
-	if epoch < verification.fork.Epoch {
-		version = verification.fork.PreviousVersion
-	}
-	forkVersion, err := decodeFixed("fork version", version, fieldparams.VersionLength)
-	if err != nil {
-		return nil, err
-	}
-	genesisRoot, err := decodeFixed("genesis validators root", verification.genesis.ValidatorsRoot, fieldparams.RootLength)
-	if err != nil {
-		return nil, err
-	}
-	return signing.ComputeDomain(domainType, forkVersion, genesisRoot)
-}
-
-func (verification *Verifier) depositDomain() ([]byte, error) {
-	forkVersion, err := decodeFixed("genesis fork version", verification.genesis.ForkVersion, fieldparams.VersionLength)
-	if err != nil {
-		return nil, err
-	}
-	return signing.ComputeDomain(params.BeaconConfig().DomainDeposit, forkVersion, nil)
 }

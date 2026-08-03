@@ -1,13 +1,10 @@
 package validatorops
 
 import (
-	"context"
-	"encoding/hex"
 	"fmt"
 	"strconv"
-	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	fastssz "github.com/prysmaticlabs/fastssz"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/qrysm/beacon-chain/core/signing"
@@ -17,34 +14,8 @@ import (
 	qrysmpb "github.com/theQRL/qrysm/proto/qrysm/v1alpha1"
 )
 
-type ChainContext struct {
-	GenesisRoot   []byte
-	Fork          consensus.Fork
-	SlotsPerEpoch uint64
-}
-
-func Chain(ctx context.Context, client *consensus.Client) (ChainContext, error) {
-	genesis, err := client.Genesis(ctx)
-	if err != nil {
-		return ChainContext{}, err
-	}
-	root, err := decodeHex(genesis.ValidatorsRoot)
-	if err != nil {
-		return ChainContext{}, fmt.Errorf("decode genesis validators root: %w", err)
-	}
-	fork, err := client.Fork(ctx)
-	if err != nil {
-		return ChainContext{}, err
-	}
-	slotsPerEpoch, err := client.SpecUint(ctx, "SLOTS_PER_EPOCH")
-	if err != nil {
-		return ChainContext{}, err
-	}
-	return ChainContext{GenesisRoot: root, Fork: fork, SlotsPerEpoch: slotsPerEpoch}, nil
-}
-
-func ProposerSlashing(key ml_dsa_87.MLDSA87Key, validatorIndex, slot uint64, chain ChainContext) (any, error) {
-	epoch := slot / chain.SlotsPerEpoch
+func ProposerSlashing(key ml_dsa_87.MLDSA87Key, validatorIndex, slot uint64, chain consensuscontext.Context) (any, error) {
+	epoch := chain.Epoch(slot)
 	header1 := &qrysmpb.BeaconBlockHeader{
 		Slot: primitives.Slot(slot), ProposerIndex: primitives.ValidatorIndex(validatorIndex),
 		ParentRoot: make([]byte, 32), StateRoot: make([]byte, 32), BodyRoot: rootWithMarker(1),
@@ -67,8 +38,8 @@ func ProposerSlashing(key ml_dsa_87.MLDSA87Key, validatorIndex, slot uint64, cha
 	}, nil
 }
 
-func AttesterSlashing(key ml_dsa_87.MLDSA87Key, validatorIndex, slot, finalizedEpoch uint64, chain ChainContext) (any, error) {
-	epoch := slot / chain.SlotsPerEpoch
+func AttesterSlashing(key ml_dsa_87.MLDSA87Key, validatorIndex, slot, finalizedEpoch uint64, chain consensuscontext.Context) (any, error) {
+	epoch := chain.Epoch(slot)
 	first := attestationData(slot, epoch, finalizedEpoch, 1)
 	second := attestationData(slot, epoch, finalizedEpoch, 2)
 	firstSignature, err := sign(key, first, params.BeaconConfig().DomainBeaconAttester, epoch, chain)
@@ -85,7 +56,7 @@ func AttesterSlashing(key ml_dsa_87.MLDSA87Key, validatorIndex, slot, finalizedE
 	}, nil
 }
 
-func VoluntaryExit(key ml_dsa_87.MLDSA87Key, validatorIndex, epoch uint64, chain ChainContext) (any, error) {
+func VoluntaryExit(key ml_dsa_87.MLDSA87Key, validatorIndex, epoch uint64, chain consensuscontext.Context) (any, error) {
 	exit := &qrysmpb.VoluntaryExit{Epoch: primitives.Epoch(epoch), ValidatorIndex: primitives.ValidatorIndex(validatorIndex)}
 	signature, err := sign(key, exit, params.BeaconConfig().DomainVoluntaryExit, epoch, chain)
 	if err != nil {
@@ -99,16 +70,8 @@ func VoluntaryExit(key ml_dsa_87.MLDSA87Key, validatorIndex, epoch uint64, chain
 	}, nil
 }
 
-func sign(key ml_dsa_87.MLDSA87Key, object fastssz.HashRoot, domainType [4]byte, epoch uint64, chain ChainContext) ([]byte, error) {
-	version := chain.Fork.CurrentVersion
-	if epoch < chain.Fork.Epoch {
-		version = chain.Fork.PreviousVersion
-	}
-	forkVersion, err := decodeHex(version)
-	if err != nil {
-		return nil, fmt.Errorf("decode fork version: %w", err)
-	}
-	domain, err := signing.ComputeDomain(domainType, forkVersion, chain.GenesisRoot)
+func sign(key ml_dsa_87.MLDSA87Key, object fastssz.HashRoot, domainType [4]byte, epoch uint64, chain consensuscontext.Context) ([]byte, error) {
+	domain, err := chain.Domain(domainType, epoch)
 	if err != nil {
 		return nil, err
 	}
@@ -166,8 +129,4 @@ func rootWithMarker(marker byte) []byte {
 	root := make([]byte, 32)
 	root[len(root)-1] = marker
 	return root
-}
-
-func decodeHex(value string) ([]byte, error) {
-	return hex.DecodeString(strings.TrimPrefix(value, "0x"))
 }

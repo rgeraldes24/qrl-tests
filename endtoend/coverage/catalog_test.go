@@ -4,6 +4,7 @@
 package coverage
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,11 +14,32 @@ import (
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 )
+
+type catalog struct {
+	Version             int        `yaml:"version"`
+	SourceScenarioCount int        `yaml:"source_scenario_count"`
+	Scenarios           []scenario `yaml:"scenarios"`
+}
+
+type scenario struct {
+	ID          string     `yaml:"id"`
+	Disposition string     `yaml:"disposition"`
+	Replacement string     `yaml:"replacement"`
+	Behaviors   []behavior `yaml:"behaviors,omitempty"`
+}
+
+type behavior struct {
+	ID     string `yaml:"id"`
+	Status string `yaml:"status"`
+	Label  string `yaml:"label,omitempty"`
+	Reason string `yaml:"reason,omitempty"`
+}
 
 func TestScenarioInventoryIsExhaustive(t *testing.T) {
 	root := repositoryRoot(t)
-	catalog, err := Load(filepath.Join(root, "endtoend/coverage/scenarios.yaml"))
+	catalog, err := loadCatalog(filepath.Join(root, "endtoend/coverage/scenarios.yaml"))
 	require.NoError(t, err)
 	require.Equal(t, 1, catalog.Version)
 	require.Len(t, catalog.Scenarios, catalog.SourceScenarioCount)
@@ -49,6 +71,18 @@ func TestScenarioInventoryIsExhaustive(t *testing.T) {
 			}
 		}
 	}
+}
+
+func loadCatalog(path string) (catalog, error) {
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return catalog{}, fmt.Errorf("read scenario catalog: %w", err)
+	}
+	var result catalog
+	if err := yaml.Unmarshal(payload, &result); err != nil {
+		return catalog{}, fmt.Errorf("decode scenario catalog: %w", err)
+	}
+	return result, nil
 }
 
 func suiteSources(t *testing.T, root string) map[string]string {

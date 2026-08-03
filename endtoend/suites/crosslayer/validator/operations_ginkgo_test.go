@@ -11,6 +11,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
@@ -38,7 +39,8 @@ type operationsSuite struct {
 	beacons           []*consensus.Client
 	primary           *endtoendlive.Session
 	beacon            *consensus.Client
-	chain             validatorops.ChainContext
+	chain             consensuscontext.Context
+	depositor         *validatorops.Depositor
 	expectedProposers map[string]struct{}
 	services          *devnet.ServiceController
 }
@@ -66,7 +68,9 @@ var _ = ginkgo.Describe(
 			}
 			suite.primary = suite.sessions[0]
 			suite.beacon = suite.beacons[0]
-			suite.chain, err = validatorops.Chain(ctx, suite.beacon)
+			suite.chain, err = consensuscontext.Load(ctx, suite.beacon)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			suite.depositor, err = validatorops.NewDepositor(ctx, suite.primary, suite.beacon, suite.chain)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			active, err := suite.beacon.ActiveValidatorCount(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -146,7 +150,7 @@ func (suite *operationsSuite) runMassDepositChurn(ctx ginkgo.SpecContext) {
 		key, err := validatorops.GenesisKey(keyIndex)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		publicKeys[offset] = hexutil.Encode(key.PublicKey().Marshal())
-		_, err = validatorops.Deposit(ctx, suite.primary, suite.beacon, key, maximum)
+		_, err = suite.depositor.Deposit(ctx, key, maximum)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 
@@ -249,11 +253,11 @@ func (suite *operationsSuite) runLifecycleMatrix(ctx ginkgo.SpecContext) {
 		if index == 0 || index == 5 {
 			amount = maximum / 2
 		}
-		_, err = validatorops.Deposit(ctx, suite.primary, suite.beacon, keys[index], amount)
+		_, err = suite.depositor.Deposit(ctx, keys[index], amount)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 	for _, index := range []int{0, 5} {
-		_, err = validatorops.Deposit(ctx, suite.primary, suite.beacon, keys[index], maximum/2)
+		_, err = suite.depositor.Deposit(ctx, keys[index], maximum/2)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 
@@ -271,7 +275,7 @@ func (suite *operationsSuite) runLifecycleMatrix(ctx ginkgo.SpecContext) {
 
 	partialValidator := 1
 	partialScanner := newOperationScanner(ctx, suite.beacon)
-	_, err = validatorops.Deposit(ctx, suite.primary, suite.beacon, keys[partialValidator], maximum/2)
+	_, err = suite.depositor.Deposit(ctx, keys[partialValidator], maximum/2)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	balanceAfterTopUp, err := suite.primary.Execution.BalanceAt(ctx, suite.primary.Address, nil)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())

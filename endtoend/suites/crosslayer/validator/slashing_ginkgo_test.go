@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
@@ -24,7 +25,7 @@ var _ = ginkgo.Describe(
 	func() {
 		var session *endtoendlive.Session
 		var beacon *consensus.Client
-		var chain validatorops.ChainContext
+		var chain consensuscontext.Context
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
@@ -34,7 +35,7 @@ var _ = ginkgo.Describe(
 			session, err = runtime.Primary(ctx, false)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			beacon = session.Consensus
-			chain, err = validatorops.Chain(ctx, beacon)
+			chain, err = consensuscontext.Load(ctx, beacon)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
@@ -61,7 +62,7 @@ var _ = ginkgo.Describe(
 	},
 )
 
-func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain validatorops.ChainContext, index uint64, path string, proposer bool) {
+func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain consensuscontext.Context, index uint64, path string, proposer bool) {
 	key, err := validatorops.GenesisKey(index)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	validator, err := beacon.Validator(ctx, strconv.FormatUint(index, 10))

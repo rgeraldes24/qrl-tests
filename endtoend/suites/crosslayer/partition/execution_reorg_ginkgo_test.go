@@ -3,11 +3,13 @@
 package partition
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
+	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
 
@@ -53,7 +55,7 @@ func registerExecutionReorgScenario(suite *liveSuite) {
 		gomega.Expect(suite.partition.Clear(ctx)).To(gomega.Succeed())
 		suite.awaitConvergenceAndFinality(ctx, startFinalized)
 
-		var winner *types.Transaction
+		var winner, loser *types.Transaction
 		var winningValue common.StorageValue64
 		gomega.Eventually(func() bool {
 			leftCanonical := receiptExists(ctx, suite.sessions[0], leftTx.Hash())
@@ -62,13 +64,14 @@ func registerExecutionReorgScenario(suite *liveSuite) {
 				return false
 			}
 			if leftCanonical {
-				winner, winningValue = leftTx, leftValue
+				winner, loser, winningValue = leftTx, rightTx, leftValue
 			} else {
-				winner, winningValue = rightTx, rightValue
+				winner, loser, winningValue = rightTx, leftTx, rightValue
 			}
 			return true
 		}).WithContext(ctx).WithTimeout(partitionTimeout).WithPolling(time.Second).Should(gomega.BeTrue())
 
+		var canonicalReceipt *types.Receipt
 		for _, session := range suite.sessions {
 			gomega.Eventually(func() error {
 				stored, err := session.Execution.StorageAt(ctx, contract.Address, common.Hash{}, nil)
@@ -88,8 +91,19 @@ func registerExecutionReorgScenario(suite *liveSuite) {
 				return nil
 			}).WithContext(ctx).WithTimeout(partitionTimeout).WithPolling(time.Second).Should(gomega.Succeed())
 			receipt := awaitReceipt(ctx, session, winner.Hash())
+			if canonicalReceipt == nil {
+				canonicalReceipt = receipt
+			} else {
+				gomega.Expect(receipt.BlockHash).To(gomega.Equal(canonicalReceipt.BlockHash))
+				gomega.Expect(receipt.BlockNumber).To(gomega.Equal(canonicalReceipt.BlockNumber))
+				gomega.Expect(receipt.TransactionIndex).To(gomega.Equal(canonicalReceipt.TransactionIndex))
+			}
 			gomega.Expect(receipt.Logs).To(gomega.HaveLen(1))
 			gomega.Expect(receipt.Logs[0].Data).To(gomega.Equal(winningValue[:]))
+			gomega.Eventually(func() bool {
+				_, receiptErr := session.Execution.TransactionReceipt(ctx, loser.Hash())
+				return errors.Is(receiptErr, qrl.NotFound)
+			}).WithContext(ctx).WithTimeout(partitionTimeout).WithPolling(time.Second).Should(gomega.BeTrue())
 		}
 		gomega.Expect(baselineReceipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
 	}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label("behavior:partition:execution-state-reorg"))

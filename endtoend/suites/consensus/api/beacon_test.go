@@ -41,5 +41,6 @@ var _ = ginkgo.Describe(
 
 		registerBeaconMetadata(&nodes)
 		registerBeaconRuntime(&nodes)
+		registerBeaconRewards(&nodes)
 	},
 )

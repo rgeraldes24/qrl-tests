@@ -135,5 +135,6 @@ var _ = ginkgo.Describe(
 		))
 
 		registerExecutionReorgScenario(&suite)
+		registerTransactionReinjectionScenario(&suite)
 	},
 )

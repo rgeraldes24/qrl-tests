@@ -36,7 +36,7 @@ make network-stop
 
 The Ginkgo runner continues across suite packages and writes JUnit, JSON, and
 the resolved environment manifest under `reports/<lane>/`. Run all registered
-lanes with `make e2e-all` or list them with `go run ./cmd/qrl-tests list`.
+lanes with `make e2e-all` or list them with `go run ./cmd/qrltest list`.
 
 ## Adding a suite
 

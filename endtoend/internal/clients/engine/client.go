@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	protocolengine "github.com/theQRL/go-qrl/beacon/engine"
+	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/node"
 	"github.com/theQRL/go-qrl/rpc"
 )
@@ -59,6 +60,18 @@ func (client *Client) ExchangeCapabilities(ctx context.Context) ([]string, error
 func (client *Client) PayloadBodiesByHash(ctx context.Context, hashes []string) ([]*PayloadBody, error) {
 	var result []*PayloadBody
 	err := client.Call(ctx, &result, "engine_getPayloadBodiesByHashV1", hashes)
+	return result, err
+}
+
+func (client *Client) PayloadBodiesByRange(ctx context.Context, start, count uint64) ([]*PayloadBody, error) {
+	var result []*PayloadBody
+	err := client.Call(
+		ctx,
+		&result,
+		"engine_getPayloadBodiesByRangeV1",
+		hexutil.Uint64(start),
+		hexutil.Uint64(count),
+	)
 	return result, err
 }
 

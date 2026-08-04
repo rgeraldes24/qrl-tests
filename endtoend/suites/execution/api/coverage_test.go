@@ -9,13 +9,14 @@ import (
 )
 
 const (
-	coverageBehavior   = "live behavior"
-	coverageShape      = "live response shape"
-	coverageDispatch   = "live dispatch and error contract"
-	coverageUnsafe     = "excluded: mutates node configuration, chain, or files"
-	coverageNotExposed = "excluded: not exposed by the devnet profile"
-	coverageInternal   = "excluded: internal compatibility callback"
-	coverageSigner     = "covered by the external signer suite"
+	coverageBehavior    = "live behavior"
+	coverageShape       = "live response shape"
+	coverageDispatch    = "live dispatch and error contract"
+	coverageUnsafe      = "excluded: mutates node configuration, chain, or files"
+	coverageNotExposed  = "excluded: not exposed by the devnet profile"
+	coverageInternal    = "excluded: internal compatibility callback"
+	coverageSigner      = "covered by the external signer suite"
+	coverageUnsupported = "excluded: unsupported by go-qrl"
 
 	scenarioNodeMetadata             scenarioID = "node-metadata"
 	scenarioChainState                          = "chain-state"
@@ -141,6 +142,7 @@ var apiCoverage = map[string]apiCoverageEntry{
 	"qrl_sign":                                   excluded(coverageSigner),
 	"qrl_signTransaction":                        excluded(coverageSigner),
 	"qrl_pendingTransactions":                    behavior(scenarioTxPool),
+	"qrl_resend":                                 excluded(coverageUnsupported),
 
 	"qrl_newPendingTransactionFilter": behavior(scenarioPendingFilter),
 	"qrl_newPendingTransactions":      behavior(scenarioSubscriptionEvents),

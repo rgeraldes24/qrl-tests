@@ -1,7 +1,7 @@
 // Copyright 2026 The qrl-tests Authors
 // This file is part of qrl-tests.
 
-// Command qrl-tests controls development networks and executes E2E lanes.
+// Command qrltest controls development networks and executes E2E lanes.
 package main
 
 import (
@@ -19,7 +19,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if err := newApp(devnet.NewManager()).RunContext(ctx, os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, "qrl-tests:", err)
+		fmt.Fprintln(os.Stderr, "qrltest:", err)
 		os.Exit(1)
 	}
 }
@@ -28,7 +28,7 @@ func newApp(networks controller) *cli.App {
 	commands := []*cli.Command{networkCommand(networks)}
 	commands = append(commands, runnerCommands()...)
 	return &cli.App{
-		Name:            "qrl-tests",
+		Name:            "qrltest",
 		Usage:           "control QRL test networks and execute E2E lanes",
 		HideHelpCommand: true,
 		Action:          rootAction,

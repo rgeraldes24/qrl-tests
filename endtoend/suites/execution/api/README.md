@@ -24,7 +24,8 @@ Covered:
 - blocks, exact transaction and receipt fields, fee history, account state,
   storage, cryptographically verified account/storage proofs, exact access-list
   generation, and calls
-- non-empty pending and queued transaction-pool inspection
+- non-empty pending and queued transaction-pool inspection, including
+  same-nonce replacement
 - log and block filters
 - WebSocket head, log, pending hash, and full pending-transaction subscriptions
 - read-only debug and tracing methods, including equivalent block selectors and
@@ -53,6 +54,7 @@ Excluded:
 - APIs that change node configuration, rewrite chain state, or write files
   inside the execution container.
 - The authenticated Engine endpoint and APIs disabled by the devnet profile.
+- `qrl_resend`, whose go-qrl implementation is currently disabled.
 - `admin_peerEvents` delivery. The fixed devnet topology covers subscription
   registration without adding or removing peers.
 - Active-sync GraphQL state and blocks containing withdrawals. The standard

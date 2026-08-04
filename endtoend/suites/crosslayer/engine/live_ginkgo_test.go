@@ -81,6 +81,13 @@ var _ = ginkgo.Describe(
 			gomega.Expect(bodies[0]).NotTo(gomega.BeNil())
 			gomega.Expect(bodies[0].Transactions).To(gomega.Equal(payload.Transactions))
 			gomega.Expect(bodies[0].Withdrawals).To(gomega.HaveLen(len(payload.Withdrawals)))
+			bodyByHash := *bodies[0]
+
+			bodies, err = engine.PayloadBodiesByRange(ctx, payload.BlockNumber, 1)
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(bodies).To(gomega.HaveLen(1))
+			gomega.Expect(bodies[0]).NotTo(gomega.BeNil())
+			gomega.Expect(*bodies[0]).To(gomega.Equal(bodyByHash))
 		}, ginkgo.SpecTimeout(engineTimeout))
 
 		ginkgo.It("validates canonical forkchoice and payload data", func(ctx ginkgo.SpecContext) {

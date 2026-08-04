@@ -35,7 +35,7 @@ make e2e E2E_LANE=single
 make network-stop
 ```
 
-List the registered lanes with `go run ./cmd/qrl-tests list`. Reports are
+List the registered lanes with `go run ./cmd/qrltest list`. Reports are
 written under `reports/<lane>/`.
 
 ## Kubernetes

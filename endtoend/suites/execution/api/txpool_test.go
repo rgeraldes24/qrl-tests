@@ -8,10 +8,12 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"time"
 
 	qrlapi "github.com/cyyber/qrl-tests/endtoend/internal/rpctypes"
+	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 	"github.com/theQRL/go-qrl/core/types"
@@ -105,6 +107,77 @@ func (suite *liveSuite) assertTxPool(ctx context.Context) {
 	gomega.Expect(suite.waitReceipt(ctx, queued.Hash()).Status).To(
 		gomega.Equal(types.ReceiptStatusSuccessful),
 	)
+	suite.assertSameNonceReplacement(ctx, queuedWallet, queuedAddress)
+}
+
+func (suite *liveSuite) assertSameNonceReplacement(
+	ctx context.Context,
+	signerWallet qrlwallet.Wallet,
+	from common.Address,
+) {
+	ginkgo.GinkgoHelper()
+
+	blockNumber, err := suite.client.BlockNumber(ctx)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Eventually(func() uint64 {
+		number, blockErr := suite.client.BlockNumber(ctx)
+		gomega.Expect(blockErr).NotTo(gomega.HaveOccurred())
+		return number
+	}).WithContext(ctx).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(
+		gomega.BeNumerically(">", blockNumber),
+	)
+
+	nonce, err := suite.client.PendingNonceAt(ctx, from)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	recipientWallet, err := qrlwallet.Generate(qrlwallet.ML_DSA_87)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	recipient := common.Address(recipientWallet.GetAddress())
+	before, err := suite.client.BalanceAt(ctx, recipient, nil)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	original, err := suite.signTransactionForWallet(
+		ctx,
+		signerWallet,
+		from,
+		nonce,
+		&recipient,
+		big.NewInt(1),
+		nil,
+		nil,
+	)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	replacement := types.NewTx(&types.DynamicFeeTx{
+		ChainID:    suite.chainID,
+		Nonce:      nonce,
+		GasTipCap:  new(big.Int).Mul(original.GasTipCap(), big.NewInt(2)),
+		GasFeeCap:  new(big.Int).Mul(original.GasFeeCap(), big.NewInt(2)),
+		Gas:        original.Gas(),
+		To:         &recipient,
+		Value:      big.NewInt(2),
+		AccessList: original.AccessList(),
+	})
+	replacement, err = types.SignTx(
+		replacement,
+		types.LatestSignerForChainID(suite.chainID),
+		signerWallet,
+	)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	gomega.Expect(suite.client.SendTransaction(ctx, original)).To(gomega.Succeed())
+	stored, pending, err := suite.client.TransactionByHash(ctx, original.Hash())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(pending).To(gomega.BeTrue())
+	gomega.Expect(stored.Hash()).To(gomega.Equal(original.Hash()))
+	gomega.Expect(suite.client.SendTransaction(ctx, replacement)).To(gomega.Succeed())
+
+	receipt := suite.waitReceipt(ctx, replacement.Hash())
+	gomega.Expect(receipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
+	after, err := suite.client.BalanceAt(ctx, recipient, nil)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(after).To(gomega.Equal(new(big.Int).Add(before, replacement.Value())))
+	_, err = suite.client.TransactionReceipt(ctx, original.Hash())
+	gomega.Expect(errors.Is(err, qrl.NotFound)).To(gomega.BeTrue())
+	_, _, err = suite.client.TransactionByHash(ctx, original.Hash())
+	gomega.Expect(errors.Is(err, qrl.NotFound)).To(gomega.BeTrue())
 }
 
 func (suite *liveSuite) assertManagedPendingTransaction(ctx context.Context) {

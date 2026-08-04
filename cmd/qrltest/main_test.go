@@ -72,7 +72,7 @@ func TestRun(t *testing.T) {
 			app := newApp(networks)
 			app.Writer, app.ErrWriter = &stdout, &stderr
 
-			require.NoError(t, app.RunContext(t.Context(), append([]string{"qrl-tests"}, test.arguments...)))
+			require.NoError(t, app.RunContext(t.Context(), append([]string{"qrltest"}, test.arguments...)))
 			require.Equal(t, test.output, stdout.String())
 			require.Equal(t, test.call, networks.call)
 			require.Empty(t, stderr.String())

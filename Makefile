@@ -57,16 +57,16 @@ network-preflight:
 
 network-start: $(NETWORK_IMAGE_TARGETS) network-preflight
 	DEVNET_PROFILE="$(DEVNET_PROFILE)" DEVNET_PARAMS_FILE="$(DEVNET_PARAMS_FILE)" \
-		$(GO) run ./cmd/qrl-tests network start
+		$(GO) run ./cmd/qrltest network start
 
 network-stop:
-	$(GO) run ./cmd/qrl-tests network stop
+	$(GO) run ./cmd/qrltest network stop
 
 e2e:
-	$(GO) run ./cmd/qrl-tests test "$(E2E_LANE)"
+	$(GO) run ./cmd/qrltest test "$(E2E_LANE)"
 
 e2e-run: $(NETWORK_IMAGE_TARGETS) network-preflight
-	$(GO) run ./cmd/qrl-tests run "$(E2E_LANE)"
+	$(GO) run ./cmd/qrltest run "$(E2E_LANE)"
 
 e2e-all: $(NETWORK_IMAGE_TARGETS) network-preflight
-	$(GO) run ./cmd/qrl-tests run-all
+	$(GO) run ./cmd/qrltest run-all

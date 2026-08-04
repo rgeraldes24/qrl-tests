@@ -104,6 +104,20 @@ func registerBeaconMetadata(nodes *[]beaconNode) {
 				} `json:"data"`
 			}
 			gomega.Expect(node.client.GetJSON(ctx, "/qrl/v1/beacon/headers/head", &header)).To(gomega.Succeed())
+			var headers struct {
+				Data []json.RawMessage `json:"data"`
+			}
+			gomega.Expect(node.client.GetJSON(ctx, "/qrl/v1/beacon/headers", &headers)).To(gomega.Succeed())
+			gomega.Expect(headers.Data).NotTo(gomega.BeNil())
+			var attestations struct {
+				Data []json.RawMessage `json:"data"`
+			}
+			gomega.Expect(node.client.GetJSON(
+				ctx,
+				"/qrl/v1/beacon/blocks/head/attestations",
+				&attestations,
+			)).To(gomega.Succeed())
+			gomega.Expect(attestations.Data).NotTo(gomega.BeNil())
 			var stateRoot struct {
 				Data struct {
 					Root string `json:"root"`

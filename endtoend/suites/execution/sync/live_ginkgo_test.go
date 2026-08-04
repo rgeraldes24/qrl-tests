@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	qrl "github.com/theQRL/go-qrl"
@@ -85,7 +86,7 @@ var _ = ginkgo.Describe(
 			secondaryHead, err := secondary.Execution.BlockNumber(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(secondaryHead).To(gomega.BeNumerically("<", canonical.NumberU64()))
-		}, ginkgo.SpecTimeout(executionSyncTimeout), ginkgo.Label("behavior:execution-sync:source-state"))
+		}, ginkgo.SpecTimeout(executionSyncTimeout), ginkgo.Label(behavior.Name("execution-sync:source-state")))
 
 		ginkgo.It("syncs the isolated execution client and verifies exact state", func(ctx ginkgo.SpecContext) {
 			var nodeInfo p2p.NodeInfo
@@ -99,7 +100,7 @@ var _ = ginkgo.Describe(
 
 			awaitExecutionState(ctx, secondary, canonical)
 			assertState(ctx, secondary, canonical, receipt, contract, value, code, contractBalance)
-		}, ginkgo.SpecTimeout(executionSyncTimeout), ginkgo.Label("behavior:execution-sync:fresh-database"))
+		}, ginkgo.SpecTimeout(executionSyncTimeout), ginkgo.Label(behavior.Name("execution-sync:fresh-database")))
 
 		ginkgo.It("preserves the synced state across an execution-client restart", func(ctx ginkgo.SpecContext) {
 			participantIndex := secondary.Participant.Index
@@ -118,7 +119,7 @@ var _ = ginkgo.Describe(
 				return assertExecutionState(ctx, secondary, canonical)
 			}).WithContext(ctx).WithTimeout(executionSyncTimeout).WithPolling(time.Second).Should(gomega.Succeed())
 			assertState(ctx, secondary, canonical, receipt, contract, value, code, contractBalance)
-		}, ginkgo.SpecTimeout(executionSyncTimeout), ginkgo.Label("behavior:execution-sync:persistence"))
+		}, ginkgo.SpecTimeout(executionSyncTimeout), ginkgo.Label(behavior.Name("execution-sync:persistence")))
 	},
 )
 

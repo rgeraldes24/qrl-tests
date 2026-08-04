@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -124,6 +125,6 @@ var _ = ginkgo.Describe(
 				}
 				return nil
 			}).WithContext(ctx).WithTimeout(optimisticTimeout).WithPolling(time.Second).Should(gomega.Succeed())
-		}, ginkgo.SpecTimeout(optimisticTimeout), ginkgo.Label("behavior:consensus:optimistic-sync"))
+		}, ginkgo.SpecTimeout(optimisticTimeout), ginkgo.Label(behavior.Name("consensus:optimistic-sync")))
 	},
 )

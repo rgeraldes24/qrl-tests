@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
-	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -27,10 +28,10 @@ func registerLifecycleSpec() {
 	}, ginkgo.SpecTimeout(operationsTimeout), ginkgo.Label(
 		"scenario:stable:validator-lifecycle-test-v2",
 		"scenario:dev:validator-lifecycle-test",
-		"behavior:validator:lifecycle-matrix",
-		"behavior:validator:deposit-event-signature",
-		"behavior:validator:partial-withdrawal",
-		"behavior:network:post-workload-stability",
+		behavior.Name("validator:lifecycle-matrix"),
+		behavior.Name("validator:deposit-event-signature"),
+		behavior.Name("validator:partial-withdrawal"),
+		behavior.Name("network:post-workload-stability"),
 	))
 }
 

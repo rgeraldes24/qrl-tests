@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensusverify "github.com/cyyber/qrl-tests/endtoend/internal/consensus/verify"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -36,7 +37,7 @@ func registerBeaconRuntime(nodes *[]beaconNode) {
 			gomega.Expect(summary.SyncCommittee).To(gomega.BeNumerically(">", 0))
 			gomega.Expect(summary.Total()).To(gomega.BeNumerically(">", 2))
 		}
-	}, ginkgo.SpecTimeout(beaconAPITimeout), ginkgo.Label("behavior:consensus-signatures:block"))
+	}, ginkgo.SpecTimeout(beaconAPITimeout), ginkgo.Label(behavior.Name("consensus-signatures:block")))
 
 	ginkgo.It("returns the live operation pools", func(ctx ginkgo.SpecContext) {
 		for _, node := range *nodes {
@@ -53,7 +54,7 @@ func registerBeaconRuntime(nodes *[]beaconNode) {
 				gomega.Expect(response.Data).NotTo(gomega.BeNil(), path)
 			}
 		}
-	}, ginkgo.Label("behavior:consensus-api:pools"))
+	}, ginkgo.Label(behavior.Name("consensus-api:pools")))
 
 	ginkgo.It("streams head, block, attestation, and finality events", func(ctx ginkgo.SpecContext) {
 		events, failures, err := (*nodes)[0].client.Events(ctx, "head", "block", "attestation", "finalized_checkpoint")
@@ -75,5 +76,5 @@ func registerBeaconRuntime(nodes *[]beaconNode) {
 			}
 			return seen["head"] && seen["block"] && seen["attestation"] && seen["finalized_checkpoint"]
 		}).WithContext(ctx).WithTimeout(beaconAPITimeout).WithPolling(100 * time.Millisecond).Should(gomega.BeTrue())
-	}, ginkgo.SpecTimeout(beaconAPITimeout), ginkgo.Label("behavior:consensus-api:events"))
+	}, ginkgo.SpecTimeout(beaconAPITimeout), ginkgo.Label(behavior.Name("consensus-api:events")))
 }

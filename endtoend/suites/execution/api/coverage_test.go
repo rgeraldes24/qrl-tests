@@ -4,14 +4,16 @@
 package api
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/cyyber/qrl-tests/endtoend/internal/apicoverage"
 )
 
 const (
-	coverageBehavior    = "live behavior"
-	coverageShape       = "live response shape"
-	coverageDispatch    = "live dispatch and error contract"
+	// Reviewed public RPC inventory for this go-qrl revision.
+	qrlRPCRevision        = "99168c0c7e15"
+	qrlRPCInventoryDigest = "01ea2d910d88dadf0d360429a09f2697f0b1b09dd41ed036a667f80a1282f4b8"
+
 	coverageUnsafe      = "excluded: mutates node configuration, chain, or files"
 	coverageNotExposed  = "excluded: not exposed by the devnet profile"
 	coverageInternal    = "excluded: internal compatibility callback"
@@ -38,28 +40,22 @@ const (
 	scenarioGraphQLPending                      = "graphql-pending"
 )
 
-type scenarioID string
-
-type apiCoverageEntry struct {
-	kind     string
-	scenario scenarioID
-}
+type scenarioID = apicoverage.Scenario
+type apiCoverageEntry = apicoverage.Entry
 
 func behavior(scenario scenarioID) apiCoverageEntry {
-	return apiCoverageEntry{kind: coverageBehavior, scenario: scenario}
+	return apicoverage.Live(apicoverage.Behavior, scenario)
 }
 
 func shape(scenario scenarioID) apiCoverageEntry {
-	return apiCoverageEntry{kind: coverageShape, scenario: scenario}
+	return apicoverage.Live(apicoverage.Shape, scenario)
 }
 
 func dispatch(scenario scenarioID) apiCoverageEntry {
-	return apiCoverageEntry{kind: coverageDispatch, scenario: scenario}
+	return apicoverage.Live(apicoverage.Dispatch, scenario)
 }
 
-func excluded(kind string) apiCoverageEntry {
-	return apiCoverageEntry{kind: kind}
-}
+var excluded = apicoverage.Excluded
 
 var scenarioDescriptions = map[scenarioID]string{
 	scenarioNodeMetadata:             "covers node and network metadata APIs",
@@ -221,16 +217,10 @@ var apiCoverage = map[string]apiCoverageEntry{
 }
 
 func TestAPICoverageManifest(t *testing.T) {
-	for method, entry := range apiCoverage {
-		if strings.TrimSpace(entry.kind) == "" {
-			t.Errorf("%s has no coverage category", method)
-		}
-		if strings.HasPrefix(entry.kind, "live ") {
-			if _, ok := scenarioDescriptions[entry.scenario]; !ok {
-				t.Errorf("%s references unknown live scenario %q", method, entry.scenario)
-			}
-		} else if entry.scenario != "" {
-			t.Errorf("%s is excluded but references scenario %q", method, entry.scenario)
-		}
+	if err := apicoverage.Validate(apiCoverage, scenarioDescriptions); err != nil {
+		t.Fatal(err)
+	}
+	if got := apicoverage.InventoryDigest(apiCoverage); got != qrlRPCInventoryDigest {
+		t.Fatalf("go-qrl %s RPC inventory changed: got %s", qrlRPCRevision, got)
 	}
 }

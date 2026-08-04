@@ -3,7 +3,7 @@ pragma hyperion >=0.1.0;
 
 /// @notice VM64 console fixture covering 64-byte words, addresses, fixed bytes,
 /// dynamic offsets, arrays, and a constructor event.
-contract EventEmitter {
+contract ConsoleFixture {
     event Deployed(uint256 value);
     event Stored(
         address indexed sender,

@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
-	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"

@@ -15,8 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cyyber/qrl-tests/internal/clefprocess"
-	"github.com/cyyber/qrl-tests/internal/clefui"
+	"github.com/cyyber/qrl-tests/internal/clef"
 	"github.com/cyyber/qrl-tests/internal/fixture"
 	signercore "github.com/theQRL/go-qrl/signer/core"
 )
@@ -38,7 +37,7 @@ func run(ctx context.Context, arguments []string) error {
 	}
 	defer cleanup()
 
-	process, err := clefprocess.Start(ctx, "clef-bin", args, automatedUI(), os.Stderr)
+	process, err := clef.Start(ctx, "clef-bin", args, automatedUI(), os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -49,8 +48,8 @@ func run(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-func automatedUI() *clefui.UI {
-	return &clefui.UI{
+func automatedUI() *clef.UI {
+	return &clef.UI{
 		ApproveTransaction: func(request *signercore.SignTxRequest) bool {
 			if request.Transaction.Value.ToInt().Cmp(big.NewInt(fixture.RemoteSignerRejectedTransaction)) == 0 {
 				return false

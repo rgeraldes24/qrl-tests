@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensuscontext "github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
-	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -80,7 +81,7 @@ var _ = ginkgo.Describe(
 			}).WithContext(ctx).WithTimeout(validatorTimeout).WithPolling(validatorPollInterval).Should(gomega.Succeed())
 		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
 			"scenario:dev:dev-deposits",
-			"behavior:validator:deposit-distinct",
+			behavior.Name("validator:deposit-distinct"),
 		))
 
 		ginkgo.It("submits a deposit and top-up and activates the validator", func(ctx ginkgo.SpecContext) {
@@ -105,7 +106,7 @@ var _ = ginkgo.Describe(
 			"scenario:pectra-dev:kurtosis:topup-deposits",
 			"scenario:stable:validator-lifecycle-test-v2",
 			"scenario:dev:validator-lifecycle-test",
-			"behavior:validator:deposit-topup-activate",
+			behavior.Name("validator:deposit-topup-activate"),
 		))
 
 		ginkgo.It("exits the validator and transfers its withdrawal to execution", func(ctx ginkgo.SpecContext) {
@@ -173,8 +174,8 @@ var _ = ginkgo.Describe(
 			"scenario:pectra-dev:kurtosis:voluntary-exits",
 			"scenario:stable:kurtosis:validator-withdrawal-test",
 			"scenario:stable:validator-lifecycle-test-v2",
-			"behavior:validator:voluntary-exit",
-			"behavior:validator:exit-withdraw",
+			behavior.Name("validator:voluntary-exit"),
+			behavior.Name("validator:exit-withdraw"),
 		))
 	},
 )

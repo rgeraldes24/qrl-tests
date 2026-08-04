@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"sort"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
@@ -46,7 +47,7 @@ var _ = ginkgo.Describe(
 		"precompile",
 		"scenario",
 		"scenario:stable:all-opcodes-test",
-		"behavior:vm:precompiles",
+		behavior.Name("vm:precompiles"),
 	),
 	func() {
 		var (

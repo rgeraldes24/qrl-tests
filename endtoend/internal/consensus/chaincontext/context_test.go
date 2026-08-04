@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	"github.com/stretchr/testify/require"
 )
 

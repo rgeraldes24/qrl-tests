@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
@@ -106,6 +107,6 @@ var _ = ginkgo.Describe(
 				cancel()
 				gomega.Expect(err).NotTo(gomega.HaveOccurred(), fmt.Sprintf("cycle %d", cycle))
 			}
-		}, ginkgo.SpecTimeout(soakTimeout), ginkgo.Label("behavior:system:soak-recovery"))
+		}, ginkgo.SpecTimeout(soakTimeout), ginkgo.Label(behavior.Name("system:soak-recovery")))
 	},
 )

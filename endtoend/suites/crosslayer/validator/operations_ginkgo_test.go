@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
-	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"

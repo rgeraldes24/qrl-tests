@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -101,8 +102,8 @@ var _ = ginkgo.Describe(
 			}
 			_ = services.Stop(ctx, service)
 		}, ginkgo.SpecTimeout(syncTimeout), ginkgo.Label(
-			"behavior:consensus-startup:doppelganger-rpc",
-			"behavior:consensus-startup:doppelganger-no-signing",
+			behavior.Name("consensus-startup:doppelganger-rpc"),
+			behavior.Name("consensus-startup:doppelganger-no-signing"),
 		))
 
 		ginkgo.It("syncs a secondary beacon node after clearing its database", func(ctx ginkgo.SpecContext) {
@@ -167,7 +168,7 @@ var _ = ginkgo.Describe(
 				}
 				return nil
 			}).WithContext(ctx).WithTimeout(syncTimeout).WithPolling(time.Second).Should(gomega.Succeed())
-		}, ginkgo.SpecTimeout(syncTimeout), ginkgo.Label("behavior:consensus-sync:fresh-database"))
+		}, ginkgo.SpecTimeout(syncTimeout), ginkgo.Label(behavior.Name("consensus-sync:fresh-database")))
 	},
 )
 

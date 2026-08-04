@@ -6,7 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -41,7 +42,7 @@ func registerFinalizationSpec() {
 		}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 	}, ginkgo.Label(
 		"scenario:stable:stability-check",
-		"behavior:network:finality",
+		behavior.Name("network:finality"),
 	))
 }
 
@@ -55,8 +56,8 @@ func registerHeadConvergenceSpec() {
 		gomega.Expect(forkDistance).To(gomega.BeNumerically("<=", 3))
 	}, ginkgo.Label(
 		"scenario:stable:stability-check",
-		"behavior:network:reorg-budget",
-		"behavior:network:fork-budget",
+		behavior.Name("network:reorg-budget"),
+		behavior.Name("network:fork-budget"),
 	))
 }
 

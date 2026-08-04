@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"

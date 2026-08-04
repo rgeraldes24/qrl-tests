@@ -13,7 +13,6 @@ import (
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
-	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
@@ -144,53 +143,12 @@ func (suite *liveSuite) signTransactionForWallet(
 	data []byte,
 	accessList types.AccessList,
 ) (*types.Transaction, error) {
-	if value == nil {
-		value = new(big.Int)
+	signer := execfixture.TransactionSigner{
+		Client: suite.client, Wallet: signerWallet, From: from, ChainID: suite.chainID,
 	}
-	feeCap, err := suite.client.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("suggest gas price: %w", err)
-	}
-	tipCap, err := suite.client.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("suggest gas tip: %w", err)
-	}
-	feeCap = new(big.Int).Mul(feeCap, big.NewInt(4))
-	if feeCap.Cmp(tipCap) < 0 {
-		feeCap = new(big.Int).Set(tipCap)
-	}
-	gas, err := suite.client.EstimateGas(ctx, qrl.CallMsg{
-		From:       from,
-		To:         to,
-		Value:      value,
-		Data:       data,
-		AccessList: accessList,
+	return signer.Sign(ctx, execfixture.TransactionRequest{
+		Nonce: nonce, To: to, Value: value, Data: data, AccessList: accessList,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("estimate gas: %w", err)
-	}
-	gas += gas / 5
-
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:    suite.chainID,
-		Nonce:      nonce,
-		GasTipCap:  tipCap,
-		GasFeeCap:  feeCap,
-		Gas:        gas,
-		To:         to,
-		Value:      value,
-		Data:       data,
-		AccessList: accessList,
-	})
-	signed, err := types.SignTx(
-		tx,
-		types.LatestSignerForChainID(suite.chainID),
-		signerWallet,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("sign transaction: %w", err)
-	}
-	return signed, nil
 }
 
 func (suite *liveSuite) submitAndWait(ctx context.Context, tx *types.Transaction) *types.Receipt {

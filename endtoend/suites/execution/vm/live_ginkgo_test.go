@@ -8,6 +8,7 @@ package vm
 import (
 	"time"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/theQRL/go-qrl/common"
 
@@ -31,7 +32,7 @@ var _ = ginkgo.Describe(
 	ginkgo.ContinueOnFailure,
 	ginkgo.Label(
 		"e2e", "live", "vm", "mutates-chain", "scenario",
-		"scenario:stable:all-opcodes-test", "behavior:vm:vm64-opcodes",
+		"scenario:stable:all-opcodes-test", behavior.Name("vm:vm64-opcodes"),
 	),
 	func() {
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {

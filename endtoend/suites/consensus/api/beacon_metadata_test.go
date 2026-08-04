@@ -7,7 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -79,7 +80,7 @@ func registerBeaconMetadata(nodes *[]beaconNode) {
 			gomega.Expect(node.client.GetJSON(ctx, "/qrl/v1/config/fork_schedule", &forkSchedule)).To(gomega.Succeed())
 			gomega.Expect(forkSchedule.Data).NotTo(gomega.BeEmpty())
 		}
-	}, ginkgo.Label("behavior:consensus-api:metadata"))
+	}, ginkgo.Label(behavior.Name("consensus-api:metadata")))
 
 	ginkgo.It("cross-links head block and state endpoints", func(ctx ginkgo.SpecContext) {
 		for _, node := range *nodes {
@@ -169,5 +170,5 @@ func registerBeaconMetadata(nodes *[]beaconNode) {
 				gomega.Expect(response.Data).NotTo(gomega.BeEmpty(), path)
 			}
 		}
-	}, ginkgo.Label("behavior:consensus-api:beacon-state"))
+	}, ginkgo.Label(behavior.Name("consensus-api:beacon-state")))
 }

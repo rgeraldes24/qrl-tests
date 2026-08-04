@@ -3,6 +3,7 @@
 package protocol_test
 
 import (
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
@@ -41,7 +42,7 @@ func registerProtocolInvariants(suite *protocolSuite) {
 				gomega.Expect(validator.ActivationEpoch).To(gomega.BeZero())
 			}
 		}
-	}, ginkgo.SpecTimeout(protocolTimeout), ginkgo.Label("behavior:consensus:genesis-invariants"))
+	}, ginkgo.SpecTimeout(protocolTimeout), ginkgo.Label(behavior.Name("consensus:genesis-invariants")))
 
 	ginkgo.It("connects every participant and exposes healthy client metrics", func(ctx ginkgo.SpecContext) {
 		for index, beacon := range suite.beacons {
@@ -77,7 +78,7 @@ func registerProtocolInvariants(suite *protocolSuite) {
 			gomega.Expect(metricSum(validatorMetrics, "validator_successful_attestations")).To(gomega.BeNumerically(">", 0))
 		}
 	}, ginkgo.SpecTimeout(protocolTimeout), ginkgo.Label(
-		"behavior:consensus:peer-topology",
-		"behavior:consensus:metrics",
+		behavior.Name("consensus:peer-topology"),
+		behavior.Name("consensus:metrics"),
 	))
 }

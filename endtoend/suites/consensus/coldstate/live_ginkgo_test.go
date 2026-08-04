@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -64,6 +65,6 @@ var _ = ginkgo.Describe(
 					seen[assignment.ValidatorIndex] = struct{}{}
 				}
 			}
-		}, ginkgo.SpecTimeout(coldStateTimeout), ginkgo.Label("behavior:consensus:cold-state-assignments"))
+		}, ginkgo.SpecTimeout(coldStateTimeout), ginkgo.Label(behavior.Name("consensus:cold-state-assignments")))
 	},
 )

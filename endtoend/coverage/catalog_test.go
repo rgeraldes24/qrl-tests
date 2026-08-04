@@ -5,10 +5,14 @@ package coverage
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -43,7 +47,7 @@ func TestScenarioInventoryIsExhaustive(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, catalog.Version)
 	require.Len(t, catalog.Scenarios, catalog.SourceScenarioCount)
-	suites := suiteSources(t, root)
+	suites := suiteBehaviorLabels(t, root)
 	seen := make(map[string]struct{}, len(catalog.Scenarios))
 
 	for _, scenario := range catalog.Scenarios {
@@ -85,9 +89,10 @@ func loadCatalog(path string) (catalog, error) {
 	return result, nil
 }
 
-func suiteSources(t *testing.T, root string) map[string]string {
+func suiteBehaviorLabels(t *testing.T, root string) map[string]map[string]struct{} {
 	t.Helper()
-	sources := make(map[string]string)
+	labels := make(map[string]map[string]struct{})
+	fileSet := token.NewFileSet()
 	err := filepath.WalkDir(filepath.Join(root, "endtoend/suites"), func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -95,7 +100,7 @@ func suiteSources(t *testing.T, root string) map[string]string {
 		if entry.IsDir() || filepath.Ext(path) != ".go" {
 			return nil
 		}
-		contents, err := os.ReadFile(path)
+		file, err := parser.ParseFile(fileSet, path, nil, 0)
 		if err != nil {
 			return err
 		}
@@ -103,17 +108,43 @@ func suiteSources(t *testing.T, root string) map[string]string {
 		if err != nil {
 			return err
 		}
-		sources[filepath.ToSlash(relative)] = string(contents)
+		fileLabels := make(map[string]struct{})
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) != 1 {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "Name" {
+				return true
+			}
+			packageName, ok := selector.X.(*ast.Ident)
+			if !ok || packageName.Name != "behavior" {
+				return true
+			}
+			literal, ok := call.Args[0].(*ast.BasicLit)
+			if !ok || literal.Kind != token.STRING {
+				return true
+			}
+			value, err := strconv.Unquote(literal.Value)
+			if err == nil {
+				fileLabels["behavior:"+value] = struct{}{}
+			}
+			return true
+		})
+		if len(fileLabels) > 0 {
+			labels[filepath.ToSlash(relative)] = fileLabels
+		}
 		return nil
 	})
 	require.NoError(t, err)
-	return sources
+	return labels
 }
 
-func filesWithLabel(sources map[string]string, label string) []string {
+func filesWithLabel(sources map[string]map[string]struct{}, label string) []string {
 	var files []string
-	for path, source := range sources {
-		if strings.Contains(source, `"`+label+`"`) {
+	for path, labels := range sources {
+		if _, ok := labels[label]; ok {
 			files = append(files, path)
 		}
 	}

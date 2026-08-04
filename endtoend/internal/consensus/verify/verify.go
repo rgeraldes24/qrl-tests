@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 )
 
 // SignatureSummary records every consensus signature verified in a block.

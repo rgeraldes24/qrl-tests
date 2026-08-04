@@ -5,6 +5,7 @@ package network
 import (
 	"fmt"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
@@ -45,7 +46,7 @@ func registerParticipationSpecs() {
 		}
 	}, ginkgo.Label(
 		"scenario:dev:generate-attestations",
-		"behavior:network:validator-liveness",
+		behavior.Name("network:validator-liveness"),
 	))
 
 	ginkgo.It("maintains target and head participation thresholds", func(ctx ginkgo.SpecContext) {
@@ -68,6 +69,6 @@ func registerParticipationSpecs() {
 		gomega.Expect(headPercent).To(gomega.BeNumerically(">=", minimumHead))
 	}, ginkgo.Label(
 		"scenario:stable:stability-check",
-		"behavior:network:attestation-thresholds",
+		behavior.Name("network:attestation-thresholds"),
 	))
 }

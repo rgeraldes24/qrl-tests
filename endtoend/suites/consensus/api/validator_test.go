@@ -5,7 +5,8 @@ package api
 import (
 	"strconv"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -95,7 +96,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(indices).To(gomega.ContainElement(validatorIndex))
 				gomega.Expect(duty.ValidatorSyncCommitteeIndices).NotTo(gomega.BeEmpty())
 			}
-		}, ginkgo.Label("behavior:validator-api:duties"))
+		}, ginkgo.Label(behavior.Name("validator-api:duties")))
 
 		ginkgo.It("returns exact liveness for every requested validator", func(ctx ginkgo.SpecContext) {
 			slotsPerEpoch, err := client.SpecUint(ctx, "SLOTS_PER_EPOCH")
@@ -118,7 +119,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(seen).To(gomega.HaveKey(index))
 				gomega.Expect(seen[index]).To(gomega.BeTrue())
 			}
-		}, ginkgo.Label("behavior:validator-api:liveness"))
+		}, ginkgo.Label(behavior.Name("validator-api:liveness")))
 
 		ginkgo.It("returns equivalent standard and legacy validator assignments", func(ctx ginkgo.SpecContext) {
 			head, err := client.Head(ctx)
@@ -161,7 +162,7 @@ var _ = ginkgo.Describe(
 				gomega.Expect(assignment.AttesterSlot).To(gomega.Equal(slot))
 				gomega.Expect(assignment.CommitteeIndex).To(gomega.Equal(committee))
 			}
-		}, ginkgo.Label("behavior:validator-api:legacy-parity"))
+		}, ginkgo.Label(behavior.Name("validator-api:legacy-parity")))
 	},
 )
 

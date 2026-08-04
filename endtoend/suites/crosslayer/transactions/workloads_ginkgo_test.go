@@ -8,7 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
@@ -69,8 +70,8 @@ func registerTransactionWorkloads(sessions *[]*endtoendlive.Session) {
 	}, ginkgo.SpecTimeout(fullWorkloadTimeout), ginkgo.Label(
 		"scenario-full",
 		"scenario:stable:big-calldata-tx-test",
-		"behavior:transactions:big-calldata-1000",
-		"behavior:network:post-workload-stability",
+		behavior.Name("transactions:big-calldata-1000"),
+		behavior.Name("network:post-workload-stability"),
 	))
 
 	ginkgo.It("sustains ten transactions per block through every client and proposer", func(ctx ginkgo.SpecContext) {
@@ -142,8 +143,8 @@ func registerTransactionWorkloads(sessions *[]*endtoendlive.Session) {
 	}, ginkgo.SpecTimeout(fullWorkloadTimeout), ginkgo.Label(
 		"scenario-full",
 		"scenario:stable:eoa-transactions-test",
-		"behavior:transactions:sustained-10-per-block",
-		"behavior:transactions:proposer-inclusion-matrix",
-		"behavior:network:post-workload-stability",
+		behavior.Name("transactions:sustained-10-per-block"),
+		behavior.Name("transactions:proposer-inclusion-matrix"),
+		behavior.Name("network:post-workload-stability"),
 	))
 }

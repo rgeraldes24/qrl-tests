@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensuscontext "github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
-	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -48,7 +49,7 @@ var _ = ginkgo.Describe(
 			"scenario:stable:kurtosis:validator-slashing-test",
 			"scenario:dev:validator-lifecycle-test",
 			"scenario:stable:validator-lifecycle-test-v2",
-			"behavior:validator:proposer-slashing",
+			behavior.Name("validator:proposer-slashing"),
 		))
 
 		ginkgo.It("includes an attester slashing and marks the validator slashed", func(ctx ginkgo.SpecContext) {
@@ -58,7 +59,7 @@ var _ = ginkgo.Describe(
 			"scenario:stable:kurtosis:validator-slashing-test",
 			"scenario:dev:validator-lifecycle-test",
 			"scenario:stable:validator-lifecycle-test-v2",
-			"behavior:validator:attester-slashing",
+			behavior.Name("validator:attester-slashing"),
 		))
 	},
 )

@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/theQRL/go-qrl/core/types"
@@ -35,7 +36,7 @@ func registerTransactionScenarios(sessions *[]*endtoendlive.Session) {
 		gomega.Expect(after).To(gomega.Equal(new(big.Int).Add(before, amount)))
 	}, ginkgo.SpecTimeout(transactionTimeout), ginkgo.Label(
 		"scenario:dev:fund-wallet",
-		"behavior:transactions:fund-wallet",
+		behavior.Name("transactions:fund-wallet"),
 	))
 
 	ginkgo.It("sustains deterministic large-calldata transactions and remains finalized", func(ctx ginkgo.SpecContext) {
@@ -81,8 +82,8 @@ func registerTransactionScenarios(sessions *[]*endtoendlive.Session) {
 		}
 	}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label(
 		"scenario:stable:big-calldata-tx-test",
-		"behavior:transactions:calldata-boundary",
-		"behavior:transactions:finality-under-load",
+		behavior.Name("transactions:calldata-boundary"),
+		behavior.Name("transactions:finality-under-load"),
 	))
 
 	ginkgo.It("accepts QRL transactions through every execution client", func(ctx ginkgo.SpecContext) {
@@ -113,8 +114,8 @@ func registerTransactionScenarios(sessions *[]*endtoendlive.Session) {
 		}
 	}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label(
 		"scenario:stable:eoa-transactions-test",
-		"behavior:transactions:all-execution-clients",
-		"behavior:transactions:network-wide-inclusion",
+		behavior.Name("transactions:all-execution-clients"),
+		behavior.Name("transactions:network-wide-inclusion"),
 	))
 
 	ginkgo.It("propagates a pending transaction between execution peers", func(ctx ginkgo.SpecContext) {
@@ -158,5 +159,5 @@ func registerTransactionScenarios(sessions *[]*endtoendlive.Session) {
 				return err
 			}).WithContext(ctx).WithTimeout(transactionTimeout).WithPolling(time.Second).Should(gomega.Succeed())
 		}
-	}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label("behavior:transactions:p2p-propagation"))
+	}, ginkgo.SpecTimeout(10*time.Minute), ginkgo.Label(behavior.Name("transactions:p2p-propagation")))
 }

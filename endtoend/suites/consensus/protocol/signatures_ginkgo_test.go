@@ -7,8 +7,9 @@ import (
 	"math/bits"
 	"strconv"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	consensusverify "github.com/cyyber/qrl-tests/endtoend/internal/consensus/verify"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
@@ -89,9 +90,9 @@ func registerProtocolSignatureChecks(suite *protocolSuite) {
 		gomega.Expect(verified.Attestations).To(gomega.BeNumerically(">", 0))
 		gomega.Expect(verified.SyncCommittee).To(gomega.BeNumerically(">", 0))
 	}, ginkgo.SpecTimeout(protocolTimeout), ginkgo.Label(
-		"behavior:consensus:execution-data-votes",
-		"behavior:consensus:fee-recipients",
-		"behavior:consensus:sync-committee-participation",
-		"behavior:consensus:signature-verification",
+		behavior.Name("consensus:execution-data-votes"),
+		behavior.Name("consensus:fee-recipients"),
+		behavior.Name("consensus:sync-committee-participation"),
+		behavior.Name("consensus:signature-verification"),
 	))
 }

@@ -6,7 +6,7 @@ package validatorops
 import (
 	"testing"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/crypto"
 	"github.com/stretchr/testify/require"
 	"github.com/theQRL/go-qrl/common"
 )

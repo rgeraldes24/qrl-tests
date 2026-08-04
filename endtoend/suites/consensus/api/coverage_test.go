@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/endtoend/internal/apicoverage"
 )
 
 const (
-	qrysmRouteRevision = "8b80fa0c3f5a"
+	// Reviewed HTTP route inventory for this Qrysm revision.
+	qrysmRouteRevision        = "8b80fa0c3f5a"
+	qrysmRouteInventoryDigest = "ed777f1f8ed03ff843f4f9677c4a35faa8f65ee7ca01937f812faaaf2f09017e"
 
-	consensusCoverageBehavior = "live behavior"
-	consensusCoverageShape    = "live response shape"
 	consensusCoverageProfile  = "excluded: not exposed by the devnet profile"
 	consensusCoverageUnsafe   = "excluded: mutates node configuration"
 	consensusCoverageVCConfig = "excluded: mutates validator configuration"
@@ -35,24 +36,19 @@ const (
 	scenarioValidatorLifecycle = "validator-lifecycle"
 )
 
-type consensusCoverageEntry struct {
-	kind     string
-	scenario string
-}
+type consensusCoverageEntry = apicoverage.Entry
 
 func consensusBehavior(scenario string) consensusCoverageEntry {
-	return consensusCoverageEntry{kind: consensusCoverageBehavior, scenario: scenario}
+	return apicoverage.Live(apicoverage.Behavior, apicoverage.Scenario(scenario))
 }
 
 func consensusShape(scenario string) consensusCoverageEntry {
-	return consensusCoverageEntry{kind: consensusCoverageShape, scenario: scenario}
+	return apicoverage.Live(apicoverage.Shape, apicoverage.Scenario(scenario))
 }
 
-func consensusExcluded(kind string) consensusCoverageEntry {
-	return consensusCoverageEntry{kind: kind}
-}
+var consensusExcluded = apicoverage.Excluded
 
-var consensusScenarioDescriptions = map[string]string{
+var consensusScenarioDescriptions = map[apicoverage.Scenario]string{
 	scenarioConsensusMetadata:  "cross-checks node, genesis, deposit, and configuration metadata",
 	scenarioConsensusState:     "cross-checks canonical blocks, headers, state, validators, and committees",
 	scenarioConsensusPools:     "checks the live operation-pool response shapes",
@@ -230,28 +226,19 @@ func TestConsensusAPICoverageManifest(t *testing.T) {
 		t.Fatalf("coverage manifest targets Qrysm %s, images are %q and %q",
 			qrysmRouteRevision, devnet.DefaultConsensusImage, devnet.DefaultValidatorImage)
 	}
-	for endpoint, entry := range consensusAPICoverage {
+	for endpoint := range consensusAPICoverage {
 		method, path, ok := strings.Cut(endpoint, " ")
 		if !ok || method == "" || !strings.HasPrefix(path, "/") {
 			t.Errorf("invalid endpoint key %q", endpoint)
 		}
-		validateConsensusCoverageEntry(t, endpoint, entry)
 	}
-	for surface, entry := range consensusTransportCoverage {
-		validateConsensusCoverageEntry(t, surface, entry)
+	if err := apicoverage.Validate(consensusAPICoverage, consensusScenarioDescriptions); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func validateConsensusCoverageEntry(t *testing.T, endpoint string, entry consensusCoverageEntry) {
-	t.Helper()
-	if strings.TrimSpace(entry.kind) == "" {
-		t.Errorf("%s has no coverage category", endpoint)
+	if got := apicoverage.InventoryDigest(consensusAPICoverage); got != qrysmRouteInventoryDigest {
+		t.Fatalf("Qrysm %s route inventory changed: got %s", qrysmRouteRevision, got)
 	}
-	if strings.HasPrefix(entry.kind, "live ") {
-		if _, ok := consensusScenarioDescriptions[entry.scenario]; !ok {
-			t.Errorf("%s references unknown live scenario %q", endpoint, entry.scenario)
-		}
-	} else if entry.scenario != "" {
-		t.Errorf("%s is excluded but references scenario %q", endpoint, entry.scenario)
+	if err := apicoverage.Validate(consensusTransportCoverage, consensusScenarioDescriptions); err != nil {
+		t.Fatal(err)
 	}
 }

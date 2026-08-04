@@ -6,8 +6,8 @@ package consensusverify
 import (
 	"fmt"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/crypto"
 )
 
 func (verification *Verifier) verifyDeposits(items []consensus.DepositOperation) (int, error) {

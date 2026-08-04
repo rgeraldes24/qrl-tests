@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/crypto"
 )
 
 func committee(ctx context.Context, client consensusAPI, stateID string, data consensus.AttestationData) ([]uint64, error) {

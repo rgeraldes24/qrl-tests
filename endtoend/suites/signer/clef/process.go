@@ -19,14 +19,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/internal/clefprocess"
-	"github.com/cyyber/qrl-tests/internal/clefui"
+	"github.com/cyyber/qrl-tests/internal/clef"
 	"github.com/theQRL/go-qrl/common"
 	signercore "github.com/theQRL/go-qrl/signer/core"
 )
 
 type clefProcess struct {
-	process *clefprocess.Process
+	process *clef.Process
 	log     *os.File
 }
 
@@ -147,7 +146,7 @@ func startClef(
 	if err != nil {
 		return nil, "", fmt.Errorf("create Clef log: %w", err)
 	}
-	process, err := clefprocess.Start(ctx, clefPath, clefServerArgs(workspace, port, chainID), &clefui.UI{Input: func(request signercore.UserInputRequest) string {
+	process, err := clef.Start(ctx, clefPath, clefServerArgs(workspace, port, chainID), &clef.UI{Input: func(request signercore.UserInputRequest) string {
 		if request.Title == "Master Password" {
 			return masterPassword
 		}

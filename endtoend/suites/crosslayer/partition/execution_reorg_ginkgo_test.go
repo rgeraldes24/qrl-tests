@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
@@ -106,5 +107,5 @@ func registerExecutionReorgScenario(suite *liveSuite) {
 			}).WithContext(ctx).WithTimeout(partitionTimeout).WithPolling(time.Second).Should(gomega.BeTrue())
 		}
 		gomega.Expect(baselineReceipt.Status).To(gomega.Equal(types.ReceiptStatusSuccessful))
-	}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label("behavior:partition:execution-state-reorg"))
+	}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label(behavior.Name("partition:execution-state-reorg")))
 }

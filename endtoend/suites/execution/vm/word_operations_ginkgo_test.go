@@ -8,6 +8,7 @@ package vm
 import (
 	"math/big"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
 	qrvm "github.com/theQRL/go-qrl/core/vm"
@@ -76,7 +77,7 @@ func registerJumpAndMinedSpecs() {
 			gomega.Expect(new(big.Int).SetBytes(value)).To(gomega.Equal(want))
 		}
 	}, ginkgo.SpecTimeout(liveSpecTimeout), ginkgo.Label(
-		"behavior:vm:mined-opcode-path",
+		behavior.Name("vm:mined-opcode-path"),
 	))
 
 	ginkgo.It("records mined terminal opcode status", func(ctx ginkgo.SpecContext) {
@@ -96,6 +97,6 @@ func registerJumpAndMinedSpecs() {
 			gomega.Expect(receipt.Status).To(gomega.Equal(test.status))
 		}
 	}, ginkgo.SpecTimeout(liveSpecTimeout), ginkgo.Label(
-		"behavior:vm:mined-terminal-status",
+		behavior.Name("vm:mined-terminal-status"),
 	))
 }

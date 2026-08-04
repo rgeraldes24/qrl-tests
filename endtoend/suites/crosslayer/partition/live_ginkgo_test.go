@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -84,8 +85,8 @@ var _ = ginkgo.Describe(
 		}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label(
 			"scenario:dev:two-way-network-split-non-finality",
 			"scenario:dev:validator-lifecycle-test",
-			"behavior:partition:finality-stall",
-			"behavior:partition:finality-recovery",
+			behavior.Name("partition:finality-stall"),
+			behavior.Name("partition:finality-recovery"),
 		))
 
 		ginkgo.It("converges after competing heads form across a split", func(ctx ginkgo.SpecContext) {
@@ -129,9 +130,9 @@ var _ = ginkgo.Describe(
 			}).WithContext(ctx).WithTimeout(partitionTimeout).WithPolling(100 * time.Millisecond).Should(gomega.BeTrue())
 		}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label(
 			"scenario:dev:two-way-network-split-reorg-trigger",
-			"behavior:partition:competing-heads",
-			"behavior:partition:reorg-recovery",
-			"behavior:consensus-api:chain-reorg-event",
+			behavior.Name("partition:competing-heads"),
+			behavior.Name("partition:reorg-recovery"),
+			behavior.Name("consensus-api:chain-reorg-event"),
 		))
 
 		registerExecutionReorgScenario(&suite)

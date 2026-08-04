@@ -3,6 +3,7 @@
 package validator_test
 
 import (
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -20,10 +21,10 @@ func registerSlashingSpec() {
 	}, ginkgo.SpecTimeout(operationsTimeout), ginkgo.Label(
 		"scenario:dev:validator-proposer-slashing-test",
 		"scenario:stable:kurtosis:validator-slashing-test",
-		"behavior:validator:proposer-slashing-matrix",
-		"behavior:validator:attester-slashing-matrix",
-		"behavior:validator:operation-submission-matrix",
-		"behavior:validator:slashing-proposer-matrix",
-		"behavior:network:post-workload-stability",
+		behavior.Name("validator:proposer-slashing-matrix"),
+		behavior.Name("validator:attester-slashing-matrix"),
+		behavior.Name("validator:operation-submission-matrix"),
+		behavior.Name("validator:slashing-proposer-matrix"),
+		behavior.Name("network:post-workload-stability"),
 	))
 }

@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	engineapi "github.com/cyyber/qrl-tests/endtoend/internal/clients/engine"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	protocolengine "github.com/theQRL/go-qrl/beacon/engine"
 	"github.com/theQRL/go-qrl/common"
@@ -117,7 +118,7 @@ var _ = ginkgo.Describe(
 			forkchoice, err = engine.ForkchoiceUpdatedV2(ctx, state, nil)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(forkchoice.PayloadStatus.Status).To(gomega.Equal(protocolengine.SYNCING))
-		}, ginkgo.SpecTimeout(engineTimeout), ginkgo.Label("behavior:engine:forkchoice-payload-validation"))
+		}, ginkgo.SpecTimeout(engineTimeout), ginkgo.Label(behavior.Name("engine:forkchoice-payload-validation")))
 
 		ginkgo.It("builds and returns a payload through Engine V2", func(ctx ginkgo.SpecContext) {
 			block, err := session.Execution.BlockByNumber(ctx, nil)
@@ -142,6 +143,6 @@ var _ = ginkgo.Describe(
 			gomega.Expect(payload.ExecutionPayload.ParentHash).To(gomega.Equal(block.Hash()))
 			gomega.Expect(payload.ExecutionPayload.Timestamp).To(gomega.Equal(attributes.Timestamp))
 			gomega.Expect(payload.ExecutionPayload.Withdrawals).NotTo(gomega.BeNil())
-		}, ginkgo.SpecTimeout(engineTimeout), ginkgo.Label("behavior:engine:payload-build"))
+		}, ginkgo.SpecTimeout(engineTimeout), ginkgo.Label(behavior.Name("engine:payload-build")))
 	},
 )

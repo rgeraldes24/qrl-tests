@@ -3,6 +3,7 @@
 package validator_test
 
 import (
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -20,9 +21,9 @@ func registerExitSpec() {
 	}, ginkgo.SpecTimeout(operationsTimeout), ginkgo.Label(
 		"scenario:pectra-dev:kurtosis:voluntary-exits",
 		"scenario:stable:kurtosis:validator-exit-test",
-		"behavior:validator:voluntary-exit-64",
-		"behavior:validator:operation-submission-matrix",
-		"behavior:validator:exit-proposer-matrix",
-		"behavior:network:post-workload-stability",
+		behavior.Name("validator:voluntary-exit-64"),
+		behavior.Name("validator:operation-submission-matrix"),
+		behavior.Name("validator:exit-proposer-matrix"),
+		behavior.Name("network:post-workload-stability"),
 	))
 }

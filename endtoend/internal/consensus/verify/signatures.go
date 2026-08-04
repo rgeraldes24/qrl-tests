@@ -7,7 +7,7 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/crypto"
 )
 
 func (verification *Verifier) verifyObject(

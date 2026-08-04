@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
@@ -130,7 +131,7 @@ func registerBeaconRewards(nodes *[]beaconNode) {
 				decimalInteger(reward.Reward)
 			}
 		}
-	}, ginkgo.SpecTimeout(beaconAPITimeout), ginkgo.Label("behavior:consensus-api:rewards"))
+	}, ginkgo.SpecTimeout(beaconAPITimeout), ginkgo.Label(behavior.Name("consensus-api:rewards")))
 }
 
 func decimalInteger(value string) *big.Int {

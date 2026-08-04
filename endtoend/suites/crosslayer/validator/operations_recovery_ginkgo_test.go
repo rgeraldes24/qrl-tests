@@ -6,10 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
+	consensusverify "github.com/cyyber/qrl-tests/endtoend/internal/consensus/verify"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
-	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -22,9 +23,9 @@ func registerRecoverySpec() {
 	}, ginkgo.SpecTimeout(operationsTimeout), ginkgo.Label(
 		"scenario-full",
 		"scenario:dev:validator-lifecycle-test",
-		"behavior:validator:mass-deposit-churn",
-		"behavior:validator:deposit-proposer-matrix",
-		"behavior:network:post-workload-stability",
+		behavior.Name("validator:mass-deposit-churn"),
+		behavior.Name("validator:deposit-proposer-matrix"),
+		behavior.Name("network:post-workload-stability"),
 	))
 }
 

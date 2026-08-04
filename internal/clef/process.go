@@ -1,8 +1,8 @@
 // Copyright 2026 The qrl-tests Authors
 // This file is part of qrl-tests.
 
-// Package clefprocess owns the stdio RPC lifecycle for Clef child processes.
-package clefprocess
+// Package clef owns the programmable UI and stdio RPC lifecycle used by test processes.
+package clef
 
 import (
 	"context"

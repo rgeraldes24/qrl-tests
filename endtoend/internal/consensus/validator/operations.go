@@ -3,9 +3,9 @@ package validatorops
 import (
 	"fmt"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/clients/consensus"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscrypto"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/crypto"
 	"github.com/theQRL/go-qrl/common/hexutil"
 )
 

@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/theQRL/go-qrl/common"
@@ -123,7 +124,7 @@ func registerTransactionReinjectionScenario(suite *liveSuite) {
 			}
 		}
 		gomega.Expect(reinjected).To(gomega.BeTrue())
-	}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label("behavior:partition:transaction-reinjection"))
+	}, ginkgo.SpecTimeout(partitionTimeout), ginkgo.Label(behavior.Name("partition:transaction-reinjection")))
 }
 
 func signWalletTransfer(
@@ -134,20 +135,13 @@ func signWalletTransfer(
 	value *big.Int,
 ) *types.Transaction {
 	ginkgo.GinkgoHelper()
-	feeCap, err := session.Execution.SuggestGasPrice(ctx)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	tipCap, err := session.Execution.SuggestGasTipCap(ctx)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	feeCap.Mul(feeCap, big.NewInt(4))
-	if feeCap.Cmp(tipCap) < 0 {
-		feeCap.Set(tipCap)
+	signer := execfixture.TransactionSigner{
+		Client: session.Execution, Wallet: wallet,
+		From: common.Address(wallet.GetAddress()), ChainID: session.ChainID,
 	}
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID: session.ChainID, Nonce: 0,
-		GasTipCap: tipCap, GasFeeCap: feeCap, Gas: params.TxGas,
-		To: &recipient, Value: value,
+	signed, err := signer.Sign(ctx, execfixture.TransactionRequest{
+		To: &recipient, Value: value, Gas: params.TxGas,
 	})
-	signed, err := types.SignTx(tx, types.LatestSignerForChainID(session.ChainID), wallet)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return signed
 }

@@ -1,8 +1,7 @@
 // Copyright 2026 The qrl-tests Authors
 // This file is part of qrl-tests.
 
-// Package clefui provides the programmable Clef UI used by test processes.
-package clefui
+package clef
 
 import signercore "github.com/theQRL/go-qrl/signer/core"
 

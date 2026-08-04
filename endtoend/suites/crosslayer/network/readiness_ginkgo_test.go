@@ -5,6 +5,7 @@ package network
 import (
 	"strings"
 
+	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 )
@@ -23,7 +24,7 @@ func registerReadinessSpecs() {
 		}
 	}, ginkgo.Label(
 		"scenario:dev:synchronized-check",
-		"behavior:network:clients-synchronized",
+		behavior.Name("network:clients-synchronized"),
 	))
 
 	ginkgo.It("observes new execution and consensus blocks on every client pair", func(ctx ginkgo.SpecContext) {
@@ -45,7 +46,7 @@ func registerReadinessSpecs() {
 		}
 	}, ginkgo.Label(
 		"scenario:dev:wait-for-slot",
-		"behavior:network:slot-progress",
+		behavior.Name("network:slot-progress"),
 	))
 
 	ginkgo.It("observes proposals from every validator pair", func(ctx ginkgo.SpecContext) {
@@ -72,6 +73,6 @@ func registerReadinessSpecs() {
 		}).WithContext(ctx).WithTimeout(progressTimeout).WithPolling(pollInterval).Should(gomega.Succeed())
 	}, ginkgo.Label(
 		"scenario:stable:block-proposal-check",
-		"behavior:network:proposer-coverage",
+		behavior.Name("network:proposer-coverage"),
 	))
 }

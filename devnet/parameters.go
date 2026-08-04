@@ -158,7 +158,7 @@ func participantParameters(configured []string, defaults ...string) []string {
 	if configured != nil {
 		return configured
 	}
-	return defaults
+	return append([]string{}, defaults...)
 }
 
 func renderCustomParameters(payload []byte, address string, images Images) (string, error) {

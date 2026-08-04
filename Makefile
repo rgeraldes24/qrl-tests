@@ -13,20 +13,22 @@ DEVNET_PROFILE ?= single
 DEVNET_START_TIMEOUT ?= 30m
 DEVNET_PARAMS_FILE := $(if $(strip $(DEVNET_PARAMS_FILE)),$(abspath $(DEVNET_PARAMS_FILE)))
 E2E_LANE ?= single
+E2E_SUITE ?=
 E2E_REPORT_DIR ?= reports
 E2E_MAX_PARALLEL ?= 1
 NETWORK_IMAGE_TARGETS := $(if $(filter docker,$(DEVNET_BACKEND)),network-image clef-image)
+E2E_SUITE_ARGS := $(foreach suite,$(E2E_SUITE),--suite "$(suite)")
 
 export GO_QRL_SOURCE_DIR DEVNET_BACKEND DEVNET_EXECUTION_IMAGE DEVNET_CLEF_IMAGE
 export DEVNET_CONSENSUS_IMAGE DEVNET_VALIDATOR_IMAGE DEVNET_GENESIS_IMAGE
-export DEVNET_ENCLAVE_NAME DEVNET_START_TIMEOUT
+export DEVNET_ENCLAVE_NAME DEVNET_PROFILE DEVNET_START_TIMEOUT DEVNET_PARAMS_FILE
 export E2E_REPORT_DIR E2E_MAX_PARALLEL
 
 test:
 	$(GO) test ./...
 
 fmt:
-	gofmt -s -w $$(find . -name '*.go')
+	gofmt -s -w $$(git ls-files -- '*.go')
 
 e2e-compile:
 	$(GO) test -tags=e2e -run '^$$' ./endtoend/...
@@ -56,17 +58,16 @@ network-preflight:
 	kurtosis engine start
 
 network-start: $(NETWORK_IMAGE_TARGETS) network-preflight
-	DEVNET_PROFILE="$(DEVNET_PROFILE)" DEVNET_PARAMS_FILE="$(DEVNET_PARAMS_FILE)" \
-		$(GO) run ./cmd/qrltest network start
+	$(GO) run ./cmd/qrltest network start
 
 network-stop:
 	$(GO) run ./cmd/qrltest network stop
 
 e2e:
-	$(GO) run ./cmd/qrltest test "$(E2E_LANE)"
+	$(GO) run ./cmd/qrltest test $(E2E_SUITE_ARGS) "$(E2E_LANE)"
 
 e2e-run: $(NETWORK_IMAGE_TARGETS) network-preflight
-	$(GO) run ./cmd/qrltest run "$(E2E_LANE)"
+	$(GO) run ./cmd/qrltest run $(E2E_SUITE_ARGS) "$(E2E_LANE)"
 
 e2e-all: $(NETWORK_IMAGE_TARGETS) network-preflight
 	$(GO) run ./cmd/qrltest run-all

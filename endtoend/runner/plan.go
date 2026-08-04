@@ -5,6 +5,7 @@ package runner
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
@@ -17,21 +18,37 @@ type laneRun struct {
 	manifestPath string
 	arguments    []string
 	provision    bool
+	workspace    string
+	testsDir     string
 }
 
 type runPlan struct {
 	reportRoot string
+	testsDir   string
 	tools      []lanes.Tool
 	lanes      []laneRun
 }
 
 func newRunPlan(configuration Config, selected []lanes.Lane, mode runMode) (runPlan, error) {
+	testsDir := configuration.TestsDir
+	if testsDir == "" {
+		var err error
+		testsDir, err = os.Getwd()
+		if err != nil {
+			return runPlan{}, fmt.Errorf("resolve test source directory: %w", err)
+		}
+	}
+	testsDir, err := filepath.Abs(testsDir)
+	if err != nil {
+		return runPlan{}, fmt.Errorf("resolve test source directory: %w", err)
+	}
 	reportRoot, err := filepath.Abs(configuration.ReportDir)
 	if err != nil {
 		return runPlan{}, fmt.Errorf("resolve report directory: %w", err)
 	}
 	plan := runPlan{
 		reportRoot: reportRoot,
+		testsDir:   testsDir,
 		tools:      requiredTools(selected),
 		lanes:      make([]laneRun, len(selected)),
 	}
@@ -48,6 +65,7 @@ func newRunPlan(configuration Config, selected []lanes.Lane, mode runMode) (runP
 			manifestPath: filepath.Join(reportDir, "environment.json"),
 			arguments:    ginkgoArguments(lane, reportDir),
 			provision:    mode.provisions(),
+			testsDir:     testsDir,
 		}
 	}
 	return plan, nil

@@ -26,6 +26,13 @@ Run one lane with a fresh network:
 make e2e-run E2E_LANE=single
 ```
 
+Select one or more registered suites while retaining the lane's ordering and
+network profile:
+
+```bash
+make e2e-run E2E_LANE=single E2E_SUITE="execution-abi execution-api"
+```
+
 Run a lane against an existing matching network:
 
 ```bash
@@ -36,7 +43,8 @@ make network-stop
 
 The Ginkgo runner continues across suite packages and writes JUnit, JSON, and
 the resolved environment manifest under `reports/<lane>/`. Run all registered
-lanes with `make e2e-all` or list them with `go run ./cmd/qrltest list`.
+lanes with `make e2e-all` or inspect lanes, suites, tools, and capabilities with
+`go run ./cmd/qrltest list`.
 
 ## Adding a suite
 

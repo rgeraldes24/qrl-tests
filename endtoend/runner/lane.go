@@ -38,6 +38,7 @@ func (runner *Runner) acquireLane(ctx context.Context, planned laneRun) (laneLea
 		EnclaveName: planned.enclaveName,
 		Backend:     runner.configuration.Backend,
 		Images:      runner.configuration.Images,
+		Parameters:  runner.configuration.Parameters,
 		Profile:     planned.lane.Profile,
 	})
 	cancelStart()
@@ -96,10 +97,15 @@ func (runner *Runner) runLane(ctx context.Context, planned laneRun, tools runenv
 	laneCtx, cancelLane := context.WithTimeout(ctx, lane.Timeout+5*time.Minute)
 	defer cancelLane()
 	fmt.Fprintf(stdout, "=== RUN lane=%s profile=%s ===\n", lane.Name, lane.Profile)
+	environment := append(os.Environ(), runenv.PathEnv+"="+planned.manifestPath)
+	if planned.workspace != "" {
+		environment = setEnvironment(environment, "GOWORK", planned.workspace)
+	}
 	if err := runner.runCommand(laneCtx, commandSpec{
 		Path:   "go",
 		Args:   planned.arguments,
-		Env:    append(os.Environ(), runenv.PathEnv+"="+planned.manifestPath),
+		Dir:    planned.testsDir,
+		Env:    environment,
 		Stdout: stdout,
 		Stderr: stderr,
 	}); err != nil {

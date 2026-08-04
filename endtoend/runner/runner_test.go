@@ -48,6 +48,8 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 		ReportDir:    reports,
 		Backend:      devnet.BackendDocker,
 		StartTimeout: time.Minute,
+		Parameters:   []byte(`{"custom":true}`),
+		Suites:       []string{"network"},
 	}, &output, &output)
 	tests.networks = networks
 	tests.runCommand = func(_ context.Context, specification commandSpec) error {
@@ -58,9 +60,11 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.NoError(t, tests.Run(t.Context(), "multi"))
 	require.Equal(t, "qrl-tests", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileMulti, networks.started.Profile)
+	require.Equal(t, []byte(`{"custom":true}`), networks.started.Parameters)
 	require.Equal(t, "qrl-tests", networks.stopped)
 	require.Equal(t, "go", command.Path)
 	require.Contains(t, command.Args, "./endtoend/suites/crosslayer/network")
+	require.NotContains(t, command.Args, "./endtoend/suites/crosslayer/transactions")
 
 	manifestPath := filepath.Join(reports, "multi", "environment.json")
 	manifest, err := runenv.Read(manifestPath)
@@ -71,6 +75,27 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	logs, err := filepath.Glob(filepath.Join(reports, "multi", "output.log"))
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
+}
+
+func TestListDescribesLanesAndSuites(t *testing.T) {
+	var output bytes.Buffer
+	tests := New(Config{}, &output, &output)
+	require.NoError(t, tests.List())
+	require.Contains(t, output.String(), "single")
+	require.Contains(t, output.String(), "execution-abi")
+	require.Contains(t, output.String(), "network-partition")
+}
+
+func TestRunAllRejectsOverrides(t *testing.T) {
+	for name, configuration := range map[string]Config{
+		"parameters": {Parameters: []byte(`{}`)},
+		"suites":     {Suites: []string{"execution-abi"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tests := New(configuration, nil, nil)
+			require.Error(t, tests.RunAll(t.Context()))
+		})
+	}
 }
 
 type concurrentNetworks struct {

@@ -137,13 +137,36 @@ func (client *Client) DestroyEnclave(ctx context.Context, name string) error {
 }
 
 func consumeStarlarkCompletion(stream <-chan *kurtosis_core_rpc_api_bindings.StarlarkRunResponseLine) error {
+	var runErr error
 	for line := range stream {
+		if responseErr := line.GetError(); responseErr != nil {
+			runErr = starlarkError(responseErr)
+		}
 		if finished := line.GetRunFinishedEvent(); finished != nil {
 			if !finished.GetIsRunSuccessful() {
-				return errors.New("Kurtosis Starlark package run failed; response content suppressed")
+				if runErr != nil {
+					return runErr
+				}
+				return errors.New("Kurtosis Starlark package run failed without a structured error")
 			}
 			return nil
 		}
 	}
-	return errors.New("Kurtosis Starlark response stream closed without a terminal event; response content suppressed")
+	if runErr != nil {
+		return runErr
+	}
+	return errors.New("Kurtosis Starlark response stream closed without a terminal event")
+}
+
+func starlarkError(responseErr *kurtosis_core_rpc_api_bindings.StarlarkError) error {
+	if detail := responseErr.GetInterpretationError(); detail != nil {
+		return fmt.Errorf("Kurtosis Starlark interpretation failed: %s", detail.GetErrorMessage())
+	}
+	if detail := responseErr.GetValidationError(); detail != nil {
+		return fmt.Errorf("Kurtosis Starlark validation failed: %s", detail.GetErrorMessage())
+	}
+	if detail := responseErr.GetExecutionError(); detail != nil {
+		return fmt.Errorf("Kurtosis Starlark execution failed: %s", detail.GetErrorMessage())
+	}
+	return errors.New("Kurtosis Starlark package run failed with an unknown structured error")
 }

@@ -17,14 +17,21 @@ make e2e-compile
 make e2e-run E2E_LANE=single
 ```
 
-The runner verifies that its linked go-qrl module matches
-`GO_QRL_SOURCE_DIR` before starting a lane.
+The runner creates a temporary Go workspace containing this checkout and
+`GO_QRL_SOURCE_DIR`. Suite binaries therefore compile against the exact local
+go-qrl tree, including uncommitted changes.
 
 `e2e-run` provisions the lane's network profile, runs the lane, and removes the
 network. Run every supported lane with:
 
 ```bash
 make e2e-all
+```
+
+Run selected suites from a lane with:
+
+```bash
+make e2e-run E2E_LANE=single E2E_SUITE="execution-abi execution-api"
 ```
 
 For iterative work, keep a network running:
@@ -35,8 +42,8 @@ make e2e E2E_LANE=single
 make network-stop
 ```
 
-List the registered lanes with `go run ./cmd/qrltest list`. Reports are
-written under `reports/<lane>/`.
+List the registered lanes, their suites, tools, and required capabilities with
+`go run ./cmd/qrltest list`. Reports are written under `reports/<lane>/`.
 
 ## Kubernetes
 

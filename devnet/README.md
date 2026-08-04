@@ -94,6 +94,15 @@ Start the network with the custom parameters:
 DEVNET_PARAMS_FILE=devnet/network_params.yaml make network-start
 ```
 
+The provisioned E2E runner accepts the same file:
+
+```bash
+DEVNET_PARAMS_FILE=devnet/network_params.yaml make e2e-run E2E_LANE=single
+```
+
+Custom parameters are lane-specific and are therefore not accepted by
+`e2e-all`.
+
 The controller discovers every execution, consensus, and validator participant
 from qrl-package service labels. Consumers select the primary participant with
 `Environment.Primary`; multi-node suites use `Environment.Participants`.

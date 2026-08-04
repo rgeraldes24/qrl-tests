@@ -4,6 +4,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/urfave/cli/v2"
 )
@@ -24,6 +27,26 @@ func backendFlag() *cli.StringFlag {
 		Value:   string(devnet.BackendDocker),
 		EnvVars: []string{"DEVNET_BACKEND"},
 	}
+}
+
+func parametersFileFlag() *cli.StringFlag {
+	return &cli.StringFlag{
+		Name:    "params-file",
+		Usage:   "complete YAML or JSON qrl-package parameters",
+		EnvVars: []string{"DEVNET_PARAMS_FILE"},
+	}
+}
+
+func parametersFrom(command *cli.Context) ([]byte, error) {
+	file := command.String("params-file")
+	if file == "" {
+		return nil, nil
+	}
+	payload, err := os.ReadFile(file)
+	if err != nil {
+		return nil, fmt.Errorf("read parameters file: %w", err)
+	}
+	return payload, nil
 }
 
 func imageFlags() []cli.Flag {

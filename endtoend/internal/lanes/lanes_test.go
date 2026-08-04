@@ -65,6 +65,20 @@ func TestLaneForBackend(t *testing.T) {
 	require.False(t, supported)
 }
 
+func TestLaneSelect(t *testing.T) {
+	single, err := Named("single")
+	require.NoError(t, err)
+
+	selected, err := single.Select([]string{"execution-api", "execution-abi", "execution-api"})
+	require.NoError(t, err)
+	require.Equal(t, []SuiteID{SuiteExecutionABI, SuiteExecutionAPI}, selected.Suites)
+
+	_, err = single.Select([]string{"unknown"})
+	require.ErrorContains(t, err, "unknown E2E suite")
+	_, err = single.Select([]string{"partition"})
+	require.ErrorContains(t, err, "not available in lane")
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)

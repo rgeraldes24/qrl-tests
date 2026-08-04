@@ -65,7 +65,10 @@ func laneCommand(name, usage string, requiresLane bool, action runnerAction) *cl
 func runnerFlags() []cli.Flag {
 	flags := []cli.Flag{
 		&cli.StringFlag{Name: "source-dir", Usage: "go-qrl source checkout", EnvVars: []string{"GO_QRL_SOURCE_DIR"}},
+		&cli.StringFlag{Name: "tests-dir", Usage: "qrl-tests source checkout", Value: ".", EnvVars: []string{"QRL_TESTS_SOURCE_DIR"}},
 		enclaveNameFlag(),
+		parametersFileFlag(),
+		&cli.StringSliceFlag{Name: "suite", Usage: "run only the named suite within the selected lane"},
 		&cli.StringFlag{Name: "report-dir", Usage: "E2E report directory", Value: runner.DefaultReportDir, EnvVars: []string{"E2E_REPORT_DIR"}},
 		&cli.IntFlag{Name: "max-parallel", Usage: "maximum concurrently provisioned E2E lanes", Value: 1, EnvVars: []string{"E2E_MAX_PARALLEL"}},
 		backendFlag(),
@@ -82,11 +85,18 @@ func runnerConfig(command *cli.Context) (runner.Config, error) {
 	if command.Int("max-parallel") < 1 {
 		return runner.Config{}, fmt.Errorf("max-parallel must be at least 1")
 	}
+	parameters, err := parametersFrom(command)
+	if err != nil {
+		return runner.Config{}, err
+	}
 	return runner.Config{
 		SourceDir:    command.String("source-dir"),
+		TestsDir:     command.String("tests-dir"),
 		BaseName:     command.String("enclave-name"),
 		ReportDir:    command.String("report-dir"),
 		Backend:      backend,
+		Parameters:   parameters,
+		Suites:       command.StringSlice("suite"),
 		StartTimeout: command.Duration("start-timeout"),
 		MaxParallel:  command.Int("max-parallel"),
 		Images:       imagesFrom(command),

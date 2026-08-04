@@ -13,23 +13,26 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/lanes"
 	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
-	"github.com/cyyber/qrl-tests/endtoend/internal/sourcecheck"
 )
 
 const DefaultReportDir = "reports"
 
 type Config struct {
 	SourceDir    string
+	TestsDir     string
 	BaseName     string
 	ReportDir    string
 	Backend      devnet.Backend
 	Images       devnet.Images
+	Parameters   []byte
+	Suites       []string
 	StartTimeout time.Duration
 	MaxParallel  int
 }
@@ -43,6 +46,7 @@ type networkManager interface {
 type commandSpec struct {
 	Path   string
 	Args   []string
+	Dir    string
 	Env    []string
 	Stdout io.Writer
 	Stderr io.Writer
@@ -94,6 +98,7 @@ func New(configuration Config, stdout, stderr io.Writer) *Runner {
 func buildBinary(ctx context.Context, sourceDir, packagePath, output string) error {
 	command := exec.CommandContext(ctx, "go", "build", "-o", output, packagePath)
 	command.Dir = sourceDir
+	command.Env = setEnvironment(os.Environ(), "GOWORK", "off")
 	if commandOutput, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("build %s: %w\n%s", packagePath, err, commandOutput)
 	}
@@ -102,6 +107,7 @@ func buildBinary(ctx context.Context, sourceDir, packagePath, output string) err
 
 func execute(ctx context.Context, specification commandSpec) error {
 	command := exec.CommandContext(ctx, specification.Path, specification.Args...)
+	command.Dir = specification.Dir
 	command.Env = specification.Env
 	command.Stdout = specification.Stdout
 	command.Stderr = specification.Stderr
@@ -110,14 +116,69 @@ func execute(ctx context.Context, specification commandSpec) error {
 
 func (runner *Runner) List() error {
 	for _, lane := range lanes.All() {
-		if _, err := fmt.Fprintf(runner.stdout, "%-16s profile=%-16s timeout=%s\n", lane.Name, lane.Profile, lane.Timeout); err != nil {
+		if _, err := fmt.Fprintf(
+			runner.stdout,
+			"%-16s profile=%-16s timeout=%-8s suites=%s\n",
+			lane.Name,
+			lane.Profile,
+			lane.Timeout,
+			suiteIDs(lane.Suites),
+		); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(runner.stdout, "\nRegistered suites:"); err != nil {
+		return err
+	}
+	for _, suite := range lanes.RegisteredSuites() {
+		if _, err := fmt.Fprintf(
+			runner.stdout,
+			"%-24s package=%-52s tools=%-10s requires=%s\n",
+			suite.ID,
+			suite.Package,
+			tools(suite.Tools),
+			capabilities(suite.Requires),
+		); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+func suiteIDs(ids []lanes.SuiteID) string {
+	values := make([]string, len(ids))
+	for index, id := range ids {
+		values[index] = string(id)
+	}
+	return strings.Join(values, ",")
+}
+
+func tools(values []lanes.Tool) string {
+	if len(values) == 0 {
+		return "-"
+	}
+	items := make([]string, len(values))
+	for index, value := range values {
+		items[index] = string(value)
+	}
+	return strings.Join(items, ",")
+}
+
+func capabilities(values []devnet.Capability) string {
+	if len(values) == 0 {
+		return "-"
+	}
+	items := make([]string, len(values))
+	for index, value := range values {
+		items[index] = string(value)
+	}
+	return strings.Join(items, ",")
+}
+
 func (runner *Runner) Test(ctx context.Context, name string) error {
+	if len(runner.configuration.Parameters) != 0 {
+		return errors.New("custom parameters cannot be used with an existing network")
+	}
 	lane, err := runner.supportedLane(name)
 	if err != nil {
 		return err
@@ -134,6 +195,12 @@ func (runner *Runner) Run(ctx context.Context, name string) error {
 }
 
 func (runner *Runner) RunAll(ctx context.Context) error {
+	if len(runner.configuration.Parameters) != 0 {
+		return errors.New("custom parameters cannot be used with run-all")
+	}
+	if len(runner.configuration.Suites) != 0 {
+		return errors.New("suite selection cannot be used with run-all")
+	}
 	selected := make([]lanes.Lane, 0, len(lanes.All()))
 	for _, lane := range lanes.All() {
 		lane, supported := lane.ForBackend(runner.configuration.Backend)
@@ -155,7 +222,7 @@ func (runner *Runner) supportedLane(name string) (lanes.Lane, error) {
 	if !supported {
 		return lanes.Lane{}, fmt.Errorf("lane %s is unsupported by %s backend", lane.Name, runner.configuration.Backend)
 	}
-	return lane, nil
+	return lane.Select(runner.configuration.Suites)
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
@@ -163,11 +230,15 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	if err != nil {
 		return err
 	}
-	if err := sourcecheck.GoQRL(ctx, runner.configuration.SourceDir); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(plan.reportRoot, 0o755); err != nil {
 		return fmt.Errorf("create report directory: %w", err)
+	}
+	workspace, err := prepareWorkspace(plan.reportRoot, plan.testsDir, runner.configuration.SourceDir)
+	if err != nil {
+		return err
+	}
+	for index := range plan.lanes {
+		plan.lanes[index].workspace = workspace
 	}
 	tools, err := runner.buildTools(ctx, plan.reportRoot, plan.tools)
 	if err != nil {

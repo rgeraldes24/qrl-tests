@@ -45,6 +45,9 @@ func TestBuiltInProfiles(t *testing.T) {
 		totalValidators := 0
 		for _, participant := range parameters.Participants {
 			totalValidators += participant.ValidatorCount
+			require.NotNil(t, participant.ELExtraParams)
+			require.NotNil(t, participant.CLExtraParams)
+			require.NotNil(t, participant.VCExtraParams)
 		}
 		require.Equal(t, test.validators, totalValidators)
 		if test.profile == ProfileSync {

@@ -8,8 +8,9 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -20,7 +21,7 @@ const partitionTimeout = 15 * time.Minute
 type liveSuite struct {
 	environment devnet.Environment
 	sessions    []*endtoendlive.Session
-	beacons     []*consensus.Client
+	beacons     []*beacon.Client
 	partition   devnet.NetworkPartition
 }
 
@@ -34,9 +35,8 @@ var _ = ginkgo.Describe(
 		var suite liveSuite
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
+			var err error
 			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			environment := sessions[0].Environment
@@ -95,7 +95,7 @@ var _ = ginkgo.Describe(
 			slotsPerEpoch, err := suite.beacons[0].SpecUint(ctx, "SLOTS_PER_EPOCH")
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			start := suite.heads(ctx)
-			streams := make([]<-chan consensus.Event, len(suite.beacons))
+			streams := make([]<-chan beacon.Event, len(suite.beacons))
 			failures := make([]<-chan error, len(suite.beacons))
 			for index, beacon := range suite.beacons {
 				streams[index], failures[index], err = beacon.Events(ctx, "chain_reorg")

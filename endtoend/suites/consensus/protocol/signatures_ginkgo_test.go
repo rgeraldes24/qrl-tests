@@ -8,8 +8,8 @@ import (
 	"strconv"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
-	consensusverify "github.com/cyyber/qrl-tests/endtoend/internal/consensus/verify"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
@@ -25,13 +25,13 @@ func registerProtocolSignatureChecks(suite *protocolSuite) {
 		votingEpochs, err := suite.beacons[0].SpecUint(ctx, "EPOCHS_PER_EXECUTION_VOTING_PERIOD")
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		votingPeriod := votingEpochs * suite.slotsPerEpoch
-		votes := make(map[uint64]consensus.ExecutionDataVote)
+		votes := make(map[uint64]beacon.ExecutionDataVote)
 		verified := consensusverify.SignatureSummary{}
 		produced := 0
 		for slot := start; slot < end; slot++ {
 			blockID := strconv.FormatUint(slot, 10)
 			block, err := suite.beacons[0].Block(ctx, blockID)
-			if consensus.IsNotFound(err) {
+			if beacon.IsNotFound(err) {
 				continue
 			}
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())

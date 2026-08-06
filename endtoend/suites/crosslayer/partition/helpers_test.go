@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/theQRL/go-qrl/common"
@@ -37,9 +37,9 @@ func (suite *liveSuite) apply(ctx context.Context) error {
 	return suite.partition.Apply(ctx, participants[:middle], participants[middle:])
 }
 
-func (suite *liveSuite) heads(ctx context.Context) []consensus.Head {
+func (suite *liveSuite) heads(ctx context.Context) []beacon.Head {
 	ginkgo.GinkgoHelper()
-	heads := make([]consensus.Head, len(suite.beacons))
+	heads := make([]beacon.Head, len(suite.beacons))
 	for index, beacon := range suite.beacons {
 		head, err := beacon.Head(ctx)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -53,7 +53,7 @@ func (suite *liveSuite) awaitConvergenceAndFinality(ctx context.Context, previou
 	gomega.Eventually(func() error {
 		heads := suite.heads(ctx)
 		minimumHead, maximumHead := heads[0].Slot, heads[0].Slot
-		var expected consensus.Checkpoint
+		var expected beacon.Checkpoint
 		for index, beacon := range suite.beacons {
 			status, err := beacon.Syncing(ctx)
 			if err != nil {

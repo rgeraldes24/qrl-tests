@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/internal/clef"
-	"github.com/cyyber/qrl-tests/internal/fixture"
 	signercore "github.com/theQRL/go-qrl/signer/core"
 )
 
@@ -51,23 +50,23 @@ func run(ctx context.Context, arguments []string) error {
 func automatedUI() *clef.UI {
 	return &clef.UI{
 		ApproveTransaction: func(request *signercore.SignTxRequest) bool {
-			if request.Transaction.Value.ToInt().Cmp(big.NewInt(fixture.RemoteSignerRejectedTransaction)) == 0 {
+			if request.Transaction.Value.ToInt().Cmp(big.NewInt(clef.RemoteSignerRejectedTransaction)) == 0 {
 				return false
 			}
-			if request.Transaction.Value.ToInt().Cmp(big.NewInt(fixture.RemoteSignerDelayedTransaction)) == 0 {
+			if request.Transaction.Value.ToInt().Cmp(big.NewInt(clef.RemoteSignerDelayedTransaction)) == 0 {
 				time.Sleep(3 * time.Second)
 			}
 			return true
 		},
 		ApproveData: func(request *signercore.SignDataRequest) bool {
 			for _, message := range request.Messages {
-				if strings.Contains(fmt.Sprint(message.Value), fixture.RemoteSignerRejectedText) {
+				if strings.Contains(fmt.Sprint(message.Value), clef.RemoteSignerRejectedText) {
 					return false
 				}
 			}
 			return true
 		},
-		Input: func(signercore.UserInputRequest) string { return fixture.RemoteSignerPassword },
+		Input: func(signercore.UserInputRequest) string { return clef.RemoteSignerPassword },
 	}
 }
 
@@ -81,11 +80,11 @@ func clefArgs(ctx context.Context, args []string) ([]string, func(), error) {
 	passwordPath := filepath.Join(dir, "password")
 	seedPath := filepath.Join(dir, "seed")
 	keystorePath := filepath.Join(dir, "keystore")
-	if err := os.WriteFile(passwordPath, []byte(fixture.RemoteSignerPassword), 0o600); err != nil {
+	if err := os.WriteFile(passwordPath, []byte(clef.RemoteSignerPassword), 0o600); err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	if err := os.WriteFile(seedPath, []byte(fixture.RemoteSignerSeed), 0o600); err != nil {
+	if err := os.WriteFile(seedPath, []byte(clef.RemoteSignerSeed), 0o600); err != nil {
 		cleanup()
 		return nil, nil, err
 	}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 )
 
@@ -31,7 +31,7 @@ func stable(
 	sessions []*endtoendlive.Session,
 	targetEpoch uint64,
 ) error {
-	var expected consensus.Checkpoint
+	var expected beacon.Checkpoint
 	for index, session := range sessions {
 		beacon := session.Consensus
 		status, err := beacon.Syncing(ctx)

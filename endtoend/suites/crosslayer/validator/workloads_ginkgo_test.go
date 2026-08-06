@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -66,7 +66,7 @@ func (suite *operationsSuite) runSlashingWorkload(ctx ginkgo.SpecContext) {
 
 func (suite *operationsSuite) submitExit(
 	ctx ginkgo.SpecContext,
-	submitClient *consensus.Client,
+	submitClient *beacon.Client,
 	scanner *operationScanner,
 	key *validatorops.Key,
 	index uint64,
@@ -81,10 +81,10 @@ func (suite *operationsSuite) submitExit(
 	exit, err := validatorops.VoluntaryExit(key, index, head.Slot/suite.chain.SlotsPerEpoch, suite.chain)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(submitClient.Post(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit)).To(gomega.Succeed())
-	slot := scanner.await(ctx, func(operations consensus.BlockOperations) bool {
+	slot := scanner.await(ctx, func(operations beacon.BlockOperations) bool {
 		return slices.Contains(operations.VoluntaryExits, index)
 	})
-	waitValidator(ctx, suite.beacon, index, func(validator consensus.Validator) bool {
+	waitValidator(ctx, suite.beacon, index, func(validator beacon.Validator) bool {
 		return validator.ExitEpoch != ^uint64(0)
 	})
 	return slot
@@ -92,7 +92,7 @@ func (suite *operationsSuite) submitExit(
 
 func (suite *operationsSuite) submitSlashing(
 	ctx ginkgo.SpecContext,
-	submitClient *consensus.Client,
+	submitClient *beacon.Client,
 	scanner *operationScanner,
 	key *validatorops.Key,
 	index uint64,
@@ -119,23 +119,23 @@ func (suite *operationsSuite) submitSlashing(
 	}
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(submitClient.Post(ctx, path, operation)).To(gomega.Succeed())
-	slot := scanner.await(ctx, func(operations consensus.BlockOperations) bool {
+	slot := scanner.await(ctx, func(operations beacon.BlockOperations) bool {
 		indices := operations.AttesterSlashings
 		if proposer {
 			indices = operations.ProposerSlashings
 		}
 		return slices.Contains(indices, index)
 	})
-	waitValidator(ctx, suite.beacon, index, func(validator consensus.Validator) bool { return validator.Slashed })
+	waitValidator(ctx, suite.beacon, index, func(validator beacon.Validator) bool { return validator.Slashed })
 	return slot
 }
 
 type operationScanner struct {
-	beacon   *consensus.Client
+	beacon   *beacon.Client
 	nextSlot uint64
 }
 
-func newOperationScanner(ctx ginkgo.SpecContext, beacon *consensus.Client) *operationScanner {
+func newOperationScanner(ctx ginkgo.SpecContext, beacon *beacon.Client) *operationScanner {
 	ginkgo.GinkgoHelper()
 
 	head, err := beacon.HeadSlot(ctx)
@@ -145,7 +145,7 @@ func newOperationScanner(ctx ginkgo.SpecContext, beacon *consensus.Client) *oper
 
 func (scanner *operationScanner) await(
 	ctx ginkgo.SpecContext,
-	match func(consensus.BlockOperations) bool,
+	match func(beacon.BlockOperations) bool,
 ) uint64 {
 	ginkgo.GinkgoHelper()
 
@@ -155,7 +155,7 @@ func (scanner *operationScanner) await(
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		for slot := scanner.nextSlot; slot <= head; slot++ {
 			operations, err := scanner.beacon.BlockOperations(ctx, strconv.FormatUint(slot, 10))
-			if consensus.IsNotFound(err) {
+			if beacon.IsNotFound(err) {
 				scanner.nextSlot = slot + 1
 				continue
 			}
@@ -173,7 +173,7 @@ func (scanner *operationScanner) await(
 
 func recordOperationProposer(
 	ctx ginkgo.SpecContext,
-	beacon *consensus.Client,
+	beacon *beacon.Client,
 	slot uint64,
 	observed map[string]struct{},
 ) {
@@ -203,7 +203,7 @@ func containsAll(observed, expected map[string]struct{}) bool {
 	return true
 }
 
-func awaitEpoch(ctx ginkgo.SpecContext, beacon *consensus.Client, slotsPerEpoch, epoch uint64) {
+func awaitEpoch(ctx ginkgo.SpecContext, beacon *beacon.Client, slotsPerEpoch, epoch uint64) {
 	ginkgo.GinkgoHelper()
 
 	gomega.Eventually(func() uint64 {
@@ -216,9 +216,9 @@ func awaitEpoch(ctx ginkgo.SpecContext, beacon *consensus.Client, slotsPerEpoch,
 
 func waitValidator(
 	ctx ginkgo.SpecContext,
-	beacon *consensus.Client,
+	beacon *beacon.Client,
 	index uint64,
-	match func(consensus.Validator) bool,
+	match func(beacon.Validator) bool,
 ) {
 	ginkgo.GinkgoHelper()
 

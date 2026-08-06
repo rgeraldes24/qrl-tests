@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with qrl-tests. If not, see <http://www.gnu.org/licenses/>.
 
+//go:build e2e
+
 package abi
 
 import (
@@ -21,7 +23,7 @@ import (
 	"math/big"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/contracts/abifixture"
-	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi"
@@ -43,9 +45,7 @@ type liveSuite struct {
 func setupLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
-	runtime, err := endtoendlive.Load(ctx)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	ginkgo.DeferCleanup(runtime.Close)
+	runtime := testsuite.LoadRuntime()
 	session, err := runtime.PrimaryWithWebSocket(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 

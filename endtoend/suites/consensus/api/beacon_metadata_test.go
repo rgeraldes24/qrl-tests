@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -16,8 +16,8 @@ import (
 
 func registerBeaconMetadata(nodes *[]beaconNode) {
 	ginkgo.It("returns coherent node and configuration metadata", func(ctx ginkgo.SpecContext) {
-		var referenceGenesis consensus.Genesis
-		var referenceDeposit consensus.DepositContract
+		var referenceGenesis beacon.Genesis
+		var referenceDeposit beacon.DepositContract
 		for index, node := range *nodes {
 			gomega.Expect(node.client.Health(ctx)).To(gomega.Succeed())
 

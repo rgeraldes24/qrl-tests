@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -19,7 +20,7 @@ const recoveryTimeout = 10 * time.Minute
 
 type liveSuite struct {
 	primary, secondary *endtoendlive.Session
-	primaryBeacon      *consensus.Client
+	primaryBeacon      *beacon.Client
 	services           *devnet.ServiceController
 	stopped            map[string]bool
 }
@@ -34,9 +35,8 @@ var _ = ginkgo.Describe(
 		var suite *liveSuite
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
+			var err error
 			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			if len(sessions) < 2 {

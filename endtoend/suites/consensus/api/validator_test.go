@@ -6,8 +6,9 @@ import (
 	"strconv"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -21,13 +22,11 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "consensus", "validator-api"),
 	func() {
 		var session *endtoendlive.Session
-		var client *consensus.Client
+		var client *beacon.Client
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			session, err = runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			client = session.Consensus
@@ -145,7 +144,7 @@ var _ = ginkgo.Describe(
 			gomega.Expect(client.PostJSON(ctx, path, request, &standard)).To(gomega.Succeed())
 			legacy, err := client.ValidatorAssignments(ctx, epoch)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			legacyByIndex := make(map[uint64]consensus.ValidatorAssignment, len(legacy))
+			legacyByIndex := make(map[uint64]beacon.ValidatorAssignment, len(legacy))
 			for _, assignment := range legacy {
 				legacyByIndex[assignment.ValidatorIndex] = assignment
 			}

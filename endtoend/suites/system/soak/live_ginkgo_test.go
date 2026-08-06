@@ -14,6 +14,7 @@ import (
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -30,9 +31,8 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "system", "soak", "scenario-full", "mutates-network", "mutates-chain"),
 	func() {
 		ginkgo.It("keeps finalizing through repeated restarts and partitions", func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			defer runtime.Close()
+			runtime := testsuite.LoadRuntime()
+			var err error
 			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			if len(sessions) < 4 {

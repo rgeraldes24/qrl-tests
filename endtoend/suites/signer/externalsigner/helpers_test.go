@@ -11,9 +11,9 @@ import (
 	"math/big"
 	"time"
 
-	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	qrlapi "github.com/cyyber/qrl-tests/endtoend/internal/rpctypes"
-	"github.com/cyyber/qrl-tests/internal/fixture"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
+	"github.com/cyyber/qrl-tests/internal/clef"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
@@ -28,11 +28,10 @@ import (
 func newLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
-	runtime, err := endtoendlive.Load(ctx)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	runtime := testsuite.LoadRuntime()
 	session, err := runtime.Primary(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	wallet, err := qrlwallet.RestoreFromSeedHex(fixture.RemoteSignerSeed)
+	wallet, err := qrlwallet.RestoreFromSeedHex(clef.RemoteSignerSeed)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	account := common.Address(wallet.GetAddress())
 

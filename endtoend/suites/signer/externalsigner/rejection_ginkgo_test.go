@@ -11,7 +11,7 @@ import (
 	"time"
 
 	qrlapi "github.com/cyyber/qrl-tests/endtoend/internal/rpctypes"
-	"github.com/cyyber/qrl-tests/internal/fixture"
+	"github.com/cyyber/qrl-tests/internal/clef"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
@@ -27,7 +27,7 @@ func registerSigningRejectionSpec() {
 			&signature,
 			"qrl_sign",
 			externalSignerSuite.account,
-			hexutil.Bytes(fixture.RemoteSignerRejectedText),
+			hexutil.Bytes(clef.RemoteSignerRejectedText),
 		)
 		gomega.Expect(err).To(gomega.MatchError(gomega.ContainSubstring("request denied")))
 	}, ginkgo.SpecTimeout(liveSpecTimeout))
@@ -39,7 +39,7 @@ func registerTransactionRejectionSpec() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		args := externalSignerSuite.transactionArgs(ctx)
-		args.Value = (*hexutil.Big)(big.NewInt(fixture.RemoteSignerRejectedTransaction))
+		args.Value = (*hexutil.Big)(big.NewInt(clef.RemoteSignerRejectedTransaction))
 
 		var signed qrlapi.SignTransactionResult
 		err = externalSignerSuite.session.Execution.Client().CallContext(ctx, &signed, "qrl_signTransaction", args)
@@ -59,7 +59,7 @@ func registerCancellationSpec() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		args := externalSignerSuite.transactionArgs(ctx)
-		args.Value = (*hexutil.Big)(big.NewInt(fixture.RemoteSignerDelayedTransaction))
+		args.Value = (*hexutil.Big)(big.NewInt(clef.RemoteSignerDelayedTransaction))
 		requestCtx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 

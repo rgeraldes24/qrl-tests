@@ -35,9 +35,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			session, err = runtime.PrimaryWithWebSocket(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			rpcURL = session.Participant.Execution.RPCURL

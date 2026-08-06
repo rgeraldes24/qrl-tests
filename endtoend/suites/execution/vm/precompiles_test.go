@@ -14,6 +14,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/common/hexutil"
@@ -57,9 +58,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			session, err = runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			vectors = precompileVectors()

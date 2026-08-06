@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensusverify "github.com/cyyber/qrl-tests/endtoend/internal/consensus/verify"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"

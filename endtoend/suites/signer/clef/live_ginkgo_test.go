@@ -42,9 +42,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			network, err = runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 

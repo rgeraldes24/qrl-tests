@@ -1,6 +1,8 @@
 // Copyright 2026 The qrl-tests Authors
 // This file is part of qrl-tests.
 
+//go:build e2e
+
 package abi
 
 import (

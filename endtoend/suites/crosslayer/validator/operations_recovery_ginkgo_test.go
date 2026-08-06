@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
-	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
-	consensusverify "github.com/cyyber/qrl-tests/endtoend/internal/consensus/verify"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensusverify"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
+	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -83,7 +83,7 @@ func (suite *operationsSuite) runMassDepositChurn(ctx ginkgo.SpecContext) {
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		for slot := lastSlot + 1; slot <= head; slot++ {
 			graffiti, err := suite.beacon.BlockGraffitiText(ctx, strconv.FormatUint(slot, 10))
-			if consensus.IsNotFound(err) {
+			if beacon.IsNotFound(err) {
 				continue
 			}
 			g.Expect(err).NotTo(gomega.HaveOccurred())
@@ -112,7 +112,7 @@ func (suite *operationsSuite) maximumBalance(ctx ginkgo.SpecContext) uint64 {
 	return maximum
 }
 
-func (suite *operationsSuite) awaitFinalityStall(ctx ginkgo.SpecContext) consensus.Checkpoint {
+func (suite *operationsSuite) awaitFinalityStall(ctx ginkgo.SpecContext) beacon.Checkpoint {
 	ginkgo.GinkgoHelper()
 
 	last, err := suite.beacon.FinalizedCheckpoint(ctx)

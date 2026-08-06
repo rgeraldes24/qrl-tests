@@ -5,8 +5,9 @@ package protocol_test
 import (
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -21,7 +22,7 @@ const (
 
 type protocolSuite struct {
 	sessions      []*endtoendlive.Session
-	beacons       []*consensus.Client
+	beacons       []*beacon.Client
 	slotsPerEpoch uint64
 }
 
@@ -35,9 +36,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			suite.sessions, err = runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			for _, session := range suite.sessions {

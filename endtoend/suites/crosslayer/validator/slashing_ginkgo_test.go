@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensuscontext "github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
-	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
+	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -26,23 +27,21 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "validator", "slashing", "mutates-chain", "scenario"),
 	func() {
 		var session *endtoendlive.Session
-		var beacon *consensus.Client
+		var beaconClient *beacon.Client
 		var chain consensuscontext.Context
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			session, err = runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			beacon = session.Consensus
-			chain, err = consensuscontext.Load(ctx, beacon)
+			beaconClient = session.Consensus
+			chain, err = consensuscontext.Load(ctx, beaconClient)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		})
 
 		ginkgo.It("includes a proposer slashing and marks the validator slashed", func(ctx ginkgo.SpecContext) {
-			assertSlashing(ctx, beacon, chain, 62, "/qrl/v1/beacon/pool/proposer_slashings", true)
+			assertSlashing(ctx, beaconClient, chain, 62, "/qrl/v1/beacon/pool/proposer_slashings", true)
 		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
 			"scenario:dev:validator-proposer-slashing-test",
 			"scenario:dev:validator-slashing-single",
@@ -53,7 +52,7 @@ var _ = ginkgo.Describe(
 		))
 
 		ginkgo.It("includes an attester slashing and marks the validator slashed", func(ctx ginkgo.SpecContext) {
-			assertSlashing(ctx, beacon, chain, 63, "/qrl/v1/beacon/pool/attester_slashings", false)
+			assertSlashing(ctx, beaconClient, chain, 63, "/qrl/v1/beacon/pool/attester_slashings", false)
 		}, ginkgo.SpecTimeout(validatorTimeout), ginkgo.Label(
 			"scenario:dev:validator-proposer-slashing-test",
 			"scenario:stable:kurtosis:validator-slashing-test",
@@ -64,38 +63,38 @@ var _ = ginkgo.Describe(
 	},
 )
 
-func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain consensuscontext.Context, index uint64, path string, proposer bool) {
+func assertSlashing(ctx ginkgo.SpecContext, beaconClient *beacon.Client, chain consensuscontext.Context, index uint64, path string, proposer bool) {
 	key, err := validatorops.GenesisKey(index)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	validator, err := beacon.Validator(ctx, strconv.FormatUint(index, 10))
+	validator, err := beaconClient.Validator(ctx, strconv.FormatUint(index, 10))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	gomega.Expect(validator.Slashed).To(gomega.BeFalse())
 	gomega.Expect(strings.EqualFold(validator.PublicKey, hexutil.Encode(key.PublicKey()))).To(gomega.BeTrue())
 	initialBalance := validator.Balance
 	initialWithdrawableEpoch := validator.WithdrawableEpoch
 
-	head, err := beacon.Head(ctx)
+	head, err := beaconClient.Head(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	var operation any
 	if proposer {
 		operation, err = validatorops.ProposerSlashing(key, index, head.Slot, chain)
 	} else {
-		finalized, finalityErr := beacon.FinalizedEpoch(ctx)
+		finalized, finalityErr := beaconClient.FinalizedEpoch(ctx)
 		gomega.Expect(finalityErr).NotTo(gomega.HaveOccurred())
 		operation, err = validatorops.AttesterSlashing(key, index, head.Slot, finalized, chain)
 	}
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(beacon.Post(ctx, path, operation)).To(gomega.Succeed())
+	gomega.Expect(beaconClient.Post(ctx, path, operation)).To(gomega.Succeed())
 
 	lastSlot := head.Slot
 	included := false
 	gomega.Eventually(func(g gomega.Gomega) {
-		current, err := beacon.HeadSlot(ctx)
+		current, err := beaconClient.HeadSlot(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		scannedThrough := lastSlot
 		for slot := lastSlot + 1; slot <= current; slot++ {
-			operations, err := beacon.BlockOperations(ctx, strconv.FormatUint(slot, 10))
-			if consensus.IsNotFound(err) {
+			operations, err := beaconClient.BlockOperations(ctx, strconv.FormatUint(slot, 10))
+			if beacon.IsNotFound(err) {
 				scannedThrough = slot
 				continue
 			}
@@ -111,7 +110,7 @@ func assertSlashing(ctx ginkgo.SpecContext, beacon *consensus.Client, chain cons
 			scannedThrough = slot
 		}
 		lastSlot = scannedThrough
-		validator, err := beacon.Validator(ctx, strconv.FormatUint(index, 10))
+		validator, err := beaconClient.Validator(ctx, strconv.FormatUint(index, 10))
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(included).To(gomega.BeTrue())
 		g.Expect(validator.Slashed).To(gomega.BeTrue())

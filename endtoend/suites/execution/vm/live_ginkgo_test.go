@@ -10,6 +10,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	"github.com/theQRL/go-qrl/common"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -36,9 +37,8 @@ var _ = ginkgo.Describe(
 	),
 	func() {
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
+			var err error
 			session, err := runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			vmSuite = &liveSuite{session: session, target: patternedAddress(0xf0)}

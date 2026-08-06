@@ -12,9 +12,9 @@ import (
 	"sync"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	"github.com/cyyber/qrl-tests/endtoend/internal/runenv"
-	"github.com/cyyber/qrl-tests/internal/fixture"
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
@@ -39,41 +39,27 @@ type Session struct {
 	Participant        devnet.Participant
 	Execution          *qrlclient.Client
 	ExecutionWebSocket *qrlclient.Client
-	Consensus          *consensus.Client
+	Consensus          *beacon.Client
 
 	closeOnce sync.Once
 }
 
 // Load resolves the configured test environment and restores the disposable
 // development wallet once for the suite.
-func Load(ctx context.Context) (*Runtime, error) {
+func Load() (*Runtime, error) {
 	manifest, err := runenv.Required()
 	if err != nil {
 		return nil, err
 	}
-	wallet, err := fixture.DevelopmentWallet()
-	if err != nil {
-		return nil, fmt.Errorf("restore development wallet: %w", err)
-	}
-	primary, err := manifest.Environment.Primary()
+	wallet, err := devwallet.Restore()
 	if err != nil {
 		return nil, err
-	}
-	client, err := qrlclient.DialContext(ctx, primary.Execution.RPCURL)
-	if err != nil {
-		return nil, fmt.Errorf("open primary HTTP RPC: %w", err)
-	}
-	chainID, err := client.ChainID(ctx)
-	client.Close()
-	if err != nil {
-		return nil, fmt.Errorf("read chain ID: %w", err)
 	}
 	runtime := &Runtime{
 		Environment: manifest.Environment,
 		Profile:     manifest.Profile,
 		Wallet:      wallet,
 		Address:     common.Address(wallet.GetAddress()),
-		ChainID:     chainID,
 		manager:     devnet.NewManager(),
 		tools:       manifest.Tools,
 	}
@@ -117,12 +103,12 @@ func (runtime *Runtime) OpenParticipant(ctx context.Context, index int) (*Sessio
 	return runtime.open(ctx, participant, false)
 }
 
-func (runtime *Runtime) ConsensusClient(index int) (*consensus.Client, error) {
+func (runtime *Runtime) ConsensusClient(index int) (*beacon.Client, error) {
 	participant, err := runtime.participant(index)
 	if err != nil {
 		return nil, err
 	}
-	return consensus.New(participant.Consensus.URL)
+	return beacon.New(participant.Consensus.URL)
 }
 
 // RefreshEnvironment reloads service endpoints after a service restart.
@@ -163,12 +149,19 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 	if err != nil {
 		return nil, fmt.Errorf("open participant %d HTTP RPC: %w", participant.Index, err)
 	}
-	beacon, err := consensus.New(participant.Consensus.URL)
+	if runtime.ChainID == nil {
+		runtime.ChainID, err = client.ChainID(ctx)
+		if err != nil {
+			client.Close()
+			return nil, fmt.Errorf("read participant %d chain ID: %w", participant.Index, err)
+		}
+	}
+	beaconClient, err := beacon.New(participant.Consensus.URL)
 	if err != nil {
 		client.Close()
 		return nil, fmt.Errorf("open participant %d consensus client: %w", participant.Index, err)
 	}
-	session := &Session{Runtime: runtime, Participant: participant, Execution: client, Consensus: beacon}
+	session := &Session{Runtime: runtime, Participant: participant, Execution: client, Consensus: beaconClient}
 	if withWebSocket {
 		session.ExecutionWebSocket, err = qrlclient.DialContext(ctx, participant.Execution.WebSocketURL)
 		if err != nil {

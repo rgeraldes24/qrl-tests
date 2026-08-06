@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
-	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
+	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -57,7 +57,7 @@ func (suite *operationsSuite) runLifecycleMatrix(ctx ginkgo.SpecContext) {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 
-	validators := make([]consensus.Validator, len(publicKeys))
+	validators := make([]beacon.Validator, len(publicKeys))
 	gomega.Eventually(func(g gomega.Gomega) {
 		for index, publicKey := range publicKeys {
 			validator, err := suite.beacon.Validator(ctx, publicKey)
@@ -75,7 +75,7 @@ func (suite *operationsSuite) runLifecycleMatrix(ctx ginkgo.SpecContext) {
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	balanceAfterTopUp, err := suite.primary.Execution.BalanceAt(ctx, suite.primary.Address, nil)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	partialSlot := partialScanner.await(ctx, func(operations consensus.BlockOperations) bool {
+	partialSlot := partialScanner.await(ctx, func(operations beacon.BlockOperations) bool {
 		for _, withdrawal := range operations.Withdrawals {
 			if withdrawal.ValidatorIndex == validators[partialValidator].Index {
 				expected := "0x" + suite.primary.Address.Hex()[1:]
@@ -135,7 +135,7 @@ func (suite *operationsSuite) runLifecycleMatrix(ctx ginkgo.SpecContext) {
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		for slot := lastSlot + 1; slot <= current; slot++ {
 			operations, err := suite.beacon.BlockOperations(ctx, strconv.FormatUint(slot, 10))
-			if consensus.IsNotFound(err) {
+			if beacon.IsNotFound(err) {
 				continue
 			}
 			g.Expect(err).NotTo(gomega.HaveOccurred())

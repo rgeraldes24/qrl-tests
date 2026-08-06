@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/cyyber/qrl-tests/internal/fixture"
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"github.com/stretchr/testify/require"
 	qrl "github.com/theQRL/go-qrl"
 	"github.com/theQRL/go-qrl/common"
@@ -63,7 +63,7 @@ func TestSendAndWait(t *testing.T) {
 }
 
 func TestTransactionSigner(t *testing.T) {
-	wallet, err := fixture.DevelopmentWallet()
+	wallet, err := devwallet.Restore()
 	require.NoError(t, err)
 	client := new(transactionClient)
 	signer := TransactionSigner{

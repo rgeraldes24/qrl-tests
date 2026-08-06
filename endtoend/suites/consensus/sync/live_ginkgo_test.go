@@ -13,8 +13,9 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -30,13 +31,12 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "consensus", "sync", "mutates-network", "profile-sync"),
 	func() {
 		var primary, secondary *endtoendlive.Session
-		var primaryBeacon *consensus.Client
+		var primaryBeacon *beacon.Client
 		var services *devnet.ServiceController
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
+			var err error
 			if runtime.Profile != devnet.ProfileSync {
 				ginkgo.Skip("fresh sync and doppelganger coverage requires the sync profile")
 			}

@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensuscontext "github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
-	validatorops "github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
+	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 	"github.com/theQRL/go-qrl/common/hexutil"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
@@ -26,12 +27,12 @@ const (
 
 type liveSuite struct {
 	session   *endtoendlive.Session
-	beacon    *consensus.Client
+	beacon    *beacon.Client
 	chain     consensuscontext.Context
 	depositor *validatorops.Depositor
 	key       *validatorops.Key
 	publicKey string
-	validator consensus.Validator
+	validator beacon.Validator
 }
 
 var _ = ginkgo.Describe(
@@ -44,9 +45,7 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			suite.session, err = runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			suite.beacon = suite.session.Consensus
@@ -141,7 +140,7 @@ var _ = ginkgo.Describe(
 				scannedThrough := lastSlot
 				for slot := lastSlot + 1; slot <= current; slot++ {
 					operations, err := suite.beacon.BlockOperations(ctx, strconv.FormatUint(slot, 10))
-					if consensus.IsNotFound(err) {
+					if beacon.IsNotFound(err) {
 						scannedThrough = slot
 						continue
 					}

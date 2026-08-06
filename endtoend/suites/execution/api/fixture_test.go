@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
-	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
@@ -44,9 +44,7 @@ type liveFixture struct {
 func setupLiveSuite(ctx context.Context) *liveSuite {
 	ginkgo.GinkgoHelper()
 
-	runtime, err := endtoendlive.Load(ctx)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	ginkgo.DeferCleanup(runtime.Close)
+	runtime := testsuite.LoadRuntime()
 	session, err := runtime.PrimaryWithWebSocket(ctx)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 

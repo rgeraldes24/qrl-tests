@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	engineapi "github.com/cyyber/qrl-tests/endtoend/internal/clients/engine"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 	protocolengine "github.com/theQRL/go-qrl/beacon/engine"
 	"github.com/theQRL/go-qrl/common"
 	"github.com/theQRL/go-qrl/core/types"
@@ -29,14 +30,12 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "engine", "cross-layer", "scenario"),
 	func() {
 		var session *endtoendlive.Session
-		var beacon *consensus.Client
+		var beacon *beacon.Client
 		var engine *engineapi.Client
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			session, err = runtime.Primary(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			beacon = session.Consensus

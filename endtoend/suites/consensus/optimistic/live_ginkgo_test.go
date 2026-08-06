@@ -8,7 +8,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -22,9 +22,8 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "consensus", "optimistic", "mutates-network", "profile-optimistic"),
 	func() {
 		ginkgo.It("marks unvalidated blocks optimistic and validates them after execution recovery", func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			defer runtime.Close()
+			runtime := testsuite.LoadRuntime()
+			var err error
 			if runtime.Profile != devnet.ProfileOptimistic {
 				ginkgo.Skip("optimistic-sync coverage requires the optimistic profile")
 			}

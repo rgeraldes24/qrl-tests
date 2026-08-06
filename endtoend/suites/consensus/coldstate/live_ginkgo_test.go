@@ -8,7 +8,7 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -22,9 +22,7 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "consensus", "cold-state", "profile-cold"),
 	func() {
 		ginkgo.It("retrieves complete genesis-era assignments after archival", func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			defer runtime.Close()
+			runtime := testsuite.LoadRuntime()
 			if runtime.Profile != devnet.ProfileCold {
 				ginkgo.Skip("cold-state coverage requires the cold profile")
 			}

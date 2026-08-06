@@ -7,6 +7,7 @@ package testsuite
 import (
 	"testing"
 
+	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
@@ -14,4 +15,13 @@ import (
 func Run(t *testing.T, name string) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, name)
+}
+
+func LoadRuntime() *endtoendlive.Runtime {
+	ginkgo.GinkgoHelper()
+
+	runtime, err := endtoendlive.Load()
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	ginkgo.DeferCleanup(runtime.Close)
+	return runtime
 }

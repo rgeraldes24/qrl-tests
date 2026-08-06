@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/chaincontext"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/validator"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
+	"github.com/cyyber/qrl-tests/endtoend/internal/consensuscontext"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
+	"github.com/cyyber/qrl-tests/endtoend/internal/validatorops"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -28,9 +29,9 @@ const (
 
 type operationsSuite struct {
 	sessions          []*endtoendlive.Session
-	beacons           []*consensus.Client
+	beacons           []*beacon.Client
 	primary           *endtoendlive.Session
-	beacon            *consensus.Client
+	beacon            *beacon.Client
 	chain             consensuscontext.Context
 	depositor         *validatorops.Depositor
 	expectedProposers map[string]struct{}
@@ -49,9 +50,7 @@ var _ = ginkgo.Describe(
 	func() {
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			var err error
-			runtime, loadErr := endtoendlive.Load(ctx)
-			gomega.Expect(loadErr).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
 			validatorOperations.sessions, err = runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(validatorOperations.sessions).To(gomega.HaveLen(5))

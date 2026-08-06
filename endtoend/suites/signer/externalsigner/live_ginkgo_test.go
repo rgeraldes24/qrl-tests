@@ -36,7 +36,6 @@ var _ = ginkgo.Describe(
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			externalSignerSuite = newLiveSuite(ctx)
 			gomega.Expect(externalSignerSuite).NotTo(gomega.BeNil())
-			ginkgo.DeferCleanup(externalSignerSuite.session.Runtime.Close)
 
 			var accounts []common.Address
 			err := externalSignerSuite.session.Execution.Client().CallContext(ctx, &accounts, "qrl_accounts")

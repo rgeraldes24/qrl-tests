@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -82,7 +82,7 @@ func (suite *liveSuite) observeCanonicalHistory(ctx ginkgo.SpecContext, slotCoun
 			distinct := make(map[string]struct{})
 			for _, current := range suite.nodes {
 				header, err := current.consensus.Header(ctx, fmt.Sprint(nextSlot))
-				if consensus.IsNotFound(err) {
+				if beacon.IsNotFound(err) {
 					continue
 				}
 				g.Expect(err).NotTo(gomega.HaveOccurred())

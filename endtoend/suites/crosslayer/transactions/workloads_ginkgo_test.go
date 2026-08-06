@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/cyyber/qrl-tests/endtoend/internal/behavior"
-	consensus "github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	"github.com/cyyber/qrl-tests/endtoend/internal/execfixture"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
 	"github.com/cyyber/qrl-tests/endtoend/internal/stability"
@@ -23,8 +23,8 @@ func registerTransactionWorkloads(sessions *[]*endtoendlive.Session) {
 	ginkgo.It("runs the complete 1000-transaction calldata workload", func(ctx ginkgo.SpecContext) {
 		nodes := *sessions
 		session := nodes[0]
-		beacon := session.Consensus
-		startFinalized, err := beacon.FinalizedEpoch(ctx)
+		beaconClient := session.Consensus
+		startFinalized, err := beaconClient.FinalizedEpoch(ctx)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		data := make([]byte, fullCalldataSize)
@@ -76,8 +76,8 @@ func registerTransactionWorkloads(sessions *[]*endtoendlive.Session) {
 
 	ginkgo.It("sustains ten transactions per block through every client and proposer", func(ctx ginkgo.SpecContext) {
 		nodes := *sessions
-		beacon := nodes[0].Consensus
-		startFinalized, err := beacon.FinalizedEpoch(ctx)
+		beaconClient := nodes[0].Consensus
+		startFinalized, err := beaconClient.FinalizedEpoch(ctx)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		expectedProposers := make(map[string]struct{}, len(nodes))
 		for _, session := range nodes {
@@ -87,7 +87,7 @@ func registerTransactionWorkloads(sessions *[]*endtoendlive.Session) {
 		}
 		observedProposers := make(map[string]struct{}, len(expectedProposers))
 		usedClients := make(map[int]struct{}, len(nodes))
-		lastSlot, err := beacon.HeadSlot(ctx)
+		lastSlot, err := beaconClient.HeadSlot(ctx)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		for batch := 0; batch < 64 && len(observedProposers) < len(expectedProposers); batch++ {
@@ -117,18 +117,18 @@ func registerTransactionWorkloads(sessions *[]*endtoendlive.Session) {
 				blocks[receipt.BlockNumber.Uint64()]++
 			}
 
-			currentSlot, err := beacon.HeadSlot(ctx)
+			currentSlot, err := beaconClient.HeadSlot(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			for slot := lastSlot + 1; slot <= currentSlot; slot++ {
-				payload, err := beacon.BlockExecutionPayload(ctx, strconv.FormatUint(slot, 10))
-				if consensus.IsNotFound(err) {
+				payload, err := beaconClient.BlockExecutionPayload(ctx, strconv.FormatUint(slot, 10))
+				if beacon.IsNotFound(err) {
 					continue
 				}
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				if blocks[payload.BlockNumber] != fullTransactionsPerBlock {
 					continue
 				}
-				graffiti, err := beacon.BlockGraffitiText(ctx, strconv.FormatUint(slot, 10))
+				graffiti, err := beaconClient.BlockGraffitiText(ctx, strconv.FormatUint(slot, 10))
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				observedProposers[graffiti] = struct{}{}
 			}

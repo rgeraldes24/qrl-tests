@@ -5,8 +5,9 @@ package network
 import (
 	"time"
 
-	"github.com/cyyber/qrl-tests/endtoend/internal/consensus/client"
+	"github.com/cyyber/qrl-tests/endtoend/internal/clients/beacon"
 	endtoendlive "github.com/cyyber/qrl-tests/endtoend/internal/live"
+	"github.com/cyyber/qrl-tests/endtoend/internal/testsuite"
 
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -21,7 +22,7 @@ const (
 
 type node struct {
 	session   *endtoendlive.Session
-	consensus *consensus.Client
+	consensus *beacon.Client
 }
 
 type liveSuite struct {
@@ -38,9 +39,8 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "network", "scenario"),
 	func() {
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
-			runtime, err := endtoendlive.Load(ctx)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			ginkgo.DeferCleanup(runtime.Close)
+			runtime := testsuite.LoadRuntime()
+			var err error
 			sessions, err := runtime.OpenAll(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			networkSuite = new(liveSuite)

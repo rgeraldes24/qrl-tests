@@ -1,0 +1,40 @@
+# One-time migration: delete every package version outside the current
+# allowlist — architecture-suffixed tags, per-architecture build caches, and
+# the historical seed — which removes the pre-provenance-fix multi-manifest
+# graphs whole. Afterwards the registry holds single-manifest versions only,
+# the invariant the newest-window retention policy relies on.
+name: ghcr-graph-cleanup
+
+on:
+  push:
+    branches: [ghcr-graph-cleanup]
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - go-qrl
+          - go-qrl-clef
+          - qrysm-beacon
+          - qrysm-validator
+          - qrl-genesis-generator
+    steps:
+      - name: Delete versions outside the allowlist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE: ${{ matrix.package }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          gh api --paginate "/users/${OWNER}/packages/container/${PACKAGE}/versions?per_page=100" \
+            --jq '.[] | {id, tags: .metadata.container.tags}' \
+            | jq -r 'select((.tags | map(test("-(arm64|amd64)$") or startswith("buildcache-") or . == "vm64-seed") | any) | not) | .id' \
+            | while read -r id; do
+                echo "deleting ${PACKAGE} version ${id}"
+                gh api -X DELETE "/users/${OWNER}/packages/container/${PACKAGE}/versions/${id}"
+              done

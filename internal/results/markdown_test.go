@@ -64,23 +64,26 @@ func TestMarkdownFailedSuiteDetails(t *testing.T) {
 			Name:  "execution",
 			Class: ClassAssertion,
 			Error: "exit status 1",
-			suites: []suiteSummary{{
-				Name:  "ABI E2E suite",
-				Class: ClassAssertion,
-				Counts: Counts{
-					Specs:  2,
-					Passed: 1,
-					Failed: 1,
+			suites: []suiteSummary{
+				{Name: "API E2E suite", Class: ClassPassed, Counts: Counts{Specs: 28, Passed: 28}},
+				{
+					Name:  "ABI E2E suite",
+					Class: ClassAssertion,
+					Counts: Counts{
+						Specs:  2,
+						Passed: 1,
+						Failed: 1,
+					},
+					Failures: []Failure{{
+						Spec:     "ABI decodes events",
+						State:    "failed",
+						Message:  "expected 1,\ngot 2",
+						Location: "calls_test.go:12",
+					}},
+					SuiteFailures:   []string{"suite cleanup failed"},
+					UnexpectedSkips: []string{"ABI encodes arrays"},
 				},
-				Failures: []Failure{{
-					Spec:     "ABI decodes events",
-					State:    "failed",
-					Message:  "expected 1,\ngot 2",
-					Location: "calls_test.go:12",
-				}},
-				SuiteFailures:   []string{"suite cleanup failed"},
-				UnexpectedSkips: []string{"ABI encodes arrays"},
-			}},
+			},
 		}},
 	}
 
@@ -91,6 +94,7 @@ func TestMarkdownFailedSuiteDetails(t *testing.T) {
 		"",
 		"| Suite | Result |",
 		"|---------|--------:|",
+		"| API E2E suite | 28/28 |",
 		"| ABI E2E suite | 1/2 failed |",
 		"",
 		"#### ABI E2E suite failures",
@@ -101,7 +105,17 @@ func TestMarkdownFailedSuiteDetails(t *testing.T) {
 		"- **suite** suite cleanup failed",
 		"- **skipped** `ABI encodes arrays`",
 	}, "\n")
-	require.Equal(t, want, summary.markdown())
+	got := summary.markdown()
+	require.Equal(t, want, got)
+
+	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
+		file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		require.NoError(t, err)
+		defer file.Close()
+
+		_, err = file.WriteString(got)
+		require.NoError(t, err)
+	}
 }
 
 func TestMarkdownInfrastructureFailureWithoutSuites(t *testing.T) {

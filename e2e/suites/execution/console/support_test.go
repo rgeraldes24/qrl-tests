@@ -365,27 +365,15 @@ func runSuiteWithEngine(
 	rpcURL string,
 	name string,
 	engine consoleContainerEngine,
-) (result error) {
-	containerID, err := engine.create(ctx, consoleContainerSpec{
+) error {
+	return runScenarioWithEngine(ctx, jsPath, consoleContainerSpec{
 		image:    image,
 		endpoint: rpcURL,
 		scenario: name,
-	})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		result = errors.Join(result, removeConsoleContainer(engine, containerID, name))
-	}()
-	if err := engine.copyFixtures(ctx, containerID, jsPath); err != nil {
-		return fmt.Errorf("copy console suite %s fixtures: %w", name, err)
-	}
+	}, engine, runSuiteProcess)
+}
 
-	process, err := engine.start(ctx, containerID, false)
-	if err != nil {
-		return fmt.Errorf("start console suite %s: %w", name, err)
-	}
-	defer process.close()
+func runSuiteProcess(ctx context.Context, process consoleContainerProcess, name string) error {
 	var output synchronizedBuffer
 	outputDone := make(chan error, 1)
 	go func() {
@@ -510,29 +498,39 @@ func runWatchedSuiteWithEngine(
 	webSocketURL string,
 	name string,
 	engine consoleContainerEngine,
-) (result error) {
-	containerID, err := engine.create(ctx, consoleContainerSpec{
+) error {
+	return runScenarioWithEngine(ctx, jsPath, consoleContainerSpec{
 		image:       image,
 		endpoint:    webSocketURL,
 		scenario:    name,
 		interactive: true,
-	})
+	}, engine, runWatchedProcess)
+}
+
+func runScenarioWithEngine(
+	ctx context.Context,
+	jsPath string,
+	spec consoleContainerSpec,
+	engine consoleContainerEngine,
+	run func(context.Context, consoleContainerProcess, string) error,
+) (result error) {
+	containerID, err := engine.create(ctx, spec)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		result = errors.Join(result, removeConsoleContainer(engine, containerID, name))
+		result = errors.Join(result, removeConsoleContainer(engine, containerID, spec.scenario))
 	}()
 	if err := engine.copyFixtures(ctx, containerID, jsPath); err != nil {
-		return fmt.Errorf("copy console suite %s fixtures: %w", name, err)
+		return fmt.Errorf("copy console suite %s fixtures: %w", spec.scenario, err)
 	}
 
-	process, err := engine.start(ctx, containerID, true)
+	process, err := engine.start(ctx, containerID, spec.interactive)
 	if err != nil {
-		return fmt.Errorf("start console suite %s: %w", name, err)
+		return fmt.Errorf("start console suite %s: %w", spec.scenario, err)
 	}
 	defer process.close()
-	return runWatchedProcess(ctx, process, name)
+	return run(ctx, process, spec.scenario)
 }
 
 func runWatchedProcess(ctx context.Context, process consoleContainerProcess, name string) error {

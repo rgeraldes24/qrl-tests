@@ -103,19 +103,11 @@ func (manifest Manifest) Write(path string) error {
 
 type commandFunc func(context.Context, string, ...string) (string, error)
 
-type dockerVersionClient interface {
-	ServerVersion(
-		context.Context,
-		dockerclient.ServerVersionOptions,
-	) (dockerclient.ServerVersionResult, error)
-	Close() error
-}
-
 type dependencies struct {
-	getenv          func(string) string
-	probe           commandFunc
-	newDockerClient func() (dockerVersionClient, error)
-	now             func() time.Time
+	getenv        func(string) string
+	probe         commandFunc
+	dockerVersion func(context.Context) (string, error)
+	now           func() time.Time
 }
 
 // Enrich adds source, tool, and CI metadata to a starting manifest.
@@ -123,12 +115,10 @@ type dependencies struct {
 // failing the run the manifest is meant to explain.
 func Enrich(ctx context.Context, testsDir string, manifest Manifest) Manifest {
 	return enrich(ctx, testsDir, manifest, dependencies{
-		getenv: os.Getenv,
-		probe:  probeCommand,
-		newDockerClient: func() (dockerVersionClient, error) {
-			return dockerapi.New()
-		},
-		now: time.Now,
+		getenv:        os.Getenv,
+		probe:         probeCommand,
+		dockerVersion: queryDockerVersion,
+		now:           time.Now,
 	})
 }
 
@@ -143,7 +133,7 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	}
 	manifest.Versions = Versions{
 		Go:       runtime.Version(),
-		Docker:   dockerVersion(ctx, deps.newDockerClient),
+		Docker:   dockerVersion(ctx, deps.dockerVersion),
 		Kurtosis: kurtosisVersion(ctx, deps.probe),
 	}
 	manifest.GitHub = GitHub{
@@ -157,20 +147,28 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	return manifest
 }
 
-func dockerVersion(ctx context.Context, newClient func() (dockerVersionClient, error)) string {
-	client, err := newClient()
+func dockerVersion(ctx context.Context, probe func(context.Context) (string, error)) string {
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	version, err := probe(probeCtx)
 	if err != nil {
 		return ""
+	}
+	return strings.TrimSpace(version)
+}
+
+func queryDockerVersion(ctx context.Context) (string, error) {
+	client, err := dockerapi.New()
+	if err != nil {
+		return "", err
 	}
 	defer func() { _ = client.Close() }()
 
-	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
-	defer cancel()
-	version, err := client.ServerVersion(probeCtx, dockerclient.ServerVersionOptions{})
+	result, err := client.ServerVersion(ctx, dockerclient.ServerVersionOptions{})
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return strings.TrimSpace(version.Version)
+	return result.Version, nil
 }
 
 func kurtosisVersion(ctx context.Context, command commandFunc) string {

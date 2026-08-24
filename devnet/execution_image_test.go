@@ -11,21 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type containerListFunc func(
-	context.Context,
-	dockerclient.ContainerListOptions,
-) (dockerclient.ContainerListResult, error)
-
-func (list containerListFunc) ContainerList(
-	ctx context.Context,
-	options dockerclient.ContainerListOptions,
-) (dockerclient.ContainerListResult, error) {
-	return list(ctx, options)
-}
-
 func TestResolveExecutionImageUsesPrimaryServiceContainer(t *testing.T) {
 	imageID := "sha256:" + strings.Repeat("ab", 32)
-	client := containerListFunc(func(
+	listContainers := func(
 		_ context.Context,
 		options dockerclient.ContainerListOptions,
 	) (dockerclient.ContainerListResult, error) {
@@ -36,9 +24,9 @@ func TestResolveExecutionImageUsesPrimaryServiceContainer(t *testing.T) {
 		return dockerclient.ContainerListResult{Items: []containertypes.Summary{{
 			ImageID: imageID,
 		}}}, nil
-	})
+	}
 
-	resolved, err := resolveExecutionImage(t.Context(), "primary-execution-service", client)
+	resolved, err := resolveExecutionImage(t.Context(), "primary-execution-service", listContainers)
 	require.NoError(t, err)
 	require.Equal(t, imageID, resolved)
 }
@@ -69,14 +57,14 @@ func TestResolveExecutionImageRejectsUnverifiableResults(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			client := containerListFunc(func(
+			listContainers := func(
 				context.Context,
 				dockerclient.ContainerListOptions,
 			) (dockerclient.ContainerListResult, error) {
 				return dockerclient.ContainerListResult{Items: testCase.containers}, testCase.clientErr
-			})
+			}
 
-			_, err := resolveExecutionImage(t.Context(), "primary-execution-service", client)
+			_, err := resolveExecutionImage(t.Context(), "primary-execution-service", listContainers)
 			require.ErrorContains(t, err, testCase.wantErr)
 		})
 	}

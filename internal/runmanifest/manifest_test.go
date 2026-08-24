@@ -11,27 +11,8 @@ import (
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/internal/testutil"
-	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
-
-type fakeDockerVersionClient struct {
-	version string
-	err     error
-	closed  bool
-}
-
-func (client *fakeDockerVersionClient) ServerVersion(
-	context.Context,
-	dockerclient.ServerVersionOptions,
-) (dockerclient.ServerVersionResult, error) {
-	return dockerclient.ServerVersionResult{Version: client.version}, client.err
-}
-
-func (client *fakeDockerVersionClient) Close() error {
-	client.closed = true
-	return nil
-}
 
 func TestEnrich(t *testing.T) {
 	environment := map[string]string{
@@ -55,7 +36,6 @@ func TestEnrich(t *testing.T) {
 		return "", errors.New("unexpected probe")
 	}
 	started := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	docker := &fakeDockerVersionClient{version: "28.0.1"}
 
 	images := devnet.DefaultImages()
 	manifest := enrich(t.Context(), "/checkout", Manifest{
@@ -68,8 +48,8 @@ func TestEnrich(t *testing.T) {
 	}, dependencies{
 		getenv: func(key string) string { return environment[key] },
 		probe:  probe,
-		newDockerClient: func() (dockerVersionClient, error) {
-			return docker, nil
+		dockerVersion: func(context.Context) (string, error) {
+			return "28.0.1", nil
 		},
 		now: func() time.Time { return started },
 	})
@@ -95,7 +75,6 @@ func TestEnrich(t *testing.T) {
 		{"git", "-C", "/checkout", "rev-parse", "HEAD"},
 		{"kurtosis", "version"},
 	}, probes)
-	require.True(t, docker.closed)
 	require.NotNil(t, manifest.Images)
 	require.Equal(t, devnet.DefaultImages(), *manifest.Images)
 	require.Equal(t, devnet.PackageLocator, manifest.PackageLocator)
@@ -109,14 +88,28 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 		probe: func(context.Context, string, ...string) (string, error) {
 			return "", errors.New("not installed")
 		},
-		newDockerClient: func() (dockerVersionClient, error) {
-			return nil, errors.New("not installed")
+		dockerVersion: func(context.Context) (string, error) {
+			return "", errors.New("not installed")
 		},
 		now: time.Now,
 	})
 	require.Empty(t, manifest.Versions.Docker)
 	require.Empty(t, manifest.Versions.Kurtosis)
 	require.Equal(t, runtime.Version(), manifest.Versions.Go)
+}
+
+func TestDockerVersionUsesBoundedContext(t *testing.T) {
+	version := dockerVersion(t.Context(), func(ctx context.Context) (string, error) {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		require.WithinDuration(t, time.Now().Add(probeTimeout), deadline, time.Second)
+		return " 28.0.1\n", nil
+	})
+	require.Equal(t, "28.0.1", version)
+
+	require.Empty(t, dockerVersion(t.Context(), func(context.Context) (string, error) {
+		return "untrusted", errors.New("probe failed")
+	}))
 }
 
 func TestFinish(t *testing.T) {

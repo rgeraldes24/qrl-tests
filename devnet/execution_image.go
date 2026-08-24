@@ -25,7 +25,7 @@ func ResolveExecutionImage(ctx context.Context, environment Environment) (string
 		return "", fmt.Errorf("create Docker client: %w", err)
 	}
 	defer func() { _ = client.Close() }()
-	return resolveExecutionImage(ctx, serviceID, client)
+	return resolveExecutionImage(ctx, serviceID, client.ContainerList)
 }
 
 func primaryExecutionServiceID(environment Environment) (string, error) {
@@ -43,16 +43,15 @@ func primaryExecutionServiceID(environment Environment) (string, error) {
 	return serviceID, nil
 }
 
-type dockerContainerLister interface {
-	ContainerList(context.Context, dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error)
-}
-
 func resolveExecutionImage(
 	ctx context.Context,
 	serviceID string,
-	client dockerContainerLister,
+	listContainers func(
+		context.Context,
+		dockerclient.ContainerListOptions,
+	) (dockerclient.ContainerListResult, error),
 ) (string, error) {
-	containers, err := client.ContainerList(ctx, dockerclient.ContainerListOptions{
+	containers, err := listContainers(ctx, dockerclient.ContainerListOptions{
 		Filters: make(dockerclient.Filters).Add(
 			"label",
 			kurtosisServiceUUIDDockerLabel+"="+serviceID,

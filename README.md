@@ -24,7 +24,7 @@ reports/
 └── lanes/<lane>/
     ├── report.json           # Ginkgo test report
     ├── output.log            # test command output
-    ├── manifest.json         # lane, profile, network environment, and execution image
+    ├── manifest.json         # lane, profile, network environment and execution image
     └── diagnostics/          # created only when the lane fails
         ├── diagnostics.json   # capture status and errors
         ├── inspect.txt        # Kurtosis enclave inspection

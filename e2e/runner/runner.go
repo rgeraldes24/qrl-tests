@@ -251,7 +251,10 @@ func (runner *Runner) consoleExecutionImage(selected []lanes.Lane, mode runMode)
 	if mode == useExistingNetwork || runner.goos != "linux" ||
 		runner.configuration.Backend != devnet.BackendDocker ||
 		len(runner.configuration.Parameters) != 0 {
-		return "", errors.New("execution-console requires a runner-provisioned Linux Docker network using built-in parameters")
+		return "", errors.New(
+			"execution-console requires a runner-provisioned Linux Docker network " +
+				"using built-in parameters; use execution-abi in other modes",
+		)
 	}
 
 	images, err := runner.configuration.Images.Resolved()

@@ -203,7 +203,10 @@ func TestConsoleRejectsUnverifiableExecutionImageModes(t *testing.T) {
 			}
 
 			err := run(runner)
-			require.EqualError(t, err, "execution-console requires a runner-provisioned Linux Docker network using built-in parameters")
+			require.EqualError(t, err,
+				"execution-console requires a runner-provisioned Linux Docker network "+
+					"using built-in parameters; use execution-abi in other modes",
+			)
 			require.Empty(t, networks.started.EnclaveName)
 			require.Empty(t, networks.inspected)
 		})

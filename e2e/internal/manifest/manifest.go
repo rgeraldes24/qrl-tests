@@ -1,5 +1,6 @@
 // Package manifest defines the file the E2E runner writes for live test
-// suites: which lane ran, under which profile, against which network.
+// suites: which lane ran, under which profile, against which network, and
+// the execution image required by image-coupled suites.
 package manifest
 
 import (

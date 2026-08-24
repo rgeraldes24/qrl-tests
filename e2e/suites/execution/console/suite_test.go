@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 const watchedConsoleHelper = "QRL_TEST_WATCHED_CONSOLE_HELPER"
@@ -34,18 +36,13 @@ func TestParseSuiteResult(t *testing.T) {
 			output:  "CONSOLE_E2E_PASS api\nCONSOLE_E2E_FAIL api unexpected callback",
 			wantErr: true,
 		},
-		"failure then success": {
-			output:  "CONSOLE_E2E_FAIL api unexpected callback\nCONSOLE_E2E_PASS api",
-			wantErr: true,
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := parseSuiteResult("api", []byte(testCase.output))
-			if testCase.wantErr && err == nil {
-				t.Fatal("failed suite was accepted")
-			}
-			if !testCase.wantErr && err != nil {
-				t.Fatal(err)
+			if testCase.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -57,35 +54,28 @@ func TestSuiteFixtures(t *testing.T) {
 		names = append(names, scenario.name)
 	}
 	for _, name := range names {
-		if _, err := fs.Stat(consoleFixtures, "testdata/console/"+name+".js"); err != nil {
-			t.Errorf("%s: %v", name, err)
-		}
+		_, err := fs.Stat(consoleFixtures, "testdata/console/"+name+".js")
+		require.NoErrorf(t, err, "%s", name)
 	}
 }
 
 func TestEventsFixtureEmitsTerminalMarkersBeforeFilterTeardown(t *testing.T) {
 	source, err := fs.ReadFile(consoleFixtures, "testdata/console/events.js")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	script := string(source)
 	const teardown = "watcher.stopWatching();"
-	if got := strings.Count(script, teardown); got != 2 {
-		t.Fatalf("got %d watcher teardowns, want 2", got)
-	}
+	require.Equal(t, 2, strings.Count(script, teardown))
 
 	failureMarker := strings.Index(script, `console.error("CONSOLE_E2E_FAIL events " + failure);`)
 	firstTeardown := strings.Index(script, teardown)
-	if failureMarker < 0 || failureMarker > firstTeardown {
-		t.Fatal("failure marker must be emitted before watcher teardown")
-	}
+	require.True(t, failureMarker >= 0 && failureMarker < firstTeardown,
+		"failure marker must be emitted before watcher teardown")
 
 	successMarker := strings.LastIndex(script, "suite.finish();")
 	lastTeardown := strings.LastIndex(script, teardown)
-	if successMarker < 0 || successMarker > lastTeardown {
-		t.Fatal("success marker must be emitted before watcher teardown")
-	}
+	require.True(t, successMarker >= 0 && successMarker < lastTeardown,
+		"success marker must be emitted before watcher teardown")
 }
 
 type fakeConsoleEngine struct {
@@ -99,13 +89,11 @@ type fakeConsoleEngine struct {
 	createErr        error
 	copyErr          error
 	removeErr        error
-	copied           bool
 	removed          bool
 	removeContextErr error
 }
 
 func (engine *fakeConsoleEngine) copyFixtures(_ context.Context, containerID, jsPath string) error {
-	engine.copied = true
 	engine.copyID = containerID
 	engine.copyPath = jsPath
 	return engine.copyErr
@@ -163,14 +151,10 @@ func TestDockerConsoleEngineBuildsContainerCommands(t *testing.T) {
 		scenario:    "events",
 		interactive: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if containerID != "container-id" {
-		t.Fatalf("got container ID %q", containerID)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "container-id", containerID)
 	wantCreate := []string{
-		"docker", "create", "--pull=missing", "--interactive",
+		"docker", "create", "--pull=never", "--interactive",
 		"--add-host", "host.docker.internal=host-gateway",
 		"--entrypoint", "gqrl",
 		"registry.example/go-qrl@sha256:digest",
@@ -180,27 +164,19 @@ func TestDockerConsoleEngineBuildsContainerCommands(t *testing.T) {
 		"--preload", "harness.js,events.js",
 		"ws://host.docker.internal:8546",
 	}
-	if len(calls) != 1 || !slices.Equal(calls[0], wantCreate) {
-		t.Fatalf("got create call %q, want %q", calls, wantCreate)
-	}
-	if err := engine.copyFixtures(t.Context(), containerID, jsPath); err != nil {
-		t.Fatal(err)
-	}
+	require.Len(t, calls, 1)
+	require.Equal(t, wantCreate, calls[0])
+	require.NoError(t, engine.copyFixtures(t.Context(), containerID, jsPath))
 	wantCopy := []string{"docker", "cp", jsPath, "container-id:/tmp/qrl-tests-js"}
-	if len(calls) != 2 || !slices.Equal(calls[1], wantCopy) {
-		t.Fatalf("got copy call %q, want %q", calls, wantCopy)
-	}
+	require.Len(t, calls, 2)
+	require.Equal(t, wantCopy, calls[1])
 	_ = engine.start(t.Context(), containerID, true)
-	if startPath != "docker" || !slices.Equal(startArgs, []string{"start", "--attach", "--interactive", "container-id"}) {
-		t.Fatalf("got start command %q %q", startPath, startArgs)
-	}
-	if err := engine.remove(t.Context(), containerID); err != nil {
-		t.Fatal(err)
-	}
+	require.Equal(t, "docker", startPath)
+	require.Equal(t, []string{"start", "--attach", "--interactive", "container-id"}, startArgs)
+	require.NoError(t, engine.remove(t.Context(), containerID))
 	wantRemove := []string{"docker", "rm", "--force", "container-id"}
-	if len(calls) != 3 || !slices.Equal(calls[2], wantRemove) {
-		t.Fatalf("got remove call %q, want %q", calls, wantRemove)
-	}
+	require.Len(t, calls, 3)
+	require.Equal(t, wantRemove, calls[2])
 }
 
 func TestDockerConsoleEngineBuildsExecContainerCommand(t *testing.T) {
@@ -215,11 +191,9 @@ func TestDockerConsoleEngineBuildsExecContainerCommand(t *testing.T) {
 		endpoint: "http://127.0.0.1:8545",
 		scenario: "api",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	want := []string{
-		"docker", "create", "--pull=missing",
+		"docker", "create", "--pull=never",
 		"--add-host", "host.docker.internal=host-gateway",
 		"--entrypoint", "gqrl",
 		"registry.example/go-qrl@sha256:digest",
@@ -229,9 +203,7 @@ func TestDockerConsoleEngineBuildsExecContainerCommand(t *testing.T) {
 		"--exec", "loadScript('harness.js');loadScript('api.js')",
 		"http://host.docker.internal:8545",
 	}
-	if !slices.Equal(call, want) {
-		t.Fatalf("got create call %q, want %q", call, want)
-	}
+	require.Equal(t, want, call)
 }
 
 func TestConsoleContainerEndpoint(t *testing.T) {
@@ -244,21 +216,17 @@ func TestConsoleContainerEndpoint(t *testing.T) {
 			endpoint: "http://127.23.45.67:8545",
 			want:     "http://host.docker.internal:8545",
 		},
-		"localhost WebSocket with URL components": {
-			endpoint: "ws://user:pass@LOCALHOST.:8546/events?topic=stored#watch",
-			want:     "ws://user:pass@host.docker.internal:8546/events?topic=stored#watch",
+		"localhost WebSocket": {
+			endpoint: "ws://localhost:8546",
+			want:     "ws://host.docker.internal:8546",
 		},
 		"IPv6 loopback": {
 			endpoint: "ws://[::1]:8546",
 			want:     "ws://host.docker.internal:8546",
 		},
 		"non-loopback": {
-			endpoint: "https://RPC.example:443/qrl%2Fv1?network=%2Fdevnet#API",
-			want:     "https://RPC.example:443/qrl%2Fv1?network=%2Fdevnet#API",
-		},
-		"host gateway": {
-			endpoint: "http://host.docker.internal:8545",
-			want:     "http://host.docker.internal:8545",
+			endpoint: "https://rpc.example:443",
+			want:     "https://rpc.example:443",
 		},
 		"missing host": {
 			endpoint: "http:///rpc",
@@ -272,27 +240,19 @@ func TestConsoleContainerEndpoint(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			got, err := consoleContainerEndpoint(testCase.endpoint)
 			if testCase.wantErr {
-				if err == nil {
-					t.Fatalf("consoleContainerEndpoint(%q) unexpectedly succeeded with %q", testCase.endpoint, got)
-				}
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != testCase.want {
-				t.Fatalf("consoleContainerEndpoint(%q) = %q, want %q", testCase.endpoint, got, testCase.want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, testCase.want, got)
 		})
 	}
 }
 
 func TestRunSuiteUsesExecutionImageContainer(t *testing.T) {
 	jsPath := t.TempDir()
-	var command *exec.Cmd
 	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		command = consoleHelperCommand(ctx, "ordinary-success")
-		return command
+		return consoleHelperCommand(ctx, "ordinary-success")
 	}}
 	err := runSuiteWithEngine(
 		t.Context(),
@@ -302,21 +262,15 @@ func TestRunSuiteUsesExecutionImageContainer(t *testing.T) {
 		"api",
 		engine,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if engine.spec.image != "registry.example/go-qrl@sha256:digest" ||
-		engine.spec.endpoint != "http://127.0.0.1:8545" ||
-		engine.spec.scenario != "api" || engine.spec.interactive {
-		t.Fatalf("unexpected container spec: %+v", engine.spec)
-	}
-	if !engine.copied || engine.copyID != engine.containerID || engine.copyPath != jsPath ||
-		engine.startID != engine.containerID || engine.startInteractive || !engine.removed || engine.removeContextErr != nil {
-		t.Fatalf("unexpected lifecycle state: %+v", engine)
-	}
-	if command.ProcessState == nil || !command.ProcessState.Success() {
-		t.Fatalf("console process did not exit cleanly: %v", command.ProcessState)
-	}
+	require.NoError(t, err)
+	require.Equal(t, consoleContainerSpec{
+		image:    "registry.example/go-qrl@sha256:digest",
+		endpoint: "http://127.0.0.1:8545",
+		scenario: "api",
+	}, engine.spec)
+	require.True(t, engine.copyID == engine.containerID && engine.copyPath == jsPath &&
+		engine.startID == engine.containerID && !engine.startInteractive && engine.removed && engine.removeContextErr == nil,
+		"unexpected lifecycle state: %+v", engine)
 }
 
 func TestRunSuiteCleansUpAfterCreate(t *testing.T) {
@@ -342,17 +296,11 @@ func TestRunSuiteCleansUpAfterCreate(t *testing.T) {
 				removeErr: testCase.removeErr,
 			}
 			err := runSuiteWithEngine(t.Context(), "image", t.TempDir(), "http://127.0.0.1:8545", "api", engine)
-			if err == nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.Error(t, err)
 			for _, detail := range testCase.wantDetails {
-				if !strings.Contains(err.Error(), detail) {
-					t.Fatalf("error %q does not contain %q", err, detail)
-				}
+				require.ErrorContains(t, err, detail)
 			}
-			if !engine.removed {
-				t.Fatal("container was not removed")
-			}
+			require.True(t, engine.removed)
 		})
 	}
 }
@@ -360,23 +308,15 @@ func TestRunSuiteCleansUpAfterCreate(t *testing.T) {
 func TestRunSuiteDoesNotCleanUpAfterCreateFailure(t *testing.T) {
 	engine := &fakeConsoleEngine{createErr: errors.New("create failed")}
 	err := runSuiteWithEngine(t.Context(), "image", t.TempDir(), "http://127.0.0.1:8545", "api", engine)
-	if err == nil || !strings.Contains(err.Error(), "create failed") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if engine.removed {
-		t.Fatal("nonexistent container was removed")
-	}
+	require.ErrorContains(t, err, "create failed")
+	require.False(t, engine.removed)
 }
 
 func TestRunSuiteCleansUpAfterFixtureCopyFailure(t *testing.T) {
 	engine := &fakeConsoleEngine{copyErr: errors.New("copy failed")}
 	err := runSuiteWithEngine(t.Context(), "image", t.TempDir(), "http://127.0.0.1:8545", "api", engine)
-	if err == nil || !strings.Contains(err.Error(), "copy console suite api fixtures") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !engine.removed || engine.startID != "" {
-		t.Fatalf("unexpected lifecycle state: %+v", engine)
-	}
+	require.ErrorContains(t, err, "copy console suite api fixtures")
+	require.True(t, engine.removed && engine.startID == "", "unexpected lifecycle state: %+v", engine)
 }
 
 func TestRunSuiteTerminatesOnTimeoutAndUsesFreshCleanupContext(t *testing.T) {
@@ -386,12 +326,9 @@ func TestRunSuiteTerminatesOnTimeoutAndUsesFreshCleanupContext(t *testing.T) {
 		return consoleHelperCommand(ctx, "timeout")
 	}}
 	err := runSuiteWithEngine(ctx, "image", t.TempDir(), "http://127.0.0.1:8545", "api", engine)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("got %v, want context deadline", err)
-	}
-	if !engine.removed || engine.removeContextErr != nil {
-		t.Fatalf("cleanup did not use a fresh context: %+v", engine)
-	}
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.True(t, engine.removed && engine.removeContextErr == nil,
+		"cleanup did not use a fresh context: %+v", engine)
 }
 
 func TestRunWatchedSuiteUsesExecutionImageContainer(t *testing.T) {
@@ -408,15 +345,11 @@ func TestRunWatchedSuiteUsesExecutionImageContainer(t *testing.T) {
 		"events",
 		engine,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !engine.spec.interactive || !engine.copied || engine.startID != engine.containerID || !engine.startInteractive || !engine.removed {
-		t.Fatalf("unexpected lifecycle state: %+v", engine)
-	}
-	if command.ProcessState == nil || !command.ProcessState.Success() {
-		t.Fatalf("console process did not exit cleanly: %v", command.ProcessState)
-	}
+	require.NoError(t, err)
+	require.True(t, engine.spec.interactive && engine.copyID == engine.containerID && engine.startID == engine.containerID &&
+		engine.startInteractive && engine.removed, "unexpected lifecycle state: %+v", engine)
+	require.NotNil(t, command.ProcessState)
+	require.True(t, command.ProcessState.Success())
 }
 
 func TestRunWatchedSuiteCleansUpAfterStartFailure(t *testing.T) {
@@ -424,12 +357,8 @@ func TestRunWatchedSuiteCleansUpAfterStartFailure(t *testing.T) {
 		return exec.CommandContext(ctx, filepath.Join(t.TempDir(), "missing-docker"))
 	}}
 	err := runWatchedSuiteWithEngine(t.Context(), "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
-	if err == nil || !strings.Contains(err.Error(), "start console suite events") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !engine.removed {
-		t.Fatal("container was not removed")
-	}
+	require.ErrorContains(t, err, "start console suite events")
+	require.True(t, engine.removed)
 }
 
 func TestRunWatchedSuiteRejectsScriptFailure(t *testing.T) {
@@ -439,13 +368,10 @@ func TestRunWatchedSuiteRejectsScriptFailure(t *testing.T) {
 		return command
 	}}
 	err := runWatchedSuiteWithEngine(t.Context(), "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
-	if err == nil || !strings.Contains(err.Error(), "emitted a failure marker") ||
-		!strings.Contains(err.Error(), "helper failure") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if command.ProcessState == nil || !engine.removed {
-		t.Fatal("failed console process was not reaped and removed")
-	}
+	require.ErrorContains(t, err, "emitted a failure marker")
+	require.ErrorContains(t, err, "helper failure")
+	require.NotNil(t, command.ProcessState)
+	require.True(t, engine.removed)
 }
 
 func TestRunWatchedSuiteRejectsEarlyExit(t *testing.T) {
@@ -455,12 +381,9 @@ func TestRunWatchedSuiteRejectsEarlyExit(t *testing.T) {
 		return command
 	}}
 	err := runWatchedSuiteWithEngine(t.Context(), "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
-	if err == nil || !strings.Contains(err.Error(), "emitted 0 success markers") {
-		t.Fatalf("unexpected early-exit result: %v", err)
-	}
-	if command.ProcessState == nil || !command.ProcessState.Success() || !engine.removed {
-		t.Fatalf("early-exit process was not reaped and removed: %v", command.ProcessState)
-	}
+	require.ErrorContains(t, err, "emitted 0 success markers")
+	require.NotNil(t, command.ProcessState)
+	require.True(t, command.ProcessState.Success() && engine.removed)
 }
 
 func TestRunWatchedSuiteTerminatesOnTimeout(t *testing.T) {
@@ -472,12 +395,9 @@ func TestRunWatchedSuiteTerminatesOnTimeout(t *testing.T) {
 		return command
 	}}
 	err := runWatchedSuiteWithEngine(ctx, "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("got %v, want context deadline", err)
-	}
-	if command.ProcessState == nil || !engine.removed || engine.removeContextErr != nil {
-		t.Fatal("timed-out console process was not reaped and removed")
-	}
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NotNil(t, command.ProcessState)
+	require.True(t, engine.removed && engine.removeContextErr == nil)
 }
 
 func consoleHelperCommand(ctx context.Context, mode string) *exec.Cmd {

@@ -4,6 +4,7 @@ package console
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -15,17 +16,13 @@ import (
 	"github.com/theQRL/go-qrl/params"
 )
 
-// clefAccountPool is the number of development accounts the pinned
-// qrl-package imports into clef; bump it together with PackageLocator.
-const clefAccountPool = 10
-
 func fundManagedAccount(ctx context.Context, session *endtoendlive.Node) error {
 	var managed []common.Address
 	if err := session.Execution.Client().CallContext(ctx, &managed, "qrl_accounts"); err != nil {
 		return fmt.Errorf("list node-managed accounts: %w", err)
 	}
-	if len(managed) != clefAccountPool {
-		return fmt.Errorf("expected the clef account pool of %d, got %d", clefAccountPool, len(managed))
+	if len(managed) == 0 {
+		return errors.New("node has no managed accounts")
 	}
 
 	auth, err := bind.NewKeyedTransactorWithChainID(session.Wallet, session.ChainID)

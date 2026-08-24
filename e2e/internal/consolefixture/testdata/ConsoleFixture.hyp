@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0
 pragma hyperion >=0.1.0;
 
-/// @notice VM64 console fixture covering 64-byte words, addresses, fixed bytes,
-/// dynamic offsets, arrays, and a constructor event.
 contract ConsoleFixture {
     event Deployed(uint256 value);
     event Stored(
@@ -11,8 +9,6 @@ contract ConsoleFixture {
         bytes indexed payload,
         uint512 value
     );
-    event Paid(address indexed sender, uint512 marker, uint256 amount);
-
     uint512 public stored;
 
     constructor() {
@@ -55,12 +51,6 @@ contract ConsoleFixture {
         return (values, tags);
     }
 
-    function roundTrip(
-        uint512[][] calldata values
-    ) external pure returns (uint512[][] memory) {
-        return values;
-    }
-
     function overloaded(uint512 value) external pure returns (uint512) {
         return value + 1;
     }
@@ -84,7 +74,6 @@ contract ConsoleFixture {
 
     function pay(uint512 marker) external payable {
         stored = marker + msg.value;
-        emit Paid(msg.sender, marker, msg.value);
     }
 
     function failTransaction() external {

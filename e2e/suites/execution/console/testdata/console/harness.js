@@ -19,3 +19,14 @@ function createConsoleSuite(name) {
 function zeros(n) {
     return new Array(n + 1).join("0");
 }
+
+function waitForReceipt(txHash) {
+    for (var i = 0; i < 60; i++) {
+        var receipt = qrl.getTransactionReceipt(txHash);
+        if (receipt !== null && receipt.blockNumber !== null) {
+            return receipt;
+        }
+        admin.sleep(5);
+    }
+    throw new Error("transaction not mined within timeout: " + txHash);
+}

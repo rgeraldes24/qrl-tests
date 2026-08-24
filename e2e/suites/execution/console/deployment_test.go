@@ -48,7 +48,6 @@ type consoleParameters struct {
 }
 
 type preparedDeployment struct {
-	abi      abi.ABI
 	auth     *bind.TransactOpts
 	contract *bind.BoundContract
 	tx       *types.Transaction
@@ -113,7 +112,7 @@ func buildDeployment(
 	if err != nil {
 		return preparedDeployment{}, fmt.Errorf("encode deployment transaction: %w", err)
 	}
-	return preparedDeployment{abi: contractABI, auth: auth, contract: contract, tx: tx, raw: raw}, nil
+	return preparedDeployment{auth: auth, contract: contract, tx: tx, raw: raw}, nil
 }
 
 func (parameters *consoleParameters) buildStoreCase(
@@ -121,10 +120,6 @@ func (parameters *consoleParameters) buildStoreCase(
 	storeValue *big.Int,
 ) error {
 	storePayload := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9}
-	storeData, err := deployment.abi.Pack("store", storeValue, storeLabel, storePayload)
-	if err != nil {
-		return fmt.Errorf("pack store call: %w", err)
-	}
 	auth := *deployment.auth
 	auth.Nonce = new(big.Int).SetUint64(deployment.tx.Nonce() + 2)
 	auth.GasLimit = 500_000
@@ -138,7 +133,7 @@ func (parameters *consoleParameters) buildStoreCase(
 	}
 	parameters.StoreTxHash = storeTx.Hash().Hex()
 	parameters.StoreRaw = hexutil.Encode(storeRaw)
-	parameters.StoreData = hexutil.Encode(storeData)
+	parameters.StoreData = hexutil.Encode(storeTx.Data())
 	parameters.StorePayload = hexutil.Encode(storePayload)
 	return nil
 }

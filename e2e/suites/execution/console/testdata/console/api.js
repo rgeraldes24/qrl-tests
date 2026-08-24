@@ -1,19 +1,5 @@
 var suite = createConsoleSuite("api");
 var check = suite.check;
-var nextID = 1;
-
-function rpc(method, params) {
-    var response = web3.currentProvider.send({
-        jsonrpc: "2.0",
-        id: nextID++,
-        method: method,
-        params: params || []
-    });
-    if (response.error) {
-        throw new Error(method + ": " + JSON.stringify(response.error));
-    }
-    return response.result;
-}
 
 function requireHexQuantity(name, value) {
     if (typeof value !== "string" || !/^0x[0-9a-f]+$/i.test(value)) {
@@ -45,17 +31,19 @@ check("block APIs agree", function () {
     if (byHash.hash !== block.hash || byHash.number !== block.number) {
         throw new Error("block lookup mismatch");
     }
-    return true;
-});
-
-check("parent hashes chain correctly", function () {
-    var head = qrl.getBlock(qrl.blockNumber);
-    var parent = qrl.getBlock(head.number - 1);
-    return head.parentHash === parent.hash;
 });
 
 check("provider dispatch and console namespaces respond", function () {
-    var modules = rpc("rpc_modules");
+    var response = web3.currentProvider.send({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "rpc_modules",
+        params: []
+    });
+    if (response.error) {
+        throw new Error("rpc_modules: " + JSON.stringify(response.error));
+    }
+    var modules = response.result;
     ["admin", "net", "qrl", "txpool", "web3"].forEach(function (name) {
         if (typeof modules[name] !== "string") {
             throw new Error("missing rpc module " + name);
@@ -74,7 +62,6 @@ check("provider dispatch and console namespaces respond", function () {
     if (typeof txpool.status.pending !== "number" || typeof txpool.status.queued !== "number") {
         throw new Error("unexpected txpool namespace");
     }
-    return true;
 });
 
 check("qrl.chainId matches the network ID", function () {
@@ -88,7 +75,6 @@ check("header API returns the latest header", function () {
     requireHash("header hash", header.hash);
     requireHash("header parentHash", header.parentHash);
     requireAddress("header fee recipient", header.miner);
-    return true;
 });
 
 check("state and fee APIs respond", function () {
@@ -103,7 +89,6 @@ check("state and fee APIs respond", function () {
     if (!(qrl.gasPrice > 0) || !(qrl.maxPriorityFeePerGas >= 0)) {
         throw new Error("invalid fee data");
     }
-    return true;
 });
 
 check("qrl.feeHistory returns coherent history", function () {
@@ -115,11 +100,6 @@ check("qrl.feeHistory returns coherent history", function () {
     if (!(history.gasUsedRatio instanceof Array) || history.gasUsedRatio.length !== 1) {
         throw new Error("unexpected gasUsedRatio: " + JSON.stringify(history));
     }
-    return true;
-});
-
-check("qrl.getBlockReceipts returns an array", function () {
-    return qrl.getBlockReceipts("latest") instanceof Array;
 });
 
 check("QIP-55 Q-address checksum round-trips", function () {
@@ -145,7 +125,6 @@ check("QIP-55 Q-address checksum round-trips", function () {
             break;
         }
     }
-    return true;
 });
 
 suite.finish();

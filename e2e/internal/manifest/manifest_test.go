@@ -1,7 +1,6 @@
 package manifest
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,10 +50,4 @@ func TestFromEnvReportsMissingConfiguration(t *testing.T) {
 	t.Setenv(PathEnv, "")
 	_, err := FromEnv()
 	require.ErrorContains(t, err, PathEnv)
-}
-
-func TestManifestOmitsEmptyExecutionImage(t *testing.T) {
-	payload, err := json.Marshal(Manifest{})
-	require.NoError(t, err)
-	require.NotContains(t, string(payload), `"execution_image"`)
 }

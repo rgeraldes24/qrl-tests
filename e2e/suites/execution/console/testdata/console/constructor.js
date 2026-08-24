@@ -50,7 +50,6 @@ qrl.contract(contractABI).new(
                 if (contract.stored().toString(10) !== "0") {
                     throw new Error("deployed contract methods were not attached");
                 }
-                return true;
             });
             suite.finish();
         } catch (failure) {

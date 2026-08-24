@@ -67,10 +67,6 @@ var consoleScenarios = []consoleScenario{
 //go:embed testdata/console/*.js
 var consoleFixtures embed.FS
 
-type outputCommand func(context.Context, string, ...string) ([]byte, error)
-
-type commandContext func(context.Context, string, ...string) *exec.Cmd
-
 type consoleContainerSpec struct {
 	image       string
 	endpoint    string
@@ -86,15 +82,13 @@ type consoleContainerEngine interface {
 }
 
 type dockerConsoleEngine struct {
-	output  outputCommand
-	command commandContext
+	output  func(context.Context, string, ...string) ([]byte, error)
+	command func(context.Context, string, ...string) *exec.Cmd
 }
 
-func newDockerConsoleEngine() dockerConsoleEngine {
-	return dockerConsoleEngine{
-		output:  executeOutput,
-		command: exec.CommandContext,
-	}
+var defaultConsoleEngine = dockerConsoleEngine{
+	output:  executeOutput,
+	command: exec.CommandContext,
 }
 
 func executeOutput(ctx context.Context, name string, arguments ...string) ([]byte, error) {
@@ -143,7 +137,7 @@ func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContai
 		return "", fmt.Errorf("create console suite %s container: %w", spec.scenario, err)
 	}
 
-	arguments := []string{"create", "--pull=missing"}
+	arguments := []string{"create", "--pull=never"}
 	if spec.interactive {
 		arguments = append(arguments, "--interactive")
 	}
@@ -211,7 +205,7 @@ func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario
 }
 
 func runSuite(ctx context.Context, image, jsPath, rpcURL, name string) error {
-	return runSuiteWithEngine(ctx, image, jsPath, rpcURL, name, newDockerConsoleEngine())
+	return runSuiteWithEngine(ctx, image, jsPath, rpcURL, name, defaultConsoleEngine)
 }
 
 func runSuiteWithEngine(
@@ -274,7 +268,7 @@ func runWatchedSuite(ctx context.Context, image, jsPath, webSocketURL, name stri
 		jsPath,
 		webSocketURL,
 		name,
-		newDockerConsoleEngine(),
+		defaultConsoleEngine,
 	)
 }
 
@@ -427,7 +421,7 @@ func parseSuiteResult(name string, output []byte) error {
 func suiteMarkers(name string, output []byte) (successes int, failed bool) {
 	successMarker := []byte(resultPrefix + name)
 	failureMarker := []byte(failurePrefix + name)
-	failureDetailPrefix := append(bytes.Clone(failureMarker), ' ')
+	failureDetailPrefix := []byte(failurePrefix + name + " ")
 	for _, line := range bytes.Split(output, []byte{'\n'}) {
 		line = bytes.TrimSpace(line)
 		if bytes.Equal(line, failureMarker) ||

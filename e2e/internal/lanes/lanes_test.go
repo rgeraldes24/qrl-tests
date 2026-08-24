@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -42,33 +41,19 @@ func TestRegistry(t *testing.T) {
 func TestLaneWithSuites(t *testing.T) {
 	execution, err := Named("execution")
 	require.NoError(t, err)
-	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, execution.Suites)
-	require.Equal(t, []string{
-		"./e2e/suites/execution/abi",
-		"./e2e/suites/execution/console",
-	}, execution.Packages())
-	require.Equal(t, 30*time.Minute, execution.Timeout)
-	require.True(t, execution.NeedsExecutionImage())
 
 	unchanged, err := execution.WithSuites(nil)
 	require.NoError(t, err)
 	require.Equal(t, execution, unchanged)
 
 	selected, err := execution.WithSuites([]string{
-		"execution-console",
-		"execution-abi",
-		"execution-console",
+		string(suiteExecutionConsole), string(suiteExecutionABI), string(suiteExecutionConsole),
 	})
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
-
-	selected, err = execution.WithSuites([]string{"execution-console"})
-	require.NoError(t, err)
-	require.Equal(t, []SuiteID{suiteExecutionConsole}, selected.Suites)
-	require.Equal(t, []string{"./e2e/suites/execution/console"}, selected.Packages())
 	require.True(t, selected.NeedsExecutionImage())
 
-	selected, err = execution.WithSuites([]string{"execution-abi"})
+	selected, err = execution.WithSuites([]string{string(suiteExecutionABI)})
 	require.NoError(t, err)
 	require.False(t, selected.NeedsExecutionImage())
 

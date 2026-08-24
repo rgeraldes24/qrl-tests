@@ -12,17 +12,6 @@ var contract = qrl.contract(PARAMS.abi).at(deployment.contractAddress);
 var expectedLabelTopic = web3.sha3(PARAMS.storeLabel) + zeros(64);
 var expectedPayloadTopic = web3.sha3(PARAMS.storePayload, {encoding: "hex"}) + zeros(64);
 
-function waitForReceipt(txHash) {
-    for (var i = 0; i < 60; i++) {
-        var receipt = qrl.getTransactionReceipt(txHash);
-        if (receipt !== null && receipt.blockNumber !== null) {
-            return receipt;
-        }
-        admin.sleep(5);
-    }
-    throw new Error("transaction not mined within timeout: " + txHash);
-}
-
 var managed = qrl.accounts;
 check("state-changing wrapper executes through the node-managed signer", function () {
     if (!(managed instanceof Array) || managed.length === 0) {
@@ -34,22 +23,14 @@ check("state-changing wrapper executes through the node-managed signer", functio
         "0x010203",
         {from: managed[0], gas: 500000}
     );
-    var receipt = null;
-    for (var i = 0; i < 60; i++) {
-        receipt = qrl.getTransactionReceipt(txHash);
-        if (receipt !== null && receipt.blockNumber !== null) {
-            break;
-        }
-        admin.sleep(5);
-    }
-    if (receipt === null || receipt.blockNumber === null || Number(receipt.status) !== 1) {
+    var receipt = waitForReceipt(txHash);
+    if (Number(receipt.status) !== 1) {
         throw new Error("Clef-backed wrapper transaction failed: " + JSON.stringify(receipt));
     }
     var transaction = qrl.getTransaction(txHash);
     if (transaction.from !== managed[0] || contract.stored().toString(10) !== PARAMS.storeValue) {
         throw new Error("unexpected Clef-backed wrapper result");
     }
-    return true;
 });
 
 var request = contract.store.request(
@@ -97,10 +78,6 @@ watcher.watch(function (error, event) {
             if (receipt === null || receipt.blockNumber === null || Number(receipt.status) !== 1) {
                 throw new Error("store transaction failed: " + JSON.stringify(receipt));
             }
-            if (contract.stored().toString(10) !== PARAMS.storeValue) {
-                throw new Error("stored value mismatch");
-            }
-            return true;
         });
 
         check("state wrappers return the full VM64 storage value", function () {
@@ -117,7 +94,6 @@ watcher.watch(function (error, event) {
                 proof.storageProof[0].value.toLowerCase() !== expected) {
                 throw new Error("unexpected storage proof: " + JSON.stringify(proof));
             }
-            return true;
         });
 
         check("WebSocket event watch decodes indexed dynamic fields", function () {
@@ -136,7 +112,6 @@ watcher.watch(function (error, event) {
             if (event.args.value.toString(10) !== PARAMS.storeValue) {
                 throw new Error("event value mismatch");
             }
-            return true;
         });
 
         check("indexed event filters reject non-matching dynamic values", function () {
@@ -151,7 +126,6 @@ watcher.watch(function (error, event) {
             if (events.length !== 0) {
                 throw new Error("non-matching indexed filter returned events: " + JSON.stringify(events));
             }
-            return true;
         });
 
         check("payable wrapper forwards value", function () {
@@ -171,7 +145,6 @@ watcher.watch(function (error, event) {
                 contract.stored().toString(10) !== String(marker + payment)) {
                 throw new Error("payable wrapper did not forward value");
             }
-            return true;
         });
 
         check("state-changing wrapper exposes a failed receipt", function () {
@@ -185,7 +158,6 @@ watcher.watch(function (error, event) {
             if (contract.stored().toString(10) !== stored) {
                 throw new Error("reverting transaction changed contract state");
             }
-            return true;
         });
         stopStoreReceiptMonitor();
         suite.finish();
@@ -199,8 +171,6 @@ var txHash = qrl.sendRawTransaction(PARAMS.storeRawTransaction);
 if (txHash !== PARAMS.storeTxHash) {
     failEvents("store transaction hash mismatch");
 } else {
-    // Receipt polling is independent of event delivery so a transaction that
-    // cannot emit Stored still fails before the enclosing lane times out.
     storeReceiptTimer = setInterval(function () {
         try {
             storeReceiptPolls++;

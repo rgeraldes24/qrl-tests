@@ -24,7 +24,7 @@ reports/
 └── lanes/<lane>/
     ├── report.json           # Ginkgo test report
     ├── output.log            # test command output
-    ├── manifest.json         # lane, profile, network environment and execution image
+    ├── manifest.json         # lane, profile, and network environment
     └── diagnostics/          # created only when the lane fails
         ├── diagnostics.json   # capture status and errors
         ├── inspect.txt        # Kurtosis enclave inspection
@@ -38,11 +38,11 @@ diagnosed before cleanup, while attached networks are left running. For
 cleanup-only failures, diagnostics are collected after the failed cleanup
 attempt. Diagnostic and cleanup errors do not replace the original failure.
 
-For iterative ABI development against an existing network:
+For iterative development:
 
 ```bash
 make network-start
-E2E_SUITE=execution-abi make e2e
+make e2e
 make network-stop
 ```
 

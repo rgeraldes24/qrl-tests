@@ -80,21 +80,23 @@ func (mode runMode) suffixesEnclave() bool {
 }
 
 type Runner struct {
-	configuration Config
-	networks      networkManager
-	runCommand    func(context.Context, commandSpec) error
-	stdout        io.Writer
-	stderr        io.Writer
+	configuration         Config
+	networks              networkManager
+	resolveExecutionImage func(context.Context, devnet.Environment) (string, error)
+	runCommand            func(context.Context, commandSpec) error
+	stdout                io.Writer
+	stderr                io.Writer
 }
 
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	outputLock := new(sync.Mutex)
 	return &Runner{
-		configuration: configuration.withDefaults(),
-		networks:      devnet.NewManager(),
-		runCommand:    execute,
-		stdout:        &lockedWriter{lock: outputLock, writer: stdout},
-		stderr:        &lockedWriter{lock: outputLock, writer: stderr},
+		configuration:         configuration.withDefaults(),
+		networks:              devnet.NewManager(),
+		resolveExecutionImage: devnet.ResolveExecutionImage,
+		runCommand:            execute,
+		stdout:                &lockedWriter{lock: outputLock, writer: stdout},
+		stderr:                &lockedWriter{lock: outputLock, writer: stderr},
 	}
 }
 
@@ -186,18 +188,12 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
-	executionImage, err := runner.consoleExecutionImage(selected, mode)
-	if err != nil {
+	if err := runner.validateConsoleBackend(selected); err != nil {
 		return err
 	}
 	plan, err := planLanes(runner.configuration, selected, mode)
 	if err != nil {
 		return err
-	}
-	for index := range plan.lanes {
-		if plan.lanes[index].definition.NeedsExecutionImage() {
-			plan.lanes[index].executionImage = executionImage
-		}
 	}
 	if err := clearReportArtifacts(plan.reportRoot); err != nil {
 		return err
@@ -233,31 +229,13 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	return errors.Join(summary.VerdictError(), errors.Join(laneErrors...), manifestErr, summarizeErr)
 }
 
-func (runner *Runner) consoleExecutionImage(selected []lanes.Lane, mode runMode) (string, error) {
-	needsImage := false
+func (runner *Runner) validateConsoleBackend(selected []lanes.Lane) error {
 	for _, lane := range selected {
-		if lane.NeedsExecutionImage() {
-			needsImage = true
-			break
+		if lane.NeedsExecutionImage() && runner.configuration.Backend != devnet.BackendDocker {
+			return errors.New("execution-console requires the Docker backend; use execution-abi with Kubernetes")
 		}
 	}
-	if !needsImage {
-		return "", nil
-	}
-
-	if mode == useExistingNetwork || runner.configuration.Backend != devnet.BackendDocker ||
-		len(runner.configuration.Parameters) != 0 {
-		return "", errors.New(
-			"execution-console requires a runner-provisioned Docker network " +
-				"using built-in parameters; use execution-abi in other modes",
-		)
-	}
-
-	images, err := runner.configuration.Images.Resolved()
-	if err != nil {
-		return "", err
-	}
-	return images.Execution, nil
+	return nil
 }
 
 // Remove only runner-owned outputs because ReportDir may contain unrelated files.

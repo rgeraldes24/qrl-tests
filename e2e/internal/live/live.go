@@ -15,12 +15,12 @@ import (
 
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
-	Wallet  qrlwallet.Wallet
-	ChainID *big.Int
+	Wallet         qrlwallet.Wallet
+	ChainID        *big.Int
+	ExecutionImage string
 
-	environment    devnet.Environment
-	executionImage string
-	nodes          []*Node
+	environment devnet.Environment
+	nodes       []*Node
 }
 
 // Node is an open handle to one network participant: its execution clients
@@ -47,17 +47,10 @@ func Load() (*Runtime, error) {
 
 	runtime := &Runtime{
 		Wallet:         wallet,
+		ExecutionImage: suiteManifest.ExecutionImage,
 		environment:    suiteManifest.Environment,
-		executionImage: suiteManifest.ExecutionImage,
 	}
 	return runtime, nil
-}
-
-func (runtime *Runtime) ExecutionImage() (string, error) {
-	if runtime.executionImage == "" {
-		return "", fmt.Errorf("execution image is not configured")
-	}
-	return runtime.executionImage, nil
 }
 
 func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Node, error) {

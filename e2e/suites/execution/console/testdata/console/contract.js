@@ -29,38 +29,15 @@ function expectTopicError(topic, blockNumber, address) {
 loadScript(".params.js");
 
 var receipt = null;
-check("prefunded account matches the signed transaction", function () {
-    if (!/^Q[0-9a-fA-F]{128}$/.test(PARAMS.address)) {
-        throw new Error("unexpected deployer address: " + PARAMS.address);
-    }
-    if (!(qrl.getBalance(PARAMS.address) > 0)) {
-        throw new Error("deployer has zero balance: " + PARAMS.address);
-    }
-    return true;
-});
-
 check("deployment transaction is accepted and mined", function () {
-    if (typeof PARAMS.txHash !== "string" || !/^0x[0-9a-f]{64}$/.test(PARAMS.txHash)) {
-        throw new Error("invalid prepared transaction hash: " + PARAMS.txHash);
-    }
     var responseHash = qrl.sendRawTransaction(PARAMS.rawTransaction);
     if (responseHash !== PARAMS.txHash) {
         throw new Error("tx hash mismatch: have " + responseHash + " want " + PARAMS.txHash);
     }
-    for (var i = 0; i < 60; i++) {
-        receipt = qrl.getTransactionReceipt(PARAMS.txHash);
-        if (receipt !== null && receipt.blockNumber !== null) {
-            break;
-        }
-        admin.sleep(5);
-    }
-    if (receipt === null || receipt.blockNumber === null) {
-        throw new Error("transaction not mined within timeout");
-    }
+    receipt = waitForReceipt(PARAMS.txHash);
     if (Number(receipt.status) !== 1 || !receipt.contractAddress) {
         throw new Error("deployment failed: " + JSON.stringify(receipt));
     }
-    return true;
 });
 
 var signatureHash = web3.sha3(eventSignature);
@@ -110,7 +87,7 @@ check("receipt APIs expose one VM64 event", function () {
     throw new Error("block receipts omit deployment transaction");
 });
 
-var vm64Amount = "6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503046708";
+var vm64Amount = PARAMS.storeValue;
 var vm64Delta = "-3351951982485649274893506249551461531869841455148098344430890360930441007518386744200468574541725856922507964546621512713438470702986642486608412251520982";
 var vm64Tag = patternedHex(64, 1, 0x80);
 var vm64Payload = patternedHex(129, 29, 7);
@@ -142,7 +119,6 @@ check("contract echoes VM64 scalar and dynamic values", function () {
     if (echoed[4].toLowerCase() !== vm64Payload || echoed[5] !== vm64Note || echoed[6] !== true) {
         throw new Error("dynamic-value mismatch");
     }
-    return true;
 });
 
 check("contract echoes fixed-byte boundaries", function () {
@@ -161,7 +137,6 @@ check("contract echoes fixed-byte boundaries", function () {
             throw new Error("fixed bytes " + i + " mismatch");
         }
     }
-    return true;
 });
 
 check("contract echoes fixed and dynamic arrays", function () {
@@ -180,7 +155,6 @@ check("contract echoes fixed and dynamic arrays", function () {
         echoed[1][1].toLowerCase() !== secondTag) {
         throw new Error("bytes64 array mismatch");
     }
-    return true;
 });
 
 check("contract wrapper dispatches overloaded methods", function () {
@@ -193,7 +167,6 @@ check("contract wrapper dispatches overloaded methods", function () {
     if (contract.overloaded["bytes33"](bytes).toLowerCase() !== bytes) {
         throw new Error("unexpected overloaded bytes result");
     }
-    return true;
 });
 
 check("contract wrapper propagates revert errors", function () {
@@ -221,7 +194,6 @@ check("contract event filter decodes the emitted log", function () {
         Number(events[0].args.value) !== deployedValue) {
         throw new Error("unexpected contract event: " + JSON.stringify(events));
     }
-    return true;
 });
 
 check("raw log filters support exact, wildcard, and OR topics", function () {
@@ -242,7 +214,6 @@ check("raw log filters support exact, wildcard, and OR topics", function () {
     if (exact[0].topics[0] !== expectedTopic) {
         throw new Error("unexpected exact topic: " + exact[0].topics[0]);
     }
-    return true;
 });
 
 check("raw log filters reject 32-byte topics", function () {

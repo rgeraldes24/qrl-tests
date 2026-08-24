@@ -24,10 +24,8 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "console", "mutates-chain"),
 	func() {
 		var (
-			executionImage string
-			jsPath         string
-			rpcURL         string
-			session        *endtoendlive.Node
+			jsPath  string
+			session *endtoendlive.Node
 		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -35,14 +33,10 @@ var _ = ginkgo.Describe(
 			runtime := testsuite.LoadRuntime()
 			session, err = runtime.PrimaryWithWebSocket(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-			rpcURL = session.Participant.Execution.RPCURL
 
-			workDir := ginkgo.GinkgoT().TempDir()
+			gomega.Expect(session.ExecutionImage).NotTo(gomega.BeEmpty())
 
-			executionImage, err = runtime.ExecutionImage()
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			jsPath = filepath.Join(workDir, "js")
+			jsPath = filepath.Join(ginkgo.GinkgoT().TempDir(), "js")
 			ginkgo.By("funding the node-managed console account")
 			gomega.Expect(fundManagedAccount(ctx, session)).To(gomega.Succeed())
 			ginkgo.By("preparing the console scripts and deployment transaction")
@@ -56,7 +50,7 @@ var _ = ginkgo.Describe(
 					if scenario.webSocket {
 						gomega.Expect(runWatchedSuite(
 							ctx,
-							executionImage,
+							session.ExecutionImage,
 							jsPath,
 							session.Participant.Execution.WebSocketURL,
 							scenario.name,
@@ -64,7 +58,7 @@ var _ = ginkgo.Describe(
 						return
 					}
 					gomega.Expect(
-						runSuite(ctx, executionImage, jsPath, rpcURL, scenario.name),
+						runSuite(ctx, session.ExecutionImage, jsPath, session.Participant.Execution.RPCURL, scenario.name),
 					).To(gomega.Succeed())
 				},
 			)

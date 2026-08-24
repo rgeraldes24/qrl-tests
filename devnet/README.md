@@ -37,9 +37,7 @@ make network-stop
 ```
 
 The configured images and image-pull credentials must be available to the
-cluster. The commands use the currently selected Kurtosis context. The runner
-only establishes the matching image and local runtime contract required by
-`execution-console` for provisioned Linux networks using the Docker backend.
+cluster. The commands use the currently selected Kurtosis context.
 
 ## Configuration
 
@@ -99,12 +97,8 @@ Start the network with the custom parameters:
 DEVNET_PARAMS_FILE=devnet/network_params.yaml make network-start
 ```
 
-The provisioned E2E runner accepts the same file for the ABI suite:
+The provisioned E2E runner accepts the same file:
 
 ```bash
-DEVNET_PARAMS_FILE=devnet/network_params.yaml E2E_SUITE=execution-abi make e2e-run
+DEVNET_PARAMS_FILE=devnet/network_params.yaml make e2e-run
 ```
-
-The console suite rejects custom parameter files because image flags are
-ignored in that mode, so the runner cannot establish that its console image is
-the execution image used by the network.

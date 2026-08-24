@@ -29,16 +29,20 @@ func TestResolveExecutionImageUsesPrimaryServiceContainer(t *testing.T) {
 	resolved, err := resolveExecutionImage(t.Context(), executionImageTestEnvironment(), output)
 	require.NoError(t, err)
 	require.Equal(t, imageID, resolved)
-	require.Equal(t, []string{
-		"docker", "container", "ls", "--no-trunc", "--quiet", "--filter",
-		"label=com.kurtosistech.guid=primary-execution-service",
-	}, calls[0])
-	require.Equal(t, []string{
-		"docker", "container", "inspect", "--format", "{{.Image}}", containerID,
-	}, calls[1])
+	require.Equal(t, [][]string{
+		{
+			"docker", "container", "ls", "--no-trunc", "--quiet", "--filter",
+			"label=com.kurtosistech.guid=primary-execution-service",
+		},
+		{
+			"docker", "container", "inspect", "--format",
+			"{{if .State.Running}}{{.Image}}{{end}}", containerID,
+		},
+	}, calls)
 }
 
 func TestResolveExecutionImageRejectsUnverifiableResults(t *testing.T) {
+	containerID := strings.Repeat("cd", 32)
 	for name, testCase := range map[string]struct {
 		firstOutput  string
 		secondOutput string
@@ -51,8 +55,12 @@ func TestResolveExecutionImageRejectsUnverifiableResults(t *testing.T) {
 			firstOutput: "first\nsecond\n",
 			wantErr:     "expected one running Docker container for service \"primary-execution-service\", found 2",
 		},
+		"container stopped": {
+			firstOutput: containerID,
+			wantErr:     "is not running",
+		},
 		"malformed image ID": {
-			firstOutput:  strings.Repeat("cd", 32),
+			firstOutput:  containerID,
 			secondOutput: "registry.example/go-qrl:mutable",
 			wantErr:      "Docker returned invalid image ID",
 		},
@@ -90,6 +98,7 @@ func TestExecutionImageCommandHonorsCancellation(t *testing.T) {
 	cancel()
 	_, err := executeOutput(ctx, "go", "version")
 	require.ErrorIs(t, err, context.Canceled)
+	require.EqualError(t, err, context.Canceled.Error())
 }
 
 func executionImageTestEnvironment() Environment {

@@ -11,7 +11,8 @@ import (
 
 const kurtosisServiceUUIDDockerLabel = "com.kurtosistech.guid"
 
-// ResolveExecutionImage returns the image ID used by the primary execution service.
+// ResolveExecutionImage returns the immutable Docker image ID used by the
+// primary execution service's running container.
 func ResolveExecutionImage(ctx context.Context, environment Environment) (string, error) {
 	return resolveExecutionImage(ctx, environment, executeOutput)
 }
@@ -22,16 +23,16 @@ func resolveExecutionImage(
 	output func(context.Context, string, ...string) ([]byte, error),
 ) (string, error) {
 	if environment.Backend != BackendDocker {
-		return "", fmt.Errorf("resolve execution image: backend %q is not Docker", environment.Backend)
+		return "", fmt.Errorf("backend %q is not Docker", environment.Backend)
 	}
 
 	primary, err := environment.Primary()
 	if err != nil {
-		return "", fmt.Errorf("resolve execution image: %w", err)
+		return "", fmt.Errorf("select primary participant: %w", err)
 	}
 	serviceID := strings.TrimSpace(primary.Execution.ID)
 	if serviceID == "" {
-		return "", errors.New("resolve execution image: primary execution service has no ID")
+		return "", errors.New("primary execution service has no ID")
 	}
 
 	containerOutput, err := output(
@@ -48,7 +49,7 @@ func resolveExecutionImage(
 	containerIDs := strings.Fields(string(containerOutput))
 	if len(containerIDs) != 1 {
 		return "", fmt.Errorf(
-			"resolve execution image: expected one running Docker container for service %q, found %d",
+			"expected one running Docker container for service %q, found %d",
 			serviceID,
 			len(containerIDs),
 		)
@@ -58,15 +59,18 @@ func resolveExecutionImage(
 		ctx,
 		"docker",
 		"container", "inspect",
-		"--format", "{{.Image}}",
+		"--format", "{{if .State.Running}}{{.Image}}{{end}}",
 		containerIDs[0],
 	)
 	if err != nil {
 		return "", fmt.Errorf("inspect primary execution container %q: %w", containerIDs[0], err)
 	}
 	imageID := strings.TrimSpace(string(imageOutput))
+	if imageID == "" {
+		return "", fmt.Errorf("primary execution container %q is not running", containerIDs[0])
+	}
 	if !validSHA256ID(imageID) {
-		return "", fmt.Errorf("resolve execution image: Docker returned invalid image ID %q", imageID)
+		return "", fmt.Errorf("Docker returned invalid image ID %q", imageID)
 	}
 	return imageID, nil
 }
@@ -88,8 +92,11 @@ func executeOutput(ctx context.Context, name string, arguments ...string) ([]byt
 	}
 	if exitError, ok := err.(*exec.ExitError); ok {
 		if detail := strings.TrimSpace(string(exitError.Stderr)); detail != "" {
-			return output, errors.Join(fmt.Errorf("%w: %s", err, detail), ctx.Err())
+			err = fmt.Errorf("%w: %s", err, detail)
 		}
 	}
-	return output, errors.Join(err, ctx.Err())
+	if ctxErr := ctx.Err(); ctxErr != nil && !errors.Is(err, ctxErr) {
+		err = errors.Join(err, ctxErr)
+	}
+	return output, err
 }

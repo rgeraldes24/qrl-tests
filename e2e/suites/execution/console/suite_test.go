@@ -1,24 +1,25 @@
 package console
 
 import (
-	"bufio"
+	"archive/tar"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	containertypes "github.com/moby/moby/api/types/container"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
-
-const watchedConsoleHelper = "QRL_TEST_WATCHED_CONSOLE_HELPER"
-const watchedConsoleHelperMode = "QRL_TEST_WATCHED_CONSOLE_HELPER_MODE"
 
 func TestParseSuiteResult(t *testing.T) {
 	for name, testCase := range map[string]struct {
@@ -85,9 +86,10 @@ type fakeConsoleEngine struct {
 	copyPath         string
 	startID          string
 	startInteractive bool
-	command          func(context.Context) *exec.Cmd
+	process          func(context.Context) consoleContainerProcess
 	createErr        error
 	copyErr          error
+	startErr         error
 	removeErr        error
 	removed          bool
 	removeContextErr error
@@ -110,10 +112,17 @@ func (engine *fakeConsoleEngine) create(_ context.Context, spec consoleContainer
 	return engine.containerID, nil
 }
 
-func (engine *fakeConsoleEngine) start(ctx context.Context, containerID string, interactive bool) *exec.Cmd {
+func (engine *fakeConsoleEngine) start(
+	ctx context.Context,
+	containerID string,
+	interactive bool,
+) (consoleContainerProcess, error) {
 	engine.startID = containerID
 	engine.startInteractive = interactive
-	return engine.command(ctx)
+	if engine.startErr != nil {
+		return nil, engine.startErr
+	}
+	return engine.process(ctx), nil
 }
 
 func (engine *fakeConsoleEngine) remove(ctx context.Context, containerID string) error {
@@ -125,25 +134,87 @@ func (engine *fakeConsoleEngine) remove(ctx context.Context, containerID string)
 	return engine.removeErr
 }
 
-func TestDockerConsoleEngineBuildsContainerCommands(t *testing.T) {
+type fakeDockerClient struct {
+	calls         []string
+	createOptions dockerclient.ContainerCreateOptions
+	copyOptions   dockerclient.CopyToContainerOptions
+	copyContent   []byte
+	clientConn    net.Conn
+	serverConn    net.Conn
+}
+
+func (client *fakeDockerClient) ContainerCreate(
+	_ context.Context,
+	options dockerclient.ContainerCreateOptions,
+) (dockerclient.ContainerCreateResult, error) {
+	client.calls = append(client.calls, "create")
+	client.createOptions = options
+	return dockerclient.ContainerCreateResult{ID: "container-id"}, nil
+}
+
+func (client *fakeDockerClient) CopyToContainer(
+	_ context.Context,
+	_ string,
+	options dockerclient.CopyToContainerOptions,
+) (dockerclient.CopyToContainerResult, error) {
+	client.calls = append(client.calls, "copy")
+	client.copyOptions = options
+	content, err := io.ReadAll(options.Content)
+	client.copyContent = content
+	return dockerclient.CopyToContainerResult{}, err
+}
+
+func (client *fakeDockerClient) ContainerAttach(
+	_ context.Context,
+	_ string,
+	_ dockerclient.ContainerAttachOptions,
+) (dockerclient.ContainerAttachResult, error) {
+	client.calls = append(client.calls, "attach")
+	client.clientConn, client.serverConn = net.Pipe()
+	return dockerclient.ContainerAttachResult{
+		HijackedResponse: dockerclient.NewHijackedResponse(client.clientConn, "application/vnd.docker.multiplexed-stream"),
+	}, nil
+}
+
+func (client *fakeDockerClient) ContainerStart(
+	_ context.Context,
+	_ string,
+	_ dockerclient.ContainerStartOptions,
+) (dockerclient.ContainerStartResult, error) {
+	client.calls = append(client.calls, "start")
+	return dockerclient.ContainerStartResult{}, nil
+}
+
+func (client *fakeDockerClient) ContainerWait(
+	_ context.Context,
+	_ string,
+	options dockerclient.ContainerWaitOptions,
+) dockerclient.ContainerWaitResult {
+	client.calls = append(client.calls, "wait:"+string(options.Condition))
+	result := make(chan containertypes.WaitResponse, 1)
+	result <- containertypes.WaitResponse{}
+	return dockerclient.ContainerWaitResult{Result: result, Error: make(chan error)}
+}
+
+func (client *fakeDockerClient) ContainerRemove(
+	_ context.Context,
+	_ string,
+	options dockerclient.ContainerRemoveOptions,
+) (dockerclient.ContainerRemoveResult, error) {
+	client.calls = append(client.calls, fmt.Sprintf("remove:%t", options.Force))
+	return dockerclient.ContainerRemoveResult{}, nil
+}
+
+func TestDockerConsoleEngineUsesContainerAPI(t *testing.T) {
 	jsPath := t.TempDir()
-	var calls [][]string
-	var startPath string
-	var startArgs []string
-	engine := dockerConsoleEngine{
-		output: func(_ context.Context, name string, arguments ...string) ([]byte, error) {
-			calls = append(calls, append([]string{name}, arguments...))
-			if arguments[0] == "create" {
-				return []byte("container-id\n"), nil
-			}
-			return nil, nil
-		},
-		command: func(ctx context.Context, path string, arguments ...string) *exec.Cmd {
-			startPath = path
-			startArgs = slices.Clone(arguments)
-			return consoleHelperCommand(ctx, "early-exit")
-		},
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(jsPath, "harness.js"), []byte("fixture"), 0o600))
+	client := &fakeDockerClient{}
+	t.Cleanup(func() {
+		if client.serverConn != nil {
+			_ = client.serverConn.Close()
+		}
+	})
+	engine := dockerConsoleEngine{client: client}
 
 	containerID, err := engine.create(t.Context(), consoleContainerSpec{
 		image:       "registry.example/go-qrl@sha256:digest",
@@ -153,38 +224,49 @@ func TestDockerConsoleEngineBuildsContainerCommands(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "container-id", containerID)
-	wantCreate := []string{
-		"docker", "create", "--pull=never", "--interactive",
-		"--add-host", "host.docker.internal=host-gateway",
-		"--entrypoint", "gqrl",
-		"registry.example/go-qrl@sha256:digest",
+	require.Equal(t, "registry.example/go-qrl@sha256:digest", client.createOptions.Config.Image)
+	require.Equal(t, []string{"gqrl"}, client.createOptions.Config.Entrypoint)
+	require.Equal(t, []string{
 		"attach",
 		"--datadir", "/tmp/qrl-tests-console",
 		"--jspath", "/tmp/qrl-tests-js",
 		"--preload", "harness.js,events.js",
 		"ws://host.docker.internal:8546",
-	}
-	require.Len(t, calls, 1)
-	require.Equal(t, wantCreate, calls[0])
+	}, client.createOptions.Config.Cmd)
+	require.True(t, client.createOptions.Config.AttachStdin)
+	require.True(t, client.createOptions.Config.AttachStdout)
+	require.True(t, client.createOptions.Config.AttachStderr)
+	require.True(t, client.createOptions.Config.OpenStdin)
+	require.True(t, client.createOptions.Config.StdinOnce)
+	require.Equal(t, []string{"host.docker.internal:host-gateway"}, client.createOptions.HostConfig.ExtraHosts)
+
 	require.NoError(t, engine.copyFixtures(t.Context(), containerID, jsPath))
-	wantCopy := []string{"docker", "cp", jsPath, "container-id:/tmp/qrl-tests-js"}
-	require.Len(t, calls, 2)
-	require.Equal(t, wantCopy, calls[1])
-	_ = engine.start(t.Context(), containerID, true)
-	require.Equal(t, "docker", startPath)
-	require.Equal(t, []string{"start", "--attach", "--interactive", "container-id"}, startArgs)
+	require.Equal(t, "/tmp", client.copyOptions.DestinationPath)
+	archive := tar.NewReader(bytes.NewReader(client.copyContent))
+	contents := make(map[string]string)
+	for {
+		header, err := archive.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		content, err := io.ReadAll(archive)
+		require.NoError(t, err)
+		contents[header.Name] = string(content)
+	}
+	require.Equal(t, "fixture", contents["qrl-tests-js/harness.js"])
+
+	process, err := engine.start(t.Context(), containerID, true)
+	require.NoError(t, err)
+	require.NoError(t, process.wait())
+	process.close()
 	require.NoError(t, engine.remove(t.Context(), containerID))
-	wantRemove := []string{"docker", "rm", "--force", "container-id"}
-	require.Len(t, calls, 3)
-	require.Equal(t, wantRemove, calls[2])
+	require.Equal(t, []string{"create", "copy", "attach", "wait:next-exit", "start", "remove:true"}, client.calls)
 }
 
-func TestDockerConsoleEngineBuildsExecContainerCommand(t *testing.T) {
-	var call []string
-	engine := dockerConsoleEngine{output: func(_ context.Context, name string, arguments ...string) ([]byte, error) {
-		call = append([]string{name}, arguments...)
-		return []byte("container-id\n"), nil
-	}}
+func TestDockerConsoleEngineBuildsExecContainerConfig(t *testing.T) {
+	client := &fakeDockerClient{}
+	engine := dockerConsoleEngine{client: client}
 
 	_, err := engine.create(t.Context(), consoleContainerSpec{
 		image:    "registry.example/go-qrl@sha256:digest",
@@ -192,18 +274,16 @@ func TestDockerConsoleEngineBuildsExecContainerCommand(t *testing.T) {
 		scenario: "api",
 	})
 	require.NoError(t, err)
-	want := []string{
-		"docker", "create", "--pull=never",
-		"--add-host", "host.docker.internal=host-gateway",
-		"--entrypoint", "gqrl",
-		"registry.example/go-qrl@sha256:digest",
+	require.Equal(t, []string{
 		"attach",
 		"--datadir", "/tmp/qrl-tests-console",
 		"--jspath", "/tmp/qrl-tests-js",
 		"--exec", "loadScript('harness.js');loadScript('api.js')",
 		"http://host.docker.internal:8545",
-	}
-	require.Equal(t, want, call)
+	}, client.createOptions.Config.Cmd)
+	require.False(t, client.createOptions.Config.AttachStdin)
+	require.False(t, client.createOptions.Config.OpenStdin)
+	require.False(t, client.createOptions.Config.StdinOnce)
 }
 
 func TestConsoleContainerEndpoint(t *testing.T) {
@@ -249,10 +329,121 @@ func TestConsoleContainerEndpoint(t *testing.T) {
 	}
 }
 
+type fakeConsoleProcess struct {
+	ctx        context.Context
+	cancel     context.CancelFunc
+	output     string
+	readErr    error
+	done       chan error
+	closed     chan struct{}
+	closeOnce  sync.Once
+	lock       sync.Mutex
+	input      strings.Builder
+	inputClose bool
+}
+
+func newFakeConsoleProcess(ctx context.Context, mode string) *fakeConsoleProcess {
+	processCtx, cancel := context.WithCancel(ctx)
+	process := &fakeConsoleProcess{
+		ctx:    processCtx,
+		cancel: cancel,
+		done:   make(chan error, 1),
+		closed: make(chan struct{}),
+	}
+	switch mode {
+	case "ordinary-success":
+		process.output = resultPrefix + "api\n"
+		process.done <- nil
+	case "ordinary-failure":
+		process.output = failurePrefix + "api helper failure\n"
+		process.done <- nil
+	case "ordinary-nonzero":
+		process.output = "helper process failed\n"
+		process.done <- errors.New("exit status 2")
+	case "ordinary-read-error":
+		process.readErr = errors.New("attach read failed")
+	case "success":
+		process.output = resultPrefix + "events\n"
+	case "failure":
+		process.output = resultPrefix + "events\n" + failurePrefix + "events helper failure\n"
+	case "early-exit":
+		process.output = "console exited before the script completed\n"
+		process.done <- nil
+	case "timeout":
+	default:
+		panic("unknown fake console process mode " + mode)
+	}
+	return process
+}
+
+func (process *fakeConsoleProcess) readOutput(destination io.Writer) error {
+	if _, err := io.WriteString(destination, process.output); err != nil {
+		return err
+	}
+	if process.readErr != nil {
+		return process.readErr
+	}
+	<-process.closed
+	return nil
+}
+
+func (process *fakeConsoleProcess) writeInput(input string) error {
+	process.lock.Lock()
+	_, _ = process.input.WriteString(input)
+	process.lock.Unlock()
+	if strings.Contains(input, "exit\n") {
+		select {
+		case process.done <- nil:
+		default:
+		}
+	}
+	return nil
+}
+
+func (process *fakeConsoleProcess) closeInput() error {
+	process.lock.Lock()
+	defer process.lock.Unlock()
+	process.inputClose = true
+	return nil
+}
+
+func (process *fakeConsoleProcess) wait() error {
+	select {
+	case err := <-process.done:
+		process.close()
+		return err
+	case <-process.ctx.Done():
+		process.close()
+		return process.ctx.Err()
+	}
+}
+
+func (process *fakeConsoleProcess) close() {
+	process.closeOnce.Do(func() {
+		process.cancel()
+		process.lock.Lock()
+		process.inputClose = true
+		process.lock.Unlock()
+		close(process.closed)
+	})
+}
+
+func (process *fakeConsoleProcess) receivedInput() string {
+	process.lock.Lock()
+	defer process.lock.Unlock()
+	return process.input.String()
+}
+
+func (process *fakeConsoleProcess) inputClosed() bool {
+	process.lock.Lock()
+	defer process.lock.Unlock()
+	return process.inputClose
+}
+
 func TestRunSuiteUsesExecutionImageContainer(t *testing.T) {
 	jsPath := t.TempDir()
-	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		return consoleHelperCommand(ctx, "ordinary-success")
+	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
+		return newFakeConsoleProcess(ctx, "ordinary-success")
 	}}
 	err := runSuiteWithEngine(
 		t.Context(),
@@ -290,8 +481,8 @@ func TestRunSuiteCleansUpAfterCreate(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			engine := &fakeConsoleEngine{
-				command: func(ctx context.Context) *exec.Cmd {
-					return consoleHelperCommand(ctx, testCase.mode)
+				process: func(ctx context.Context) consoleContainerProcess {
+					return newFakeConsoleProcess(ctx, testCase.mode)
 				},
 				removeErr: testCase.removeErr,
 			}
@@ -322,8 +513,8 @@ func TestRunSuiteCleansUpAfterFixtureCopyFailure(t *testing.T) {
 func TestRunSuiteTerminatesOnTimeoutAndUsesFreshCleanupContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
-	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		return consoleHelperCommand(ctx, "timeout")
+	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
+		return newFakeConsoleProcess(ctx, "timeout")
 	}}
 	err := runSuiteWithEngine(ctx, "image", t.TempDir(), "http://127.0.0.1:8545", "api", engine)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -331,11 +522,20 @@ func TestRunSuiteTerminatesOnTimeoutAndUsesFreshCleanupContext(t *testing.T) {
 		"cleanup did not use a fresh context: %+v", engine)
 }
 
+func TestRunSuiteStopsWhenOutputStreamFails(t *testing.T) {
+	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
+		return newFakeConsoleProcess(ctx, "ordinary-read-error")
+	}}
+	err := runSuiteWithEngine(t.Context(), "image", t.TempDir(), "http://127.0.0.1:8545", "api", engine)
+	require.ErrorContains(t, err, "attach read failed")
+	require.True(t, engine.removed)
+}
+
 func TestRunWatchedSuiteUsesExecutionImageContainer(t *testing.T) {
-	var command *exec.Cmd
-	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		command = consoleHelperCommand(ctx, "success")
-		return command
+	var process *fakeConsoleProcess
+	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
+		process = newFakeConsoleProcess(ctx, "success")
+		return process
 	}}
 	err := runWatchedSuiteWithEngine(
 		t.Context(),
@@ -348,112 +548,49 @@ func TestRunWatchedSuiteUsesExecutionImageContainer(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, engine.spec.interactive && engine.copyID == engine.containerID && engine.startID == engine.containerID &&
 		engine.startInteractive && engine.removed, "unexpected lifecycle state: %+v", engine)
-	require.NotNil(t, command.ProcessState)
-	require.True(t, command.ProcessState.Success())
+	require.Equal(t, "exit\n", process.receivedInput())
+	require.True(t, process.inputClosed())
 }
 
 func TestRunWatchedSuiteCleansUpAfterStartFailure(t *testing.T) {
-	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		return exec.CommandContext(ctx, filepath.Join(t.TempDir(), "missing-docker"))
-	}}
+	engine := &fakeConsoleEngine{startErr: errors.New("start failed")}
 	err := runWatchedSuiteWithEngine(t.Context(), "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
 	require.ErrorContains(t, err, "start console suite events")
 	require.True(t, engine.removed)
 }
 
 func TestRunWatchedSuiteRejectsScriptFailure(t *testing.T) {
-	var command *exec.Cmd
-	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		command = consoleHelperCommand(ctx, "failure")
-		return command
+	var process *fakeConsoleProcess
+	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
+		process = newFakeConsoleProcess(ctx, "failure")
+		return process
 	}}
 	err := runWatchedSuiteWithEngine(t.Context(), "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
 	require.ErrorContains(t, err, "emitted a failure marker")
 	require.ErrorContains(t, err, "helper failure")
-	require.NotNil(t, command.ProcessState)
+	require.Equal(t, "exit\n", process.receivedInput())
 	require.True(t, engine.removed)
 }
 
 func TestRunWatchedSuiteRejectsEarlyExit(t *testing.T) {
-	var command *exec.Cmd
-	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		command = consoleHelperCommand(ctx, "early-exit")
-		return command
+	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
+		return newFakeConsoleProcess(ctx, "early-exit")
 	}}
 	err := runWatchedSuiteWithEngine(t.Context(), "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
 	require.ErrorContains(t, err, "emitted 0 success markers")
-	require.NotNil(t, command.ProcessState)
-	require.True(t, command.ProcessState.Success() && engine.removed)
+	require.True(t, engine.removed)
 }
 
 func TestRunWatchedSuiteTerminatesOnTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
-	var command *exec.Cmd
-	engine := &fakeConsoleEngine{command: func(ctx context.Context) *exec.Cmd {
-		command = consoleHelperCommand(ctx, "timeout")
-		return command
+	var process *fakeConsoleProcess
+	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
+		process = newFakeConsoleProcess(ctx, "timeout")
+		return process
 	}}
 	err := runWatchedSuiteWithEngine(ctx, "image", t.TempDir(), "ws://127.0.0.1:8546", "events", engine)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-	require.NotNil(t, command.ProcessState)
+	require.True(t, process.inputClosed())
 	require.True(t, engine.removed && engine.removeContextErr == nil)
-}
-
-func consoleHelperCommand(ctx context.Context, mode string) *exec.Cmd {
-	command := exec.CommandContext(
-		ctx,
-		os.Args[0],
-		"-test.run=^TestWatchedConsoleHelperProcess$",
-	)
-	command.Env = append(
-		os.Environ(),
-		watchedConsoleHelper+"=1",
-		watchedConsoleHelperMode+"="+mode,
-	)
-	return command
-}
-
-func TestWatchedConsoleHelperProcess(t *testing.T) {
-	if os.Getenv(watchedConsoleHelper) != "1" {
-		return
-	}
-
-	switch os.Getenv(watchedConsoleHelperMode) {
-	case "ordinary-success":
-		fmt.Fprintln(os.Stdout, resultPrefix+"api")
-	case "ordinary-failure":
-		fmt.Fprintln(os.Stderr, failurePrefix+"api helper failure")
-	case "ordinary-nonzero":
-		fmt.Fprintln(os.Stderr, "helper process failed")
-		os.Exit(2)
-	case "success":
-		fmt.Fprintln(os.Stdout, resultPrefix+"events")
-		waitForConsoleExit(t)
-	case "failure":
-		fmt.Fprintln(os.Stdout, resultPrefix+"events")
-		fmt.Fprintln(os.Stderr, failurePrefix+"events helper failure")
-		waitForConsoleExit(t)
-	case "early-exit":
-		fmt.Fprintln(os.Stdout, "console exited before the script completed")
-	case "timeout":
-		for {
-			time.Sleep(time.Second)
-		}
-	default:
-		t.Fatalf("unknown helper mode %q", os.Getenv(watchedConsoleHelperMode))
-	}
-}
-
-func waitForConsoleExit(t *testing.T) {
-	t.Helper()
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		if strings.TrimSpace(scanner.Text()) == "exit" {
-			return
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatal(err)
-	}
 }

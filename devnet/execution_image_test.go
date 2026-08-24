@@ -2,113 +2,104 @@ package devnet
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	containertypes "github.com/moby/moby/api/types/container"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveExecutionImageUsesPrimaryServiceContainer(t *testing.T) {
-	containerID := strings.Repeat("cd", 32)
-	imageID := "sha256:" + strings.Repeat("ab", 32)
-	var calls [][]string
-	output := func(_ context.Context, name string, arguments ...string) ([]byte, error) {
-		call := append([]string{name}, arguments...)
-		calls = append(calls, call)
-		switch len(calls) {
-		case 1:
-			return []byte(containerID + "\n"), nil
-		case 2:
-			return []byte(imageID + "\n"), nil
-		default:
-			t.Fatalf("unexpected command %q", call)
-			return nil, nil
-		}
-	}
+type containerListFunc func(
+	context.Context,
+	dockerclient.ContainerListOptions,
+) (dockerclient.ContainerListResult, error)
 
-	resolved, err := resolveExecutionImage(t.Context(), executionImageTestEnvironment(), output)
+func (list containerListFunc) ContainerList(
+	ctx context.Context,
+	options dockerclient.ContainerListOptions,
+) (dockerclient.ContainerListResult, error) {
+	return list(ctx, options)
+}
+
+func TestResolveExecutionImageUsesPrimaryServiceContainer(t *testing.T) {
+	imageID := "sha256:" + strings.Repeat("ab", 32)
+	client := containerListFunc(func(
+		_ context.Context,
+		options dockerclient.ContainerListOptions,
+	) (dockerclient.ContainerListResult, error) {
+		require.False(t, options.All)
+		require.Equal(t, dockerclient.Filters{
+			"label": {kurtosisServiceUUIDDockerLabel + "=primary-execution-service": true},
+		}, options.Filters)
+		return dockerclient.ContainerListResult{Items: []containertypes.Summary{{
+			ImageID: imageID,
+		}}}, nil
+	})
+
+	resolved, err := resolveExecutionImage(t.Context(), "primary-execution-service", client)
 	require.NoError(t, err)
 	require.Equal(t, imageID, resolved)
-	require.Equal(t, [][]string{
-		{
-			"docker", "container", "ls", "--no-trunc", "--quiet", "--filter",
-			"label=com.kurtosistech.guid=primary-execution-service",
-		},
-		{
-			"docker", "container", "inspect", "--format",
-			"{{if .State.Running}}{{.Image}}{{end}}", containerID,
-		},
-	}, calls)
 }
 
 func TestResolveExecutionImageRejectsUnverifiableResults(t *testing.T) {
-	containerID := strings.Repeat("cd", 32)
 	for name, testCase := range map[string]struct {
-		firstOutput  string
-		secondOutput string
-		wantErr      string
+		containers []containertypes.Summary
+		clientErr  error
+		wantErr    string
 	}{
 		"no matching container": {
 			wantErr: "expected one running Docker container for service \"primary-execution-service\", found 0",
 		},
 		"multiple matching containers": {
-			firstOutput: "first\nsecond\n",
-			wantErr:     "expected one running Docker container for service \"primary-execution-service\", found 2",
+			containers: []containertypes.Summary{{ID: "first"}, {ID: "second"}},
+			wantErr:    "expected one running Docker container for service \"primary-execution-service\", found 2",
 		},
-		"container stopped": {
-			firstOutput: containerID,
-			wantErr:     "is not running",
+		"list failure": {
+			clientErr: errors.New("list failed"),
+			wantErr:   "find primary execution container: list failed",
 		},
 		"malformed image ID": {
-			firstOutput:  containerID,
-			secondOutput: "registry.example/go-qrl:mutable",
-			wantErr:      "Docker returned invalid image ID",
+			containers: []containertypes.Summary{{
+				ID:      strings.Repeat("cd", 32),
+				ImageID: "registry.example/go-qrl:mutable",
+			}},
+			wantErr: "invalid Docker image ID",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			call := 0
-			output := func(context.Context, string, ...string) ([]byte, error) {
-				call++
-				if call == 1 {
-					return []byte(testCase.firstOutput), nil
-				}
-				return []byte(testCase.secondOutput), nil
-			}
+			client := containerListFunc(func(
+				context.Context,
+				dockerclient.ContainerListOptions,
+			) (dockerclient.ContainerListResult, error) {
+				return dockerclient.ContainerListResult{Items: testCase.containers}, testCase.clientErr
+			})
 
-			_, err := resolveExecutionImage(t.Context(), executionImageTestEnvironment(), output)
+			_, err := resolveExecutionImage(t.Context(), "primary-execution-service", client)
 			require.ErrorContains(t, err, testCase.wantErr)
 		})
 	}
 }
 
-func TestResolveExecutionImageRequiresDockerServiceIdentity(t *testing.T) {
+func TestPrimaryExecutionServiceIDRequiresDockerServiceIdentity(t *testing.T) {
 	environment := executionImageTestEnvironment()
 	environment.Backend = BackendKubernetes
-	_, err := resolveExecutionImage(t.Context(), environment, nil)
+	_, err := primaryExecutionServiceID(environment)
 	require.ErrorContains(t, err, "is not Docker")
 
 	environment.Backend = BackendDocker
 	environment.Participants[0].Execution.ID = ""
-	_, err = resolveExecutionImage(t.Context(), environment, nil)
+	_, err = primaryExecutionServiceID(environment)
 	require.ErrorContains(t, err, "primary execution service has no ID")
-}
-
-func TestExecutionImageCommandHonorsCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	_, err := executeOutput(ctx, "go", "version")
-	require.ErrorIs(t, err, context.Canceled)
-	require.EqualError(t, err, context.Canceled.Error())
 }
 
 func executionImageTestEnvironment() Environment {
 	return Environment{
 		Backend: BackendDocker,
 		Participants: []Participant{{
-			Index: 1,
-			Execution: ExecutionService{ServiceInfo: ServiceInfo{
-				ID: "primary-execution-service",
-			}},
+			Index:     1,
+			Execution: ExecutionService{ServiceInfo: ServiceInfo{ID: "primary-execution-service"}},
 		}},
 	}
 }

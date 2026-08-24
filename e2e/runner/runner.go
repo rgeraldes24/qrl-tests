@@ -188,9 +188,6 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
-	if err := runner.validateConsoleBackend(selected); err != nil {
-		return err
-	}
 	plan, err := planLanes(runner.configuration, selected, mode)
 	if err != nil {
 		return err
@@ -227,15 +224,6 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	// Reporting problems never mask the test result, and vice versa. Preserve
 	// raw lane errors as well so callers can inspect cancellation and timeout.
 	return errors.Join(summary.VerdictError(), errors.Join(laneErrors...), manifestErr, summarizeErr)
-}
-
-func (runner *Runner) validateConsoleBackend(selected []lanes.Lane) error {
-	for _, lane := range selected {
-		if lane.NeedsExecutionImage() && runner.configuration.Backend != devnet.BackendDocker {
-			return errors.New("execution-console requires the Docker backend; use execution-abi with Kubernetes")
-		}
-	}
-	return nil
 }
 
 // Remove only runner-owned outputs because ReportDir may contain unrelated files.

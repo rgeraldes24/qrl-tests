@@ -171,21 +171,6 @@ func TestRunUsesActualConsoleExecutionImageWithCustomParameters(t *testing.T) {
 	require.Equal(t, actualImage, configured.ExecutionImage)
 }
 
-func TestConsoleRejectsKubernetesBackend(t *testing.T) {
-	networks := new(recordingNetworks)
-	runner := New(Config{
-		Backend: devnet.BackendKubernetes,
-		Suites:  []string{executionConsoleSuite},
-	}, io.Discard, io.Discard)
-	runner.networks = networks
-
-	err := runner.Run(t.Context(), executionLaneName)
-	require.EqualError(t, err,
-		"execution-console requires the Docker backend; use execution-abi with Kubernetes",
-	)
-	require.Empty(t, networks.started.EnclaveName)
-}
-
 func TestConsoleImageResolutionFailureCleansUpNetwork(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)

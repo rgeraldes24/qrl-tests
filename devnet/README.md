@@ -32,7 +32,7 @@ DEVNET_BACKEND=kubernetes \
 DEVNET_PARAMS_FILE=/path/to/network_params.yaml \
 make network-start
 
-DEVNET_BACKEND=kubernetes E2E_SUITE=execution-abi make e2e
+DEVNET_BACKEND=kubernetes make e2e
 make network-stop
 ```
 

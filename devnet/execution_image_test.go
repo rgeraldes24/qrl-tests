@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResolveExecutionImageUsesPrimaryServiceContainer(t *testing.T) {
+func TestResolveExecutionImage(t *testing.T) {
 	imageID := "sha256:" + strings.Repeat("ab", 32)
 	listContainers := func(
 		_ context.Context,
@@ -31,7 +31,7 @@ func TestResolveExecutionImageUsesPrimaryServiceContainer(t *testing.T) {
 	require.Equal(t, imageID, resolved)
 }
 
-func TestResolveExecutionImageRejectsUnverifiableResults(t *testing.T) {
+func TestResolveExecutionImageErrors(t *testing.T) {
 	for name, testCase := range map[string]struct {
 		containers []containertypes.Summary
 		clientErr  error
@@ -70,7 +70,7 @@ func TestResolveExecutionImageRejectsUnverifiableResults(t *testing.T) {
 	}
 }
 
-func TestPrimaryExecutionServiceIDRequiresDockerServiceIdentity(t *testing.T) {
+func TestPrimaryExecutionServiceID(t *testing.T) {
 	environment := executionImageTestEnvironment()
 	environment.Backend = BackendKubernetes
 	_, err := primaryExecutionServiceID(environment)

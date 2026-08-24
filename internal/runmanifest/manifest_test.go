@@ -48,8 +48,8 @@ func TestEnrich(t *testing.T) {
 	}, dependencies{
 		getenv: func(key string) string { return environment[key] },
 		probe:  probe,
-		dockerVersion: func(context.Context) (string, error) {
-			return "28.0.1", nil
+		dockerVersion: func(context.Context) string {
+			return "28.0.1"
 		},
 		now: func() time.Time { return started },
 	})
@@ -88,28 +88,14 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 		probe: func(context.Context, string, ...string) (string, error) {
 			return "", errors.New("not installed")
 		},
-		dockerVersion: func(context.Context) (string, error) {
-			return "", errors.New("not installed")
+		dockerVersion: func(context.Context) string {
+			return ""
 		},
 		now: time.Now,
 	})
 	require.Empty(t, manifest.Versions.Docker)
 	require.Empty(t, manifest.Versions.Kurtosis)
 	require.Equal(t, runtime.Version(), manifest.Versions.Go)
-}
-
-func TestDockerVersionUsesBoundedContext(t *testing.T) {
-	version := dockerVersion(t.Context(), func(ctx context.Context) (string, error) {
-		deadline, ok := ctx.Deadline()
-		require.True(t, ok)
-		require.WithinDuration(t, time.Now().Add(probeTimeout), deadline, time.Second)
-		return " 28.0.1\n", nil
-	})
-	require.Equal(t, "28.0.1", version)
-
-	require.Empty(t, dockerVersion(t.Context(), func(context.Context) (string, error) {
-		return "untrusted", errors.New("probe failed")
-	}))
 }
 
 func TestFinish(t *testing.T) {

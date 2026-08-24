@@ -106,7 +106,7 @@ type commandFunc func(context.Context, string, ...string) (string, error)
 type dependencies struct {
 	getenv        func(string) string
 	probe         commandFunc
-	dockerVersion func(context.Context) (string, error)
+	dockerVersion func(context.Context) string
 	now           func() time.Time
 }
 
@@ -117,7 +117,7 @@ func Enrich(ctx context.Context, testsDir string, manifest Manifest) Manifest {
 	return enrich(ctx, testsDir, manifest, dependencies{
 		getenv:        os.Getenv,
 		probe:         probeCommand,
-		dockerVersion: queryDockerVersion,
+		dockerVersion: dockerVersion,
 		now:           time.Now,
 	})
 }
@@ -133,7 +133,7 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	}
 	manifest.Versions = Versions{
 		Go:       runtime.Version(),
-		Docker:   dockerVersion(ctx, deps.dockerVersion),
+		Docker:   deps.dockerVersion(ctx),
 		Kurtosis: kurtosisVersion(ctx, deps.probe),
 	}
 	manifest.GitHub = GitHub{
@@ -147,28 +147,21 @@ func enrich(ctx context.Context, testsDir string, manifest Manifest, deps depend
 	return manifest
 }
 
-func dockerVersion(ctx context.Context, probe func(context.Context) (string, error)) string {
+func dockerVersion(ctx context.Context) string {
 	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
-	version, err := probe(probeCtx)
+
+	client, err := dockerapi.New()
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(version)
-}
-
-func queryDockerVersion(ctx context.Context) (string, error) {
-	client, err := dockerapi.New()
-	if err != nil {
-		return "", err
-	}
 	defer func() { _ = client.Close() }()
 
-	result, err := client.ServerVersion(ctx, dockerclient.ServerVersionOptions{})
+	result, err := client.ServerVersion(probeCtx, dockerclient.ServerVersionOptions{})
 	if err != nil {
-		return "", err
+		return ""
 	}
-	return result.Version, nil
+	return strings.TrimSpace(result.Version)
 }
 
 func kurtosisVersion(ctx context.Context, command commandFunc) string {

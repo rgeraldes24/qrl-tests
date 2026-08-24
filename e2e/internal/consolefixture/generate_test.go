@@ -8,7 +8,7 @@ import (
 	"github.com/theQRL/go-qrl/accounts/abi"
 )
 
-func TestAssets(t *testing.T) {
+func TestGeneratedArtifacts(t *testing.T) {
 	_, err := abi.JSON(strings.NewReader(string(ABI)))
 	require.NoError(t, err)
 

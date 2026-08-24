@@ -116,7 +116,7 @@ func TestCollectDiagnostics(t *testing.T) {
 	}
 }
 
-func TestCollectDiagnosticsKeepsPartialOutputButReportsStreamAndWriteFailures(t *testing.T) {
+func TestCollectDiagnosticsPartialFailures(t *testing.T) {
 	output := t.TempDir()
 	failedLog := filepath.Join(output, "services", "run-generate-genesis.log")
 	require.NoError(t, os.MkdirAll(failedLog, 0o755))
@@ -151,13 +151,13 @@ func TestCollectDiagnosticsKeepsPartialOutputButReportsStreamAndWriteFailures(t 
 	}
 }
 
-func TestCollectDiagnosticsSkipsLogStreamWithoutServices(t *testing.T) {
+func TestCollectDiagnosticsWithoutServices(t *testing.T) {
 	client := new(fakeDiagnosticsClient)
 	require.NoError(t, collectDiagnostics(t.Context(), client, "empty", t.TempDir()))
 	require.Zero(t, client.logCalls)
 }
 
-func TestCollectDiagnosticsDisambiguatesHistoricalServiceNames(t *testing.T) {
+func TestCollectDiagnosticsDuplicateServiceNames(t *testing.T) {
 	services := []kurtosis.ServiceIdentity{
 		{Name: "recreated", UUID: "old-uuid"},
 		{Name: "recreated", UUID: "new-uuid"},

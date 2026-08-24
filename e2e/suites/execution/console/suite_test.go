@@ -60,7 +60,7 @@ func TestSuiteFixtures(t *testing.T) {
 	}
 }
 
-func TestEventsFixtureEmitsTerminalMarkersBeforeFilterTeardown(t *testing.T) {
+func TestEventsFixtureMarkerOrder(t *testing.T) {
 	source, err := fs.ReadFile(consoleFixtures, "testdata/console/events.js")
 	require.NoError(t, err)
 
@@ -205,7 +205,7 @@ func (client *fakeDockerClient) ContainerRemove(
 	return dockerclient.ContainerRemoveResult{}, nil
 }
 
-func TestDockerConsoleEngineUsesContainerAPI(t *testing.T) {
+func TestDockerConsoleEngine(t *testing.T) {
 	jsPath := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(jsPath, "harness.js"), []byte("fixture"), 0o600))
 	client := &fakeDockerClient{}
@@ -264,7 +264,7 @@ func TestDockerConsoleEngineUsesContainerAPI(t *testing.T) {
 	require.Equal(t, []string{"create", "copy", "attach", "wait:next-exit", "start", "remove:true"}, client.calls)
 }
 
-func TestDockerConsoleEngineBuildsExecContainerConfig(t *testing.T) {
+func TestDockerConsoleEngineExecConfig(t *testing.T) {
 	client := &fakeDockerClient{}
 	engine := dockerConsoleEngine{client: client}
 
@@ -440,7 +440,7 @@ func (process *fakeConsoleProcess) inputClosed() bool {
 	return process.inputClose
 }
 
-func TestRunSuiteUsesExecutionImageContainer(t *testing.T) {
+func TestRunSuite(t *testing.T) {
 	jsPath := t.TempDir()
 	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
 		return newFakeConsoleProcess(ctx, "ordinary-success")
@@ -510,7 +510,7 @@ func TestRunSuiteCleansUpAfterFixtureCopyFailure(t *testing.T) {
 	require.True(t, engine.removed && engine.startID == "", "unexpected lifecycle state: %+v", engine)
 }
 
-func TestRunSuiteTerminatesOnTimeoutAndUsesFreshCleanupContext(t *testing.T) {
+func TestRunSuiteTimeoutCleanup(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
@@ -531,7 +531,7 @@ func TestRunSuiteStopsWhenOutputStreamFails(t *testing.T) {
 	require.True(t, engine.removed)
 }
 
-func TestRunWatchedSuiteUsesExecutionImageContainer(t *testing.T) {
+func TestRunWatchedSuite(t *testing.T) {
 	var process *fakeConsoleProcess
 	engine := &fakeConsoleEngine{process: func(ctx context.Context) consoleContainerProcess {
 		process = newFakeConsoleProcess(ctx, "success")

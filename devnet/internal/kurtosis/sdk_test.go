@@ -95,7 +95,7 @@ func TestServicePortBindings(t *testing.T) {
 	require.Equal(t, []string{"<none>"}, servicePortBindings(new(kurtosis_core_rpc_api_bindings.ServiceInfo)))
 }
 
-func TestServiceLogsUsesOneBoundedRequest(t *testing.T) {
+func TestServiceLogs(t *testing.T) {
 	var request *kurtosis_engine_rpc_api_bindings.GetServiceLogsArgs
 	client := &Client{
 		getServiceLogs: func(
@@ -133,7 +133,7 @@ func TestServiceLogsUsesOneBoundedRequest(t *testing.T) {
 	require.NotContains(t, captured, "stopped-uuid")
 }
 
-func TestServiceLogsReportsTruncatedStreamWithPartialOutput(t *testing.T) {
+func TestServiceLogsStreamFailure(t *testing.T) {
 	client := &Client{
 		getServiceLogs: func(
 			context.Context,
@@ -163,7 +163,7 @@ func TestServiceLogsReportsTruncatedStreamWithPartialOutput(t *testing.T) {
 	require.Equal(t, []string{"partial"}, captured)
 }
 
-func TestServiceLogsAcceptsStreamsWithoutLogLines(t *testing.T) {
+func TestServiceLogsEmptyOutput(t *testing.T) {
 	for name, responses := range map[string][]*kurtosis_engine_rpc_api_bindings.GetServiceLogsResponse{
 		"empty stream": nil,
 		"empty response": {

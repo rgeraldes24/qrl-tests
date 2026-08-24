@@ -143,7 +143,7 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 	require.NotContains(t, string(payload), `"custom_parameters":`)
 }
 
-func TestRunUsesActualConsoleExecutionImageWithCustomParameters(t *testing.T) {
+func TestRunRecordsResolvedExecutionImage(t *testing.T) {
 	reports := t.TempDir()
 	actualImage := "sha256:" + strings.Repeat("ab", 32)
 	runner := New(Config{
@@ -171,7 +171,7 @@ func TestRunUsesActualConsoleExecutionImageWithCustomParameters(t *testing.T) {
 	require.Equal(t, actualImage, configured.ExecutionImage)
 }
 
-func TestConsoleImageResolutionFailureCleansUpNetwork(t *testing.T) {
+func TestRunExecutionImageResolutionFailure(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)
 	runner := New(Config{
@@ -194,7 +194,7 @@ func TestConsoleImageResolutionFailureCleansUpNetwork(t *testing.T) {
 	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
 }
 
-func TestConsoleImageResolutionPreservesCallerCancellation(t *testing.T) {
+func TestRunExecutionImageResolutionCancellation(t *testing.T) {
 	reports := t.TempDir()
 	networks := new(recordingNetworks)
 	runner := New(Config{
@@ -415,7 +415,7 @@ func TestRunCollectsDiagnosticsOnFailureBeforeCleanup(t *testing.T) {
 	require.Equal(t, diagnosticsDir, networks.started.FailureDiagnosticsDir)
 }
 
-func TestRunReportsDiagnosticsFailureAlongsideLaneFailure(t *testing.T) {
+func TestRunJoinsLaneAndDiagnosticsFailures(t *testing.T) {
 	networks := &recordingNetworks{collectErr: errors.New("logs unavailable")}
 	reports := t.TempDir()
 	testRunner := newTestRunner(t, Config{

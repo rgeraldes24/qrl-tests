@@ -230,6 +230,33 @@ func TestRunClassifiesConsoleToolFailureAsInfrastructure(t *testing.T) {
 	require.Contains(t, summary.Lanes[0].Error, "copy failed")
 }
 
+func TestRunCancelsBlockedConsoleToolPreparation(t *testing.T) {
+	reports := t.TempDir()
+	networks := new(recordingNetworks)
+	runner := newTestRunner(t, Config{
+		ReportDir: reports,
+		Backend:   devnet.BackendDocker,
+		Suites:    []string{"execution-console"},
+	}, io.Discard, io.Discard)
+	runner.networks = networks
+	runner.toolPreparationTimeout = 50 * time.Millisecond
+	runner.prepareGQRL = func(ctx context.Context, _ runMode, _ devnet.Backend, _, _, _ string) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	runner.runCommand = func(context.Context, commandSpec) error {
+		t.Fatal("ginkgo must not run after console tool preparation times out")
+		return nil
+	}
+
+	err := runner.Run(t.Context(), executionLaneName)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, []string{devnet.DefaultEnclaveName}, networks.stopped)
+
+	summary := testutil.ReadJSON[results.Summary](t, filepath.Join(reports, results.SummaryFileName))
+	require.Equal(t, results.VerdictInfrastructure, summary.Lanes[0].Verdict)
+}
+
 func TestRunClassifiesConsoleToolCleanupFailureAsInfrastructure(t *testing.T) {
 	reports := t.TempDir()
 	runner := newTestRunner(t, Config{

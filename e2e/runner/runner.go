@@ -81,20 +81,22 @@ func (mode runMode) suffixesEnclave() bool {
 }
 
 type Runner struct {
-	configuration Config
-	networks      networkManager
-	prepareGQRL   func(context.Context, runMode, devnet.Backend, string, string, string) error
-	removeToolDir func(string) error
-	runCommand    func(context.Context, commandSpec) error
-	stdout        io.Writer
-	stderr        io.Writer
+	configuration          Config
+	networks               networkManager
+	toolPreparationTimeout time.Duration
+	prepareGQRL            func(context.Context, runMode, devnet.Backend, string, string, string) error
+	removeToolDir          func(string) error
+	runCommand             func(context.Context, commandSpec) error
+	stdout                 io.Writer
+	stderr                 io.Writer
 }
 
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	outputLock := new(sync.Mutex)
 	return &Runner{
-		configuration: configuration.withDefaults(),
-		networks:      devnet.NewManager(),
+		configuration:          configuration.withDefaults(),
+		networks:               devnet.NewManager(),
+		toolPreparationTimeout: defaultToolPreparationTimeout,
 		prepareGQRL: func(ctx context.Context, mode runMode, backend devnet.Backend, testsDir, image, destination string) error {
 			return prepareGQRL(ctx, runtime.GOOS, mode, backend, testsDir, image, destination, executeOutput)
 		},

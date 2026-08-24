@@ -28,6 +28,11 @@ const (
 
 func executeOutput(ctx context.Context, name string, arguments ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, name, arguments...)
+	if name == "go" {
+		// The pin lookup and throwaway build module must resolve independently of
+		// any workspace selected by the caller.
+		command.Env = append(os.Environ(), "GOWORK=off")
+	}
 	output, err := command.Output()
 	if err == nil {
 		return output, nil

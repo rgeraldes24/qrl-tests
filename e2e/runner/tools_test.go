@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/devnet"
@@ -16,6 +17,14 @@ import (
 type commandCall struct {
 	name      string
 	arguments []string
+}
+
+func TestExecuteOutputDisablesSelectedGoWorkspace(t *testing.T) {
+	t.Setenv("GOWORK", filepath.Join(t.TempDir(), "go.work"))
+
+	output, err := executeOutput(t.Context(), "go", "env", "GOWORK")
+	require.NoError(t, err)
+	require.Equal(t, "off", strings.TrimSpace(string(output)))
 }
 
 func TestPrepareGQRLBuildsPinnedHostToolOutsideLinux(t *testing.T) {

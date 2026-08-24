@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,7 +38,7 @@ func TestEnrich(t *testing.T) {
 		}
 		return "", errors.New("unexpected probe")
 	}
-	started := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+	started := time.Date(2026, 8, 7, 12, 0, 0, 0, time.FixedZone("UTC+4", 4*60*60))
 
 	images := devnet.DefaultImages()
 	manifest := enrich(t.Context(), "/checkout", Manifest{
@@ -78,7 +81,7 @@ func TestEnrich(t *testing.T) {
 	require.NotNil(t, manifest.Images)
 	require.Equal(t, devnet.DefaultImages(), *manifest.Images)
 	require.Equal(t, devnet.PackageLocator, manifest.PackageLocator)
-	require.Equal(t, started, manifest.StartedAt)
+	require.Equal(t, started.UTC(), manifest.StartedAt)
 	require.Empty(t, manifest.Result, "a starting manifest must not claim a result")
 }
 
@@ -98,15 +101,42 @@ func TestEnrichSurvivesMissingTools(t *testing.T) {
 	require.Equal(t, runtime.Version(), manifest.Versions.Go)
 }
 
+func TestDockerVersion(t *testing.T) {
+	var unavailable atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if unavailable.Load() {
+			http.Error(writer, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"Version":" 28.0.1\n","ApiVersion":"1.52","MinAPIVersion":"1.24"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+	t.Setenv("DOCKER_HOST", "tcp://"+server.Listener.Addr().String())
+	t.Setenv("DOCKER_CONTEXT", "")
+	t.Setenv("DOCKER_TLS", "")
+	t.Setenv("DOCKER_TLS_VERIFY", "")
+	t.Setenv("DOCKER_CERT_PATH", "")
+	t.Setenv("DOCKER_API_VERSION", "")
+	t.Setenv("DOCKER_CUSTOM_HEADERS", "")
+
+	require.Equal(t, "28.0.1", dockerVersion(t.Context()))
+
+	unavailable.Store(true)
+	require.Empty(t, dockerVersion(t.Context()))
+}
+
 func TestFinish(t *testing.T) {
 	manifest := Manifest{Lanes: []Lane{{Name: "execution"}, {Name: "consensus"}}}
-	finished := time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)
+	finished := time.Date(2026, 8, 7, 13, 0, 0, 0, time.FixedZone("UTC+4", 4*60*60))
 
 	manifest.Finish(map[string]bool{"execution": true, "consensus": true}, finished)
 	require.Equal(t, "passed", manifest.Result)
 	require.Equal(t, "passed", manifest.Lanes[0].Result)
 	require.Equal(t, "passed", manifest.Lanes[1].Result)
-	require.Equal(t, finished, manifest.FinishedAt)
+	require.Equal(t, finished.UTC(), manifest.FinishedAt)
 
 	manifest.Finish(map[string]bool{"execution": true, "consensus": false}, finished)
 	require.Equal(t, "failed", manifest.Result)

@@ -78,8 +78,8 @@ function stopStoreReceiptMonitor() {
 
 function failEvents(failure) {
     stopStoreReceiptMonitor();
-    watcher.stopWatching();
     console.error("CONSOLE_E2E_FAIL events " + failure);
+    watcher.stopWatching();
 }
 
 var watcher = contract.Stored({
@@ -188,8 +188,8 @@ watcher.watch(function (error, event) {
             return true;
         });
         stopStoreReceiptMonitor();
-        watcher.stopWatching();
         suite.finish();
+        watcher.stopWatching();
     } catch (failure) {
         failEvents(failure);
     }

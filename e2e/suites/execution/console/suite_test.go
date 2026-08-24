@@ -62,6 +62,31 @@ func TestSuiteFixtures(t *testing.T) {
 	}
 }
 
+func TestEventsFixtureEmitsTerminalMarkersBeforeFilterTeardown(t *testing.T) {
+	source, err := fs.ReadFile(consoleFixtures, "testdata/console/events.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	script := string(source)
+	const teardown = "watcher.stopWatching();"
+	if got := strings.Count(script, teardown); got != 2 {
+		t.Fatalf("got %d watcher teardowns, want 2", got)
+	}
+
+	failureMarker := strings.Index(script, `console.error("CONSOLE_E2E_FAIL events " + failure);`)
+	firstTeardown := strings.Index(script, teardown)
+	if failureMarker < 0 || failureMarker > firstTeardown {
+		t.Fatal("failure marker must be emitted before watcher teardown")
+	}
+
+	successMarker := strings.LastIndex(script, "suite.finish();")
+	lastTeardown := strings.LastIndex(script, teardown)
+	if successMarker < 0 || successMarker > lastTeardown {
+		t.Fatal("success marker must be emitted before watcher teardown")
+	}
+}
+
 func TestRunWatchedSuiteUsesGQRLProcess(t *testing.T) {
 	jsPath := t.TempDir()
 	var (

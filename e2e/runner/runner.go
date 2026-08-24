@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -83,7 +82,6 @@ func (mode runMode) suffixesEnclave() bool {
 type Runner struct {
 	configuration Config
 	networks      networkManager
-	goos          string
 	runCommand    func(context.Context, commandSpec) error
 	stdout        io.Writer
 	stderr        io.Writer
@@ -94,7 +92,6 @@ func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	return &Runner{
 		configuration: configuration.withDefaults(),
 		networks:      devnet.NewManager(),
-		goos:          runtime.GOOS,
 		runCommand:    execute,
 		stdout:        &lockedWriter{lock: outputLock, writer: stdout},
 		stderr:        &lockedWriter{lock: outputLock, writer: stderr},
@@ -248,11 +245,10 @@ func (runner *Runner) consoleExecutionImage(selected []lanes.Lane, mode runMode)
 		return "", nil
 	}
 
-	if mode == useExistingNetwork || runner.goos != "linux" ||
-		runner.configuration.Backend != devnet.BackendDocker ||
+	if mode == useExistingNetwork || runner.configuration.Backend != devnet.BackendDocker ||
 		len(runner.configuration.Parameters) != 0 {
 		return "", errors.New(
-			"execution-console requires a runner-provisioned Linux Docker network " +
+			"execution-console requires a runner-provisioned Docker network " +
 				"using built-in parameters; use execution-abi in other modes",
 		)
 	}

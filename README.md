@@ -13,9 +13,11 @@ make e2e-run
 The configured client images must already be available to the selected Kurtosis
 backend.
 
-The default lane includes `execution-console`, which requires Linux, the local
-Docker backend, and built-in parameters. Other runner modes can select
-`E2E_SUITE=execution-abi`.
+The default lane includes `execution-console`, which requires a
+runner-provisioned network using the local Docker backend and built-in
+parameters. It runs on Linux and on macOS or Windows through Docker Desktop
+with Linux containers; use WSL2 as the runner environment on Windows. Other
+runner modes can select `E2E_SUITE=execution-abi`.
 
 `e2e-run` provisions a network, runs the selected E2E lane, writes reports under
 `reports/`, and removes the network:
@@ -51,7 +53,8 @@ make network-stop
 ```
 
 The console suite runs `gqrl attach` directly from the configured execution
-image. Run it with `E2E_SUITE=execution-console make e2e-run` on Linux with the
+image and reaches the runner-published endpoints through Docker's host-gateway
+mapping. Run it with `E2E_SUITE=execution-console make e2e-run` using the local
 Docker backend and built-in parameters.
 
 List registered lanes and suites with:
@@ -62,7 +65,7 @@ go run ./cmd/qrltest list
 
 Network provisioning supports Docker and Kubernetes. Kubernetes requires
 registry-backed images and an active Kurtosis gateway. The `execution-console`
-suite requires a runner-provisioned Linux Docker network using built-in
+suite requires a runner-provisioned local Docker network using built-in
 parameters.
 
 See [development network configuration](devnet/README.md) and the

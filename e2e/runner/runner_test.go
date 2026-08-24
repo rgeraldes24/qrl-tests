@@ -43,11 +43,7 @@ type recordingNetworks struct {
 
 func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer) *Runner {
 	t.Helper()
-	runner := New(configuration, stdout, stderr)
-	// The image-backed console launcher is a Linux/Docker provisioned-run feature.
-	// Individual tests override this when exercising unsupported hosts.
-	runner.goos = "linux"
-	return runner
+	return New(configuration, stdout, stderr)
 }
 
 func (networks *recordingNetworks) Start(_ context.Context, options devnet.StartOptions) (devnet.Environment, error) {
@@ -178,11 +174,6 @@ func TestConsoleRejectsUnverifiableExecutionImageModes(t *testing.T) {
 				runner.configuration.Backend = devnet.BackendKubernetes
 			},
 		},
-		"non-Linux host": {
-			configure: func(runner *Runner) {
-				runner.goos = "darwin"
-			},
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			networks := new(recordingNetworks)
@@ -204,7 +195,7 @@ func TestConsoleRejectsUnverifiableExecutionImageModes(t *testing.T) {
 
 			err := run(runner)
 			require.EqualError(t, err,
-				"execution-console requires a runner-provisioned Linux Docker network "+
+				"execution-console requires a runner-provisioned Docker network "+
 					"using built-in parameters; use execution-abi in other modes",
 			)
 			require.Empty(t, networks.started.EnclaveName)

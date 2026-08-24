@@ -7,14 +7,16 @@ go test -tags=e2e -run '^$' ./e2e/suites/execution/console
 # Regeneration requires `hypc --version` to report commit.2b9a0f1d.
 go generate ./e2e/internal/consolefixture
 
-# Provision a Linux Docker network and run from its execution image.
+# Provision a local Docker network and run from its execution image.
 E2E_LANE=execution E2E_SUITE=execution-console make e2e-run
 ```
 
 The suite runs `gqrl attach` directly inside the configured execution image.
-The runner establishes that image provenance and local runtime contract only
-for runner-provisioned Linux networks using the Docker backend and built-in
-parameters.
+The runner establishes that image provenance and local runtime contract for
+runner-provisioned networks using the local Docker backend and built-in
+parameters. The container reaches the runner-published endpoints through
+Docker's host-gateway mapping on Linux and Docker Desktop with Linux containers
+on macOS or Windows. Use WSL2 as the runner environment on Windows.
 
 ## Coverage contract
 

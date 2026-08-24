@@ -18,7 +18,7 @@ The lane runs these suites in order:
 | `execution-abi` | ABI calls, events, errors, and WebSocket filters |
 | `execution-console` | `gqrl attach` and embedded web3 APIs, contract deployment and calls, receipts, event filters, and WebSocket watches |
 
-Run the full lane with a fresh Linux Docker network using built-in parameters:
+Run the full lane with a fresh local Docker network using built-in parameters:
 
 ```bash
 make e2e-run
@@ -34,8 +34,10 @@ make network-stop
 
 The console suite always launches `gqrl attach` from the execution image used
 to provision the lane. The runner establishes that image and runtime contract
-only for runner-provisioned Linux networks using the local Docker backend and
-built-in parameters.
+for runner-provisioned networks using the local Docker backend and built-in
+parameters. The container reaches the runner-published endpoints through
+Docker's host-gateway mapping, supporting Linux and Docker Desktop with Linux
+containers on macOS or Windows. Use WSL2 as the runner environment on Windows.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +27,7 @@ const (
 
 	consoleContainerJSPath         = "/tmp/qrl-tests-js"
 	consoleContainerDataDir        = "/tmp/qrl-tests-console"
+	consoleContainerHost           = "host.docker.internal"
 	consoleContainerCleanupTimeout = 30 * time.Second
 	watchedSuitePollInterval       = 100 * time.Millisecond
 	watchedSuiteExitTimeout        = 5 * time.Second
@@ -108,14 +111,46 @@ func executeOutput(ctx context.Context, name string, arguments ...string) ([]byt
 	return output, err
 }
 
+func consoleContainerEndpoint(endpoint string) (string, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse console endpoint: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("parse console endpoint: URL must include a scheme and host")
+	}
+
+	host := strings.TrimSuffix(parsed.Hostname(), ".")
+	if host == "" {
+		return "", fmt.Errorf("parse console endpoint: URL must include a host")
+	}
+	address := net.ParseIP(host)
+	if !strings.EqualFold(host, "localhost") && (address == nil || !address.IsLoopback()) {
+		return endpoint, nil
+	}
+
+	port := parsed.Port()
+	parsed.Host = consoleContainerHost
+	if port != "" {
+		parsed.Host = net.JoinHostPort(consoleContainerHost, port)
+	}
+	return parsed.String(), nil
+}
+
 func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContainerSpec) (string, error) {
+	endpoint, err := consoleContainerEndpoint(spec.endpoint)
+	if err != nil {
+		return "", fmt.Errorf("create console suite %s container: %w", spec.scenario, err)
+	}
+
 	arguments := []string{"create", "--pull=missing"}
 	if spec.interactive {
 		arguments = append(arguments, "--interactive")
 	}
 	arguments = append(
 		arguments,
-		"--network", "host",
+		"--add-host", consoleContainerHost+"=host-gateway",
+		"--entrypoint", "gqrl",
 		spec.image,
 		"attach",
 		"--datadir", consoleContainerDataDir,
@@ -127,7 +162,7 @@ func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContai
 		expression := "loadScript('harness.js');loadScript('" + spec.scenario + ".js')"
 		arguments = append(arguments, "--exec", expression)
 	}
-	arguments = append(arguments, spec.endpoint)
+	arguments = append(arguments, endpoint)
 
 	output, err := engine.output(ctx, "docker", arguments...)
 	if err != nil {

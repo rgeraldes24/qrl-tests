@@ -171,13 +171,14 @@ func TestDockerConsoleEngineBuildsContainerCommands(t *testing.T) {
 	}
 	wantCreate := []string{
 		"docker", "create", "--pull=missing", "--interactive",
-		"--network", "host",
+		"--add-host", "host.docker.internal=host-gateway",
+		"--entrypoint", "gqrl",
 		"registry.example/go-qrl@sha256:digest",
 		"attach",
 		"--datadir", "/tmp/qrl-tests-console",
 		"--jspath", "/tmp/qrl-tests-js",
 		"--preload", "harness.js,events.js",
-		"ws://127.0.0.1:8546",
+		"ws://host.docker.internal:8546",
 	}
 	if len(calls) != 1 || !slices.Equal(calls[0], wantCreate) {
 		t.Fatalf("got create call %q, want %q", calls, wantCreate)
@@ -219,16 +220,70 @@ func TestDockerConsoleEngineBuildsExecContainerCommand(t *testing.T) {
 	}
 	want := []string{
 		"docker", "create", "--pull=missing",
-		"--network", "host",
+		"--add-host", "host.docker.internal=host-gateway",
+		"--entrypoint", "gqrl",
 		"registry.example/go-qrl@sha256:digest",
 		"attach",
 		"--datadir", "/tmp/qrl-tests-console",
 		"--jspath", "/tmp/qrl-tests-js",
 		"--exec", "loadScript('harness.js');loadScript('api.js')",
-		"http://127.0.0.1:8545",
+		"http://host.docker.internal:8545",
 	}
 	if !slices.Equal(call, want) {
 		t.Fatalf("got create call %q, want %q", call, want)
+	}
+}
+
+func TestConsoleContainerEndpoint(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		endpoint string
+		want     string
+		wantErr  bool
+	}{
+		"IPv4 loopback": {
+			endpoint: "http://127.23.45.67:8545",
+			want:     "http://host.docker.internal:8545",
+		},
+		"localhost WebSocket with URL components": {
+			endpoint: "ws://user:pass@LOCALHOST.:8546/events?topic=stored#watch",
+			want:     "ws://user:pass@host.docker.internal:8546/events?topic=stored#watch",
+		},
+		"IPv6 loopback": {
+			endpoint: "ws://[::1]:8546",
+			want:     "ws://host.docker.internal:8546",
+		},
+		"non-loopback": {
+			endpoint: "https://RPC.example:443/qrl%2Fv1?network=%2Fdevnet#API",
+			want:     "https://RPC.example:443/qrl%2Fv1?network=%2Fdevnet#API",
+		},
+		"host gateway": {
+			endpoint: "http://host.docker.internal:8545",
+			want:     "http://host.docker.internal:8545",
+		},
+		"missing host": {
+			endpoint: "http:///rpc",
+			wantErr:  true,
+		},
+		"invalid URL": {
+			endpoint: "http://%zz",
+			wantErr:  true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := consoleContainerEndpoint(testCase.endpoint)
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("consoleContainerEndpoint(%q) unexpectedly succeeded with %q", testCase.endpoint, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != testCase.want {
+				t.Fatalf("consoleContainerEndpoint(%q) = %q, want %q", testCase.endpoint, got, testCase.want)
+			}
+		})
 	}
 }
 

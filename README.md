@@ -13,12 +13,6 @@ make e2e-run
 The configured client images must already be available to the selected Kurtosis
 backend.
 
-The default lane includes `execution-console`, which requires a
-runner-provisioned network using the local Docker backend and built-in
-parameters. It runs on Linux and on macOS or Windows through Docker Desktop
-with Linux containers; use WSL2 as the runner environment on Windows. Other
-runner modes can select `E2E_SUITE=execution-abi`.
-
 `e2e-run` provisions a network, runs the selected E2E lane, writes reports under
 `reports/`, and removes the network:
 

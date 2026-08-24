@@ -1,48 +1,52 @@
 package console
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
-	"sync"
+	"os"
+	"os/exec"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
 
-type blockingConsole struct {
-	started chan struct{}
-	stopped chan struct{}
-	once    sync.Once
-}
-
-type immediateConsole struct {
-	evaluated chan struct{}
-}
-
-func (console *immediateConsole) Evaluate(string) { close(console.evaluated) }
-
-func (*immediateConsole) Stop(bool) error { return nil }
-
-func (console *blockingConsole) Evaluate(string) {
-	close(console.started)
-	<-console.stopped
-}
-
-func (console *blockingConsole) Stop(bool) error {
-	console.once.Do(func() { close(console.stopped) })
-	return nil
-}
+const watchedConsoleHelper = "QRL_TEST_WATCHED_CONSOLE_HELPER"
+const watchedConsoleHelperMode = "QRL_TEST_WATCHED_CONSOLE_HELPER_MODE"
 
 func TestParseSuiteResult(t *testing.T) {
-	valid := []byte(
-		`CONSOLE_E2E_PASS api`,
-	)
-	if err := parseSuiteResult("api", valid); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := parseSuiteResult("api", []byte(`CONSOLE_E2E_FAIL api`)); err == nil {
-		t.Fatal("failed suite was accepted")
+	for name, testCase := range map[string]struct {
+		output  string
+		wantErr bool
+	}{
+		"success": {
+			output: "CONSOLE_E2E_PASS api",
+		},
+		"failure": {
+			output:  "CONSOLE_E2E_FAIL api",
+			wantErr: true,
+		},
+		"success then failure": {
+			output:  "CONSOLE_E2E_PASS api\nCONSOLE_E2E_FAIL api unexpected callback",
+			wantErr: true,
+		},
+		"failure then success": {
+			output:  "CONSOLE_E2E_FAIL api unexpected callback\nCONSOLE_E2E_PASS api",
+			wantErr: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := parseSuiteResult("api", []byte(testCase.output))
+			if testCase.wantErr && err == nil {
+				t.Fatal("failed suite was accepted")
+			}
+			if !testCase.wantErr && err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -58,63 +62,172 @@ func TestSuiteFixtures(t *testing.T) {
 	}
 }
 
-func TestEvaluateWatchedSuiteStopsBlockedEvaluation(t *testing.T) {
-	console := &blockingConsole{started: make(chan struct{}), stopped: make(chan struct{})}
-	ctx, cancel := context.WithCancel(t.Context())
-	clientClosed := make(chan struct{})
-	done := make(chan error, 1)
-	go func() {
-		done <- evaluateWatchedSuite(ctx, console, func() { close(clientClosed) }, &synchronizedBuffer{}, "events")
-	}()
-
-	select {
-	case <-console.started:
-	case <-time.After(time.Second):
-		t.Fatal("evaluation did not start")
+func TestRunWatchedSuiteUsesGQRLProcess(t *testing.T) {
+	jsPath := t.TempDir()
+	var (
+		gotPath string
+		gotArgs []string
+		command *exec.Cmd
+	)
+	newCommand := func(ctx context.Context, path string, arguments ...string) *exec.Cmd {
+		gotPath = path
+		gotArgs = slices.Clone(arguments)
+		command = watchedConsoleCommand(ctx, "success")
+		return command
 	}
-	cancel()
 
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("got %v, want context cancellation", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("blocked evaluation did not stop")
+	err := runWatchedSuiteWithCommand(
+		t.Context(),
+		"/execution-image/gqrl",
+		jsPath,
+		"ws://execution.example:8546",
+		"events",
+		newCommand,
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
-	select {
-	case <-clientClosed:
-	default:
-		t.Fatal("RPC client was not closed")
+	if gotPath != "/execution-image/gqrl" {
+		t.Fatalf("got executable %q", gotPath)
+	}
+	if len(gotArgs) != 8 {
+		t.Fatalf("got arguments %q", gotArgs)
+	}
+	dataDir := gotArgs[2]
+	wantArgs := []string{
+		"attach",
+		"--datadir", dataDir,
+		"--jspath", jsPath,
+		"--preload", "harness.js,events.js",
+		"ws://execution.example:8546",
+	}
+	if !slices.Equal(gotArgs, wantArgs) {
+		t.Fatalf("got arguments %q, want %q", gotArgs, wantArgs)
+	}
+	if _, err := os.Stat(dataDir); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("console data directory was not removed: %v", err)
+	}
+	if command.ProcessState == nil || !command.ProcessState.Success() {
+		t.Fatalf("console process did not exit cleanly: %v", command.ProcessState)
 	}
 }
 
-func TestEvaluateWatchedSuiteWaitsForAsynchronousResult(t *testing.T) {
-	console := &immediateConsole{evaluated: make(chan struct{})}
-	output := &synchronizedBuffer{}
-	done := make(chan error, 1)
-	go func() {
-		done <- evaluateWatchedSuite(t.Context(), console, func() {}, output, "events")
-	}()
-
-	select {
-	case <-console.evaluated:
-	case <-time.After(time.Second):
-		t.Fatal("evaluation did not return")
+func TestRunWatchedSuiteRejectsScriptFailure(t *testing.T) {
+	var command *exec.Cmd
+	err := runWatchedSuiteWithCommand(
+		t.Context(),
+		"gqrl",
+		t.TempDir(),
+		"ws://execution.example:8546",
+		"events",
+		func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+			command = watchedConsoleCommand(ctx, "failure")
+			return command
+		},
+	)
+	if err == nil {
+		t.Fatal("watched suite accepted an explicit script failure")
 	}
-	select {
-	case err := <-done:
-		t.Fatalf("suite completed before its asynchronous result: %v", err)
-	case <-time.After(20 * time.Millisecond):
+	if !strings.Contains(err.Error(), "emitted a failure marker") ||
+		!strings.Contains(err.Error(), "helper failure") {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	_, _ = output.Write([]byte("CONSOLE_E2E_PASS events\n"))
+	if command.ProcessState == nil {
+		t.Fatal("failed console process was not reaped")
+	}
+}
 
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
+func TestRunWatchedSuiteRejectsEarlyExit(t *testing.T) {
+	var command *exec.Cmd
+	err := runWatchedSuiteWithCommand(
+		t.Context(),
+		"gqrl",
+		t.TempDir(),
+		"ws://execution.example:8546",
+		"events",
+		func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+			command = watchedConsoleCommand(ctx, "early-exit")
+			return command
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "emitted 0 success markers") {
+		t.Fatalf("unexpected early-exit result: %v", err)
+	}
+	if command.ProcessState == nil || !command.ProcessState.Success() {
+		t.Fatalf("early-exit process was not reaped: %v", command.ProcessState)
+	}
+}
+
+func TestRunWatchedSuiteTerminatesOnTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	var command *exec.Cmd
+	err := runWatchedSuiteWithCommand(
+		ctx,
+		"gqrl",
+		t.TempDir(),
+		"ws://execution.example:8546",
+		"events",
+		func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+			command = watchedConsoleCommand(ctx, "timeout")
+			return command
+		},
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v, want context deadline", err)
+	}
+	if command.ProcessState == nil {
+		t.Fatal("timed-out console process was not reaped")
+	}
+}
+
+func watchedConsoleCommand(ctx context.Context, mode string) *exec.Cmd {
+	command := exec.CommandContext(
+		ctx,
+		os.Args[0],
+		"-test.run=^TestWatchedConsoleHelperProcess$",
+	)
+	command.Env = append(
+		os.Environ(),
+		watchedConsoleHelper+"=1",
+		watchedConsoleHelperMode+"="+mode,
+	)
+	return command
+}
+
+func TestWatchedConsoleHelperProcess(t *testing.T) {
+	if os.Getenv(watchedConsoleHelper) != "1" {
+		return
+	}
+
+	switch os.Getenv(watchedConsoleHelperMode) {
+	case "success":
+		fmt.Fprintln(os.Stdout, resultPrefix+"events")
+		waitForConsoleExit(t)
+	case "failure":
+		fmt.Fprintln(os.Stdout, resultPrefix+"events")
+		fmt.Fprintln(os.Stderr, failurePrefix+"events helper failure")
+		waitForConsoleExit(t)
+	case "early-exit":
+		fmt.Fprintln(os.Stdout, "console exited before the script completed")
+	case "timeout":
+		for {
+			time.Sleep(time.Second)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("suite did not observe its asynchronous result")
+	default:
+		t.Fatalf("unknown helper mode %q", os.Getenv(watchedConsoleHelperMode))
+	}
+}
+
+func waitForConsoleExit(t *testing.T) {
+	t.Helper()
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) == "exit" {
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
 	}
 }

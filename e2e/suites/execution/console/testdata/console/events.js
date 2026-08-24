@@ -64,6 +64,24 @@ if (request.method !== "qrl_sendTransaction" ||
     throw new Error("unexpected state-changing wrapper request");
 }
 
+var storeReceiptPolls = 0;
+var storeReceiptPollLimit = 60;
+var storeReceiptPollInterval = 5000;
+var storeReceiptTimer = null;
+
+function stopStoreReceiptMonitor() {
+    if (storeReceiptTimer !== null) {
+        clearInterval(storeReceiptTimer);
+        storeReceiptTimer = null;
+    }
+}
+
+function failEvents(failure) {
+    stopStoreReceiptMonitor();
+    watcher.stopWatching();
+    console.error("CONSOLE_E2E_FAIL events " + failure);
+}
+
 var watcher = contract.Stored({
     sender: PARAMS.address,
     label: PARAMS.storeLabel,
@@ -169,16 +187,38 @@ watcher.watch(function (error, event) {
             }
             return true;
         });
+        stopStoreReceiptMonitor();
         watcher.stopWatching();
         suite.finish();
     } catch (failure) {
-        watcher.stopWatching();
-        console.error("CONSOLE_E2E_FAIL events " + failure);
+        failEvents(failure);
     }
 });
 
 var txHash = qrl.sendRawTransaction(PARAMS.storeRawTransaction);
 if (txHash !== PARAMS.storeTxHash) {
-    watcher.stopWatching();
-    console.error("CONSOLE_E2E_FAIL events store transaction hash mismatch");
+    failEvents("store transaction hash mismatch");
+} else {
+    // Receipt polling is independent of event delivery so a transaction that
+    // cannot emit Stored still fails before the enclosing lane times out.
+    storeReceiptTimer = setInterval(function () {
+        try {
+            storeReceiptPolls++;
+            var receipt = qrl.getTransactionReceipt(PARAMS.storeTxHash);
+            if (receipt !== null && receipt.blockNumber !== null &&
+                Number(receipt.status) !== 1) {
+                throw new Error("store transaction failed: " + JSON.stringify(receipt));
+            }
+            if (storeReceiptPolls >= storeReceiptPollLimit) {
+                if (receipt === null || receipt.blockNumber === null) {
+                    throw new Error("store transaction not mined within timeout: " +
+                        PARAMS.storeTxHash);
+                }
+                throw new Error("matching Stored event not observed within timeout: " +
+                    PARAMS.storeTxHash);
+            }
+        } catch (failure) {
+            failEvents(failure);
+        }
+    }, storeReceiptPollInterval);
 }

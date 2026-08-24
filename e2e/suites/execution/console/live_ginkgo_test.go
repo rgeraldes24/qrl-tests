@@ -56,8 +56,9 @@ var _ = ginkgo.Describe(
 					if scenario.webSocket {
 						gomega.Expect(runWatchedSuite(
 							ctx,
-							session.Participant.Execution.WebSocketURL,
+							gqrlPath,
 							jsPath,
+							session.Participant.Execution.WebSocketURL,
 							scenario.name,
 						)).To(gomega.Succeed())
 						return

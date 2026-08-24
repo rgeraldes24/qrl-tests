@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -14,12 +16,15 @@ import (
 
 	"github.com/cyyber/qrl-tests/e2e/internal/consolefixture"
 	endtoendlive "github.com/cyyber/qrl-tests/e2e/internal/live"
-	qrlconsole "github.com/theQRL/go-qrl/console"
-	"github.com/theQRL/go-qrl/rpc"
 )
 
-const resultPrefix = "CONSOLE_E2E_PASS "
-const failurePrefix = "CONSOLE_E2E_FAIL "
+const (
+	resultPrefix  = "CONSOLE_E2E_PASS "
+	failurePrefix = "CONSOLE_E2E_FAIL "
+
+	watchedSuitePollInterval = 100 * time.Millisecond
+	watchedSuiteExitTimeout  = 5 * time.Second
+)
 
 type consoleScenario struct {
 	name        string
@@ -94,79 +99,185 @@ func (buffer *synchronizedBuffer) Bytes() []byte {
 	return bytes.Clone(buffer.data.Bytes())
 }
 
-type watchedConsole interface {
-	Evaluate(string)
-	Stop(bool) error
+type commandContext func(context.Context, string, ...string) *exec.Cmd
+
+func runWatchedSuite(ctx context.Context, gqrlPath, jsPath, webSocketURL, name string) error {
+	return runWatchedSuiteWithCommand(
+		ctx,
+		gqrlPath,
+		jsPath,
+		webSocketURL,
+		name,
+		exec.CommandContext,
+	)
 }
 
-func runWatchedSuite(ctx context.Context, webSocketURL, jsPath, name string) error {
-	client, err := rpc.DialContext(ctx, webSocketURL)
-	if err != nil {
-		return fmt.Errorf("connect console suite %s: %w", name, err)
-	}
-	var output synchronizedBuffer
-	console, err := qrlconsole.New(qrlconsole.Config{
-		DataDir: filepath.Join(jsPath, "console-data"),
-		DocRoot: jsPath,
-		Client:  client,
-		Printer: &output,
-	})
-	if err != nil {
-		client.Close()
-		return fmt.Errorf("create console suite %s: %w", name, err)
-	}
-	return evaluateWatchedSuite(ctx, console, client.Close, &output, name)
-}
-
-func evaluateWatchedSuite(
+func runWatchedSuiteWithCommand(
 	ctx context.Context,
-	console watchedConsole,
-	closeClient func(),
-	output *synchronizedBuffer,
+	gqrlPath string,
+	jsPath string,
+	webSocketURL string,
 	name string,
-) error {
-	evaluationDone := make(chan struct{})
-	go func() {
-		defer close(evaluationDone)
-		console.Evaluate("loadScript('harness.js');loadScript('" + name + ".js')")
-	}()
+	newCommand commandContext,
+) (result error) {
+	dataDir, err := os.MkdirTemp("", "qrl-tests-console-"+name+"-")
+	if err != nil {
+		return fmt.Errorf("create console data directory: %w", err)
+	}
 	defer func() {
-		closeClient()
-		_ = console.Stop(false)
-		<-evaluationDone
+		if err := os.RemoveAll(dataDir); err != nil {
+			result = errors.Join(result, fmt.Errorf("remove console data directory: %w", err))
+		}
 	}()
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	command := newCommand(
+		ctx,
+		gqrlPath,
+		"attach",
+		"--datadir",
+		dataDir,
+		"--jspath",
+		jsPath,
+		"--preload",
+		"harness.js,"+name+".js",
+		webSocketURL,
+	)
+	return runWatchedCommand(ctx, command, name)
+}
+
+func runWatchedCommand(ctx context.Context, command *exec.Cmd, name string) error {
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("open console suite %s stdin: %w", name, err)
+	}
+	defer stdin.Close()
+
+	var output synchronizedBuffer
+	command.Stdout = &output
+	command.Stderr = &output
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("start console suite %s: %w", name, err)
+	}
+
+	processDone := make(chan error, 1)
+	go func() {
+		processDone <- command.Wait()
+	}()
+
+	ticker := time.NewTicker(watchedSuitePollInterval)
 	defer ticker.Stop()
 	for {
 		result := output.Bytes()
-		if bytes.Contains(result, []byte(resultPrefix+name)) {
-			return parseSuiteResult(name, result)
-		}
-		if bytes.Contains(result, []byte(failurePrefix+name)) ||
-			bytes.Contains(result, []byte("GoError:")) {
-			return fmt.Errorf("console suite %s failed\n%s", name, result)
+		successes, failed := suiteMarkers(name, result)
+		if failed || bytes.Contains(result, []byte("GoError:")) || successes > 0 {
+			processErr := stopWatchedCommand(command, stdin, processDone, true)
+			result = output.Bytes()
+			if ctx.Err() != nil {
+				return fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), result)
+			}
+			return finishWatchedSuite(name, result, processErr)
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), result)
+			stopErr := stopWatchedCommand(command, stdin, processDone, false)
+			result = output.Bytes()
+			return errors.Join(
+				fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), result),
+				stopErr,
+			)
+		case processErr := <-processDone:
+			result = output.Bytes()
+			if ctx.Err() != nil {
+				return fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), result)
+			}
+			return finishWatchedSuite(name, result, processErr)
 		case <-ticker.C:
 		}
 	}
 }
 
-func parseSuiteResult(name string, output []byte) error {
-	marker := []byte(resultPrefix + name)
-	var matches int
-	for _, line := range bytes.Split(output, []byte{'\n'}) {
-		if bytes.Equal(bytes.TrimSpace(line), marker) {
-			matches++
+func stopWatchedCommand(
+	command *exec.Cmd,
+	stdin io.WriteCloser,
+	processDone <-chan error,
+	graceful bool,
+) error {
+	if graceful {
+		_, _ = io.WriteString(stdin, "exit\n")
+	}
+	_ = stdin.Close()
+
+	var killErr error
+	if !graceful && command.Process != nil {
+		killErr = command.Process.Kill()
+		if errors.Is(killErr, os.ErrProcessDone) {
+			killErr = nil
 		}
+	}
+
+	timer := time.NewTimer(watchedSuiteExitTimeout)
+	defer timer.Stop()
+	select {
+	case processErr := <-processDone:
+		if graceful {
+			return processErr
+		}
+		return killErr
+	case <-timer.C:
+		if command.Process != nil {
+			err := command.Process.Kill()
+			if !errors.Is(err, os.ErrProcessDone) {
+				killErr = errors.Join(killErr, err)
+			}
+		}
+		processErr := <-processDone
+		return errors.Join(
+			fmt.Errorf("console process did not exit within %s", watchedSuiteExitTimeout),
+			killErr,
+			processErr,
+		)
+	}
+}
+
+func finishWatchedSuite(name string, output []byte, processErr error) error {
+	if bytes.Contains(output, []byte("GoError:")) {
+		return fmt.Errorf("console suite %s failed with GoError\n%s", name, output)
+	}
+	if err := parseSuiteResult(name, output); err != nil {
+		return fmt.Errorf("%w\n%s", err, output)
+	}
+	if processErr != nil {
+		return fmt.Errorf("console suite %s process failed: %w\n%s", name, processErr, output)
+	}
+	return nil
+}
+
+func parseSuiteResult(name string, output []byte) error {
+	matches, failed := suiteMarkers(name, output)
+	if failed {
+		return fmt.Errorf("console suite %s emitted a failure marker", name)
 	}
 	if matches != 1 {
 		return fmt.Errorf("console suite %s emitted %d success markers", name, matches)
 	}
 	return nil
+}
+
+func suiteMarkers(name string, output []byte) (successes int, failed bool) {
+	successMarker := []byte(resultPrefix + name)
+	failureMarker := []byte(failurePrefix + name)
+	failureDetailPrefix := append(bytes.Clone(failureMarker), ' ')
+	for _, line := range bytes.Split(output, []byte{'\n'}) {
+		line = bytes.TrimSpace(line)
+		if bytes.Equal(line, failureMarker) ||
+			bytes.HasPrefix(line, failureDetailPrefix) {
+			failed = true
+		}
+		if bytes.Equal(line, successMarker) {
+			successes++
+		}
+	}
+	return successes, failed
 }
 
 func prepareWorkspace(ctx context.Context, destination string, session *endtoendlive.Node) error {

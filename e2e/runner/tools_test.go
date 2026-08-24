@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -37,7 +38,13 @@ func TestPrepareGQRLBuildsPinnedHostToolOutsideLinux(t *testing.T) {
 				calls = append(calls, commandCall{name: name, arguments: slices.Clone(arguments)})
 				switch arguments[2] {
 				case "list":
-					return []byte("v0.3.1 github.com/cyyber/go-qrl@v0.3.2-pinned\n"), nil
+					return []byte(`{
+						"Version": "v0.3.1",
+						"Replace": {
+							"Path": "github.com/cyyber/go-qrl",
+							"Version": "v0.3.2-pinned"
+						}
+					}`), nil
 				case "build":
 					return nil, os.WriteFile(arguments[4], []byte("gqrl"), 0o755)
 				default:
@@ -60,8 +67,7 @@ func TestPrepareGQRLBuildsPinnedHostToolOutsideLinux(t *testing.T) {
 			require.Equal(t, []commandCall{
 				{name: "go", arguments: []string{
 					"-C", testsDir,
-					"list", "-m",
-					"-f", "{{.Version}} {{with .Replace}}{{.Path}}@{{.Version}}{{end}}",
+					"list", "-m", "-json",
 					"github.com/theQRL/go-qrl",
 				}},
 				{name: "go", arguments: []string{"-C", buildModule, "mod", "init", "gqrlbuild"}},
@@ -89,7 +95,7 @@ func TestBuildGQRLKeepsTheModuleUnreplacedWhenTheTestsModuleDoesNot(t *testing.T
 	run := func(_ context.Context, name string, arguments ...string) ([]byte, error) {
 		calls = append(calls, commandCall{name: name, arguments: slices.Clone(arguments)})
 		if arguments[2] == "list" {
-			return []byte("v0.3.1 \n"), nil
+			return []byte(`{"Version":"v0.3.1"}`), nil
 		}
 		return nil, nil
 	}
@@ -100,8 +106,7 @@ func TestBuildGQRLKeepsTheModuleUnreplacedWhenTheTestsModuleDoesNot(t *testing.T
 	require.Equal(t, []commandCall{
 		{name: "go", arguments: []string{
 			"-C", "/workspace/qrl-tests",
-			"list", "-m",
-			"-f", "{{.Version}} {{with .Replace}}{{.Path}}@{{.Version}}{{end}}",
+			"list", "-m", "-json",
 			"github.com/theQRL/go-qrl",
 		}},
 		{name: "go", arguments: []string{"-C", buildModule, "mod", "init", "gqrlbuild"}},
@@ -113,6 +118,53 @@ func TestBuildGQRLKeepsTheModuleUnreplacedWhenTheTestsModuleDoesNot(t *testing.T
 			"github.com/theQRL/go-qrl/cmd/gqrl",
 		}},
 	}, calls)
+}
+
+func TestBuildGQRLFollowsFilesystemReplacement(t *testing.T) {
+	for _, relative := range []bool{false, true} {
+		name := "absolute"
+		if relative {
+			name = "relative"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			testsDir := filepath.Join(root, "tests")
+			replacementDir := filepath.Join(root, "go-qrl")
+			require.NoError(t, os.MkdirAll(filepath.Join(replacementDir, "cmd", "gqrl"), 0o755))
+			require.NoError(t, os.MkdirAll(testsDir, 0o755))
+			require.NoError(t, os.WriteFile(
+				filepath.Join(replacementDir, "go.mod"),
+				[]byte("module "+gqrlModulePath+"\n\ngo 1.23\n"),
+				0o644,
+			))
+			require.NoError(t, os.WriteFile(
+				filepath.Join(replacementDir, "cmd", "gqrl", "main.go"),
+				[]byte("package main\n\nfunc main() {}\n"),
+				0o644,
+			))
+
+			replacement := replacementDir
+			if relative {
+				var err error
+				replacement, err = filepath.Rel(testsDir, replacementDir)
+				require.NoError(t, err)
+			}
+			require.NoError(t, os.WriteFile(
+				filepath.Join(testsDir, "go.mod"),
+				[]byte(fmt.Sprintf(
+					"module example.com/qrl-tests\n\ngo 1.23\n\nrequire %s v0.0.0\n\nreplace %s => %s\n",
+					gqrlModulePath,
+					gqrlModulePath,
+					filepath.ToSlash(replacement),
+				)),
+				0o644,
+			))
+
+			destination := filepath.Join(root, "bin", "gqrl")
+			require.NoError(t, buildGQRL(t.Context(), testsDir, destination, executeOutput))
+			require.FileExists(t, destination)
+		})
+	}
 }
 
 func TestBuildGQRLFailsWhenThePinIsUnreadable(t *testing.T) {
@@ -129,7 +181,7 @@ func TestBuildGQRLFailsWhenThePinIsUnreadable(t *testing.T) {
 
 func TestBuildGQRLFailsWhenThePinCarriesNoVersion(t *testing.T) {
 	run := func(_ context.Context, _ string, _ ...string) ([]byte, error) {
-		return []byte("\n"), nil
+		return []byte(`{}`), nil
 	}
 
 	err := buildGQRL(t.Context(), "/workspace/qrl-tests", filepath.Join(t.TempDir(), "gqrl"), run)
@@ -141,7 +193,13 @@ func TestBuildGQRLRemovesTheBuildModuleAfterAFailure(t *testing.T) {
 	run := func(_ context.Context, _ string, arguments ...string) ([]byte, error) {
 		switch arguments[2] {
 		case "list":
-			return []byte("v0.3.1 github.com/cyyber/go-qrl@v0.3.2-pinned\n"), nil
+			return []byte(`{
+				"Version": "v0.3.1",
+				"Replace": {
+					"Path": "github.com/cyyber/go-qrl",
+					"Version": "v0.3.2-pinned"
+				}
+			}`), nil
 		case "build":
 			buildModule = arguments[1]
 			return nil, errors.New("build failed")

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,10 +24,6 @@ const (
 	gqrlCommandPath = gqrlModulePath + "/cmd/gqrl"
 
 	gqrlBuildModuleName = "gqrlbuild"
-
-	// gqrlPinFormat prints the go-qrl version the tests module requires,
-	// followed by the module replacing it when the tests module replaces it.
-	gqrlPinFormat = "{{.Version}} {{with .Replace}}{{.Path}}@{{.Version}}{{end}}"
 )
 
 func executeOutput(ctx context.Context, name string, arguments ...string) ([]byte, error) {
@@ -148,23 +145,53 @@ type gqrlPin struct {
 	replacement string
 }
 
+type listedModule struct {
+	Version string             `json:"Version"`
+	Replace *moduleReplacement `json:"Replace"`
+}
+
+type moduleReplacement struct {
+	Path    string `json:"Path"`
+	Version string `json:"Version"`
+}
+
 // readGQRLPin reports how the tests module pins go-qrl, which the build module
 // repeats so both resolve the same source.
 func readGQRLPin(ctx context.Context, testsDir string, run outputCommand) (gqrlPin, error) {
-	output, err := run(ctx, "go", "-C", testsDir, "list", "-m", "-f", gqrlPinFormat, gqrlModulePath)
+	output, err := run(ctx, "go", "-C", testsDir, "list", "-m", "-json", gqrlModulePath)
 	if err != nil {
 		return gqrlPin{}, fmt.Errorf("read pinned go-qrl module: %w", err)
 	}
 
-	fields := strings.Fields(string(output))
-	if len(fields) == 0 {
+	var module listedModule
+	if err := json.Unmarshal(output, &module); err != nil {
+		return gqrlPin{}, fmt.Errorf("read pinned go-qrl module: decode module metadata: %w", err)
+	}
+	if module.Version == "" {
 		return gqrlPin{}, fmt.Errorf("read pinned go-qrl module: %s reports no version", gqrlModulePath)
 	}
 
-	pin := gqrlPin{version: fields[0]}
-	if len(fields) > 1 {
-		pin.replacement = fields[1]
+	pin := gqrlPin{version: module.Version}
+	if module.Replace == nil {
+		return pin, nil
 	}
+	if module.Replace.Path == "" {
+		return gqrlPin{}, fmt.Errorf("read pinned go-qrl module: replacement reports no path")
+	}
+
+	if module.Replace.Version != "" {
+		pin.replacement = module.Replace.Path + "@" + module.Replace.Version
+		return pin, nil
+	}
+
+	replacement := module.Replace.Path
+	if !filepath.IsAbs(replacement) {
+		replacement, err = filepath.Abs(filepath.Join(testsDir, replacement))
+		if err != nil {
+			return gqrlPin{}, fmt.Errorf("read pinned go-qrl module: resolve replacement path: %w", err)
+		}
+	}
+	pin.replacement = filepath.Clean(replacement)
 
 	return pin, nil
 }

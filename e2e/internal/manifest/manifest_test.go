@@ -13,9 +13,9 @@ import (
 func TestManifestRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileName)
 	want := Manifest{
-		Lane:    "execution",
-		Profile: devnet.ProfileSingle,
-		Tools:   Tools{GQRL: "/tmp/gqrl"},
+		Lane:           "execution",
+		Profile:        devnet.ProfileSingle,
+		ExecutionImage: "registry.example/go-qrl@sha256:digest",
 		Environment: devnet.Environment{
 			EnclaveName: "qrl-tests-execution",
 			Backend:     devnet.BackendDocker,
@@ -53,8 +53,8 @@ func TestFromEnvReportsMissingConfiguration(t *testing.T) {
 	require.ErrorContains(t, err, PathEnv)
 }
 
-func TestManifestOmitsEmptyTools(t *testing.T) {
+func TestManifestOmitsEmptyExecutionImage(t *testing.T) {
 	payload, err := json.Marshal(Manifest{})
 	require.NoError(t, err)
-	require.NotContains(t, string(payload), `"tools"`)
+	require.NotContains(t, string(payload), `"execution_image"`)
 }

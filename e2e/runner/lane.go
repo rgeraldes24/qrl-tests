@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	defaultToolPreparationTimeout = 10 * time.Minute
-	laneCleanupTimeout            = 2 * time.Minute
-	laneDiagnosticsTimeout        = 2 * time.Minute
+	laneCleanupTimeout     = 2 * time.Minute
+	laneDiagnosticsTimeout = 2 * time.Minute
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
@@ -136,25 +135,12 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
 
-	toolCtx, cancelTools := context.WithTimeout(ctx, runner.toolPreparationTimeout)
-	tools, cleanupTools, err := runner.prepareLaneTools(toolCtx, plan, lane)
-	cancelTools()
-	if err != nil {
-		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
-		return outcome
-	}
-	if cleanupTools != nil {
-		defer func() {
-			outcome.Err = errors.Join(outcome.Err, cleanupTools())
-		}()
-	}
-
 	manifestPath := lane.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
-		Lane:        definition.Name,
-		Profile:     definition.Profile,
-		Environment: lease.environment,
-		Tools:       tools,
+		Lane:           definition.Name,
+		Profile:        definition.Profile,
+		Environment:    lease.environment,
+		ExecutionImage: lane.executionImage,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome

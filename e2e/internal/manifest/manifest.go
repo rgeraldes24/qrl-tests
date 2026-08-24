@@ -16,15 +16,11 @@ const (
 	PathEnv  = "QRL_TEST_MANIFEST"
 )
 
-type Tools struct {
-	GQRL string `json:"gqrl,omitempty"`
-}
-
 type Manifest struct {
-	Lane        string             `json:"lane,omitempty"`
-	Profile     devnet.Profile     `json:"profile,omitempty"`
-	Environment devnet.Environment `json:"environment"`
-	Tools       Tools              `json:"tools,omitzero"`
+	Lane           string             `json:"lane,omitempty"`
+	Profile        devnet.Profile     `json:"profile,omitempty"`
+	Environment    devnet.Environment `json:"environment"`
+	ExecutionImage string             `json:"execution_image,omitempty"`
 }
 
 func Write(path string, manifest Manifest) error {

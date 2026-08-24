@@ -87,7 +87,7 @@ func (lane Lane) Packages() []string {
 	return result
 }
 
-func (lane Lane) NeedsGQRL() bool {
+func (lane Lane) NeedsExecutionImage() bool {
 	return slices.Contains(lane.Suites, suiteExecutionConsole)
 }
 

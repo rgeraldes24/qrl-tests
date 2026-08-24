@@ -48,7 +48,7 @@ func TestLaneWithSuites(t *testing.T) {
 		"./e2e/suites/execution/console",
 	}, execution.Packages())
 	require.Equal(t, 30*time.Minute, execution.Timeout)
-	require.True(t, execution.NeedsGQRL())
+	require.True(t, execution.NeedsExecutionImage())
 
 	unchanged, err := execution.WithSuites(nil)
 	require.NoError(t, err)
@@ -66,11 +66,11 @@ func TestLaneWithSuites(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{suiteExecutionConsole}, selected.Suites)
 	require.Equal(t, []string{"./e2e/suites/execution/console"}, selected.Packages())
-	require.True(t, selected.NeedsGQRL())
+	require.True(t, selected.NeedsExecutionImage())
 
 	selected, err = execution.WithSuites([]string{"execution-abi"})
 	require.NoError(t, err)
-	require.False(t, selected.NeedsGQRL())
+	require.False(t, selected.NeedsExecutionImage())
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

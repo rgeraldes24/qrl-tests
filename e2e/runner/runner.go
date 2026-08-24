@@ -81,26 +81,20 @@ func (mode runMode) suffixesEnclave() bool {
 }
 
 type Runner struct {
-	configuration          Config
-	networks               networkManager
-	toolPreparationTimeout time.Duration
-	prepareGQRL            func(context.Context, runMode, devnet.Backend, string, string, string) error
-	removeToolDir          func(string) error
-	runCommand             func(context.Context, commandSpec) error
-	stdout                 io.Writer
-	stderr                 io.Writer
+	configuration Config
+	networks      networkManager
+	goos          string
+	runCommand    func(context.Context, commandSpec) error
+	stdout        io.Writer
+	stderr        io.Writer
 }
 
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	outputLock := new(sync.Mutex)
 	return &Runner{
-		configuration:          configuration.withDefaults(),
-		networks:               devnet.NewManager(),
-		toolPreparationTimeout: defaultToolPreparationTimeout,
-		prepareGQRL: func(ctx context.Context, mode runMode, backend devnet.Backend, testsDir, image, destination string) error {
-			return prepareGQRL(ctx, runtime.GOOS, mode, backend, testsDir, image, destination, executeOutput)
-		},
-		removeToolDir: os.RemoveAll,
+		configuration: configuration.withDefaults(),
+		networks:      devnet.NewManager(),
+		goos:          runtime.GOOS,
 		runCommand:    execute,
 		stdout:        &lockedWriter{lock: outputLock, writer: stdout},
 		stderr:        &lockedWriter{lock: outputLock, writer: stderr},
@@ -195,9 +189,18 @@ func (runner *Runner) selectedLane(name string) (lanes.Lane, error) {
 }
 
 func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMode) error {
+	executionImage, err := runner.consoleExecutionImage(selected, mode)
+	if err != nil {
+		return err
+	}
 	plan, err := planLanes(runner.configuration, selected, mode)
 	if err != nil {
 		return err
+	}
+	for index := range plan.lanes {
+		if plan.lanes[index].definition.NeedsExecutionImage() {
+			plan.lanes[index].executionImage = executionImage
+		}
 	}
 	if err := clearReportArtifacts(plan.reportRoot); err != nil {
 		return err
@@ -231,6 +234,31 @@ func (runner *Runner) run(ctx context.Context, selected []lanes.Lane, mode runMo
 	// Reporting problems never mask the test result, and vice versa. Preserve
 	// raw lane errors as well so callers can inspect cancellation and timeout.
 	return errors.Join(summary.VerdictError(), errors.Join(laneErrors...), manifestErr, summarizeErr)
+}
+
+func (runner *Runner) consoleExecutionImage(selected []lanes.Lane, mode runMode) (string, error) {
+	needsImage := false
+	for _, lane := range selected {
+		if lane.NeedsExecutionImage() {
+			needsImage = true
+			break
+		}
+	}
+	if !needsImage {
+		return "", nil
+	}
+
+	if mode == useExistingNetwork || runner.goos != "linux" ||
+		runner.configuration.Backend != devnet.BackendDocker ||
+		len(runner.configuration.Parameters) != 0 {
+		return "", errors.New("execution-console requires a runner-provisioned Linux Docker network using built-in parameters")
+	}
+
+	images, err := runner.configuration.Images.Resolved()
+	if err != nil {
+		return "", err
+	}
+	return images.Execution, nil
 }
 
 // Remove only runner-owned outputs because ReportDir may contain unrelated files.

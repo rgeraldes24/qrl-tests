@@ -1,8 +1,9 @@
 # End-to-end suites
 
 The suites run against a [development network](../devnet/README.md). The
-runner passes a generated manifest containing the participant
-endpoints; suites do not provision infrastructure.
+runner passes a generated manifest containing the participant endpoints and,
+for the console suite, the authoritative execution image; suites do not
+provision infrastructure.
 
 ## Lanes
 
@@ -17,19 +18,24 @@ The lane runs these suites in order:
 | `execution-abi` | ABI calls, events, errors, and WebSocket filters |
 | `execution-console` | `gqrl attach` and embedded web3 APIs, contract deployment and calls, receipts, event filters, and WebSocket watches |
 
-Run one lane with a fresh network:
+Run the full lane with a fresh Linux Docker network using built-in parameters:
 
 ```bash
 make e2e-run
 ```
 
-Run a lane against an existing matching network:
+Run the ABI suite against an existing matching network:
 
 ```bash
 make network-start
-make e2e
+E2E_SUITE=execution-abi make e2e
 make network-stop
 ```
+
+The console suite always launches `gqrl attach` from the execution image used
+to provision the lane. The runner establishes that image and runtime contract
+only for runner-provisioned Linux networks using the local Docker backend and
+built-in parameters.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result

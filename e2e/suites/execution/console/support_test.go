@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,8 +23,11 @@ const (
 	resultPrefix  = "CONSOLE_E2E_PASS "
 	failurePrefix = "CONSOLE_E2E_FAIL "
 
-	watchedSuitePollInterval = 100 * time.Millisecond
-	watchedSuiteExitTimeout  = 5 * time.Second
+	consoleContainerJSPath         = "/tmp/qrl-tests-js"
+	consoleContainerDataDir        = "/tmp/qrl-tests-console"
+	consoleContainerCleanupTimeout = 30 * time.Second
+	watchedSuitePollInterval       = 100 * time.Millisecond
+	watchedSuiteExitTimeout        = 5 * time.Second
 )
 
 type consoleScenario struct {
@@ -60,19 +64,148 @@ var consoleScenarios = []consoleScenario{
 //go:embed testdata/console/*.js
 var consoleFixtures embed.FS
 
-func runSuite(ctx context.Context, gqrlPath, jsPath, rpcURL, name string) error {
-	expression := "loadScript('harness.js');loadScript('" + name + ".js')"
-	command := exec.CommandContext(
-		ctx,
-		gqrlPath,
+type outputCommand func(context.Context, string, ...string) ([]byte, error)
+
+type commandContext func(context.Context, string, ...string) *exec.Cmd
+
+type consoleContainerSpec struct {
+	image       string
+	endpoint    string
+	scenario    string
+	interactive bool
+}
+
+type consoleContainerEngine interface {
+	create(context.Context, consoleContainerSpec) (string, error)
+	copyFixtures(context.Context, string, string) error
+	start(context.Context, string, bool) *exec.Cmd
+	remove(context.Context, string) error
+}
+
+type dockerConsoleEngine struct {
+	output  outputCommand
+	command commandContext
+}
+
+func newDockerConsoleEngine() dockerConsoleEngine {
+	return dockerConsoleEngine{
+		output:  executeOutput,
+		command: exec.CommandContext,
+	}
+}
+
+func executeOutput(ctx context.Context, name string, arguments ...string) ([]byte, error) {
+	command := exec.CommandContext(ctx, name, arguments...)
+	output, err := command.Output()
+	if err == nil {
+		return output, nil
+	}
+	if exitError, ok := err.(*exec.ExitError); ok {
+		if detail := strings.TrimSpace(string(exitError.Stderr)); detail != "" {
+			return output, fmt.Errorf("%w: %s", err, detail)
+		}
+	}
+	return output, err
+}
+
+func (engine dockerConsoleEngine) create(ctx context.Context, spec consoleContainerSpec) (string, error) {
+	arguments := []string{"create", "--pull=missing"}
+	if spec.interactive {
+		arguments = append(arguments, "--interactive")
+	}
+	arguments = append(
+		arguments,
+		"--network", "host",
+		spec.image,
 		"attach",
-		"--jspath",
-		jsPath,
-		"--exec",
-		expression,
-		rpcURL,
+		"--datadir", consoleContainerDataDir,
+		"--jspath", consoleContainerJSPath,
 	)
-	output, err := command.CombinedOutput()
+	if spec.interactive {
+		arguments = append(arguments, "--preload", "harness.js,"+spec.scenario+".js")
+	} else {
+		expression := "loadScript('harness.js');loadScript('" + spec.scenario + ".js')"
+		arguments = append(arguments, "--exec", expression)
+	}
+	arguments = append(arguments, spec.endpoint)
+
+	output, err := engine.output(ctx, "docker", arguments...)
+	if err != nil {
+		return "", fmt.Errorf("create console suite %s container: %w", spec.scenario, err)
+	}
+	containerID := strings.TrimSpace(string(output))
+	if containerID == "" {
+		return "", fmt.Errorf("create console suite %s container: docker returned no container ID", spec.scenario)
+	}
+	return containerID, nil
+}
+
+func (engine dockerConsoleEngine) copyFixtures(ctx context.Context, containerID, jsPath string) error {
+	jsPath, err := filepath.Abs(jsPath)
+	if err != nil {
+		return fmt.Errorf("resolve console fixture directory: %w", err)
+	}
+	if _, err := engine.output(ctx, "docker", "cp", jsPath, containerID+":"+consoleContainerJSPath); err != nil {
+		return fmt.Errorf("docker cp: %w", err)
+	}
+	return nil
+}
+
+func (engine dockerConsoleEngine) start(ctx context.Context, containerID string, interactive bool) *exec.Cmd {
+	arguments := []string{"start", "--attach"}
+	if interactive {
+		arguments = append(arguments, "--interactive")
+	}
+	return engine.command(ctx, "docker", append(arguments, containerID)...)
+}
+
+func (engine dockerConsoleEngine) remove(ctx context.Context, containerID string) error {
+	if _, err := engine.output(ctx, "docker", "rm", "--force", containerID); err != nil {
+		return fmt.Errorf("docker rm: %w", err)
+	}
+	return nil
+}
+
+func removeConsoleContainer(engine consoleContainerEngine, containerID, scenario string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), consoleContainerCleanupTimeout)
+	defer cancel()
+	if err := engine.remove(cleanupCtx, containerID); err != nil {
+		return fmt.Errorf("remove console suite %s container: %w", scenario, err)
+	}
+	return nil
+}
+
+func runSuite(ctx context.Context, image, jsPath, rpcURL, name string) error {
+	return runSuiteWithEngine(ctx, image, jsPath, rpcURL, name, newDockerConsoleEngine())
+}
+
+func runSuiteWithEngine(
+	ctx context.Context,
+	image string,
+	jsPath string,
+	rpcURL string,
+	name string,
+	engine consoleContainerEngine,
+) (result error) {
+	containerID, err := engine.create(ctx, consoleContainerSpec{
+		image:    image,
+		endpoint: rpcURL,
+		scenario: name,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		result = errors.Join(result, removeConsoleContainer(engine, containerID, name))
+	}()
+	if err := engine.copyFixtures(ctx, containerID, jsPath); err != nil {
+		return fmt.Errorf("copy console suite %s fixtures: %w", name, err)
+	}
+
+	output, err := engine.start(ctx, containerID, false).CombinedOutput()
+	if ctx.Err() != nil {
+		return fmt.Errorf("console suite %s: %w\n%s", name, ctx.Err(), output)
+	}
 	if err != nil {
 		return fmt.Errorf("run console suite %s: %w\n%s", name, err, output)
 	}
@@ -99,49 +232,42 @@ func (buffer *synchronizedBuffer) Bytes() []byte {
 	return bytes.Clone(buffer.data.Bytes())
 }
 
-type commandContext func(context.Context, string, ...string) *exec.Cmd
-
-func runWatchedSuite(ctx context.Context, gqrlPath, jsPath, webSocketURL, name string) error {
-	return runWatchedSuiteWithCommand(
+func runWatchedSuite(ctx context.Context, image, jsPath, webSocketURL, name string) error {
+	return runWatchedSuiteWithEngine(
 		ctx,
-		gqrlPath,
+		image,
 		jsPath,
 		webSocketURL,
 		name,
-		exec.CommandContext,
+		newDockerConsoleEngine(),
 	)
 }
 
-func runWatchedSuiteWithCommand(
+func runWatchedSuiteWithEngine(
 	ctx context.Context,
-	gqrlPath string,
+	image string,
 	jsPath string,
 	webSocketURL string,
 	name string,
-	newCommand commandContext,
+	engine consoleContainerEngine,
 ) (result error) {
-	dataDir, err := os.MkdirTemp("", "qrl-tests-console-"+name+"-")
+	containerID, err := engine.create(ctx, consoleContainerSpec{
+		image:       image,
+		endpoint:    webSocketURL,
+		scenario:    name,
+		interactive: true,
+	})
 	if err != nil {
-		return fmt.Errorf("create console data directory: %w", err)
+		return err
 	}
 	defer func() {
-		if err := os.RemoveAll(dataDir); err != nil {
-			result = errors.Join(result, fmt.Errorf("remove console data directory: %w", err))
-		}
+		result = errors.Join(result, removeConsoleContainer(engine, containerID, name))
 	}()
+	if err := engine.copyFixtures(ctx, containerID, jsPath); err != nil {
+		return fmt.Errorf("copy console suite %s fixtures: %w", name, err)
+	}
 
-	command := newCommand(
-		ctx,
-		gqrlPath,
-		"attach",
-		"--datadir",
-		dataDir,
-		"--jspath",
-		jsPath,
-		"--preload",
-		"harness.js,"+name+".js",
-		webSocketURL,
-	)
+	command := engine.start(ctx, containerID, true)
 	return runWatchedCommand(ctx, command, name)
 }
 

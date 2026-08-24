@@ -24,10 +24,10 @@ var _ = ginkgo.Describe(
 	ginkgo.Label("e2e", "live", "console", "mutates-chain"),
 	func() {
 		var (
-			gqrlPath string
-			jsPath   string
-			rpcURL   string
-			session  *endtoendlive.Node
+			executionImage string
+			jsPath         string
+			rpcURL         string
+			session        *endtoendlive.Node
 		)
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
@@ -39,7 +39,7 @@ var _ = ginkgo.Describe(
 
 			workDir := ginkgo.GinkgoT().TempDir()
 
-			gqrlPath, err = runtime.GQRL()
+			executionImage, err = runtime.ExecutionImage()
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 			jsPath = filepath.Join(workDir, "js")
@@ -56,7 +56,7 @@ var _ = ginkgo.Describe(
 					if scenario.webSocket {
 						gomega.Expect(runWatchedSuite(
 							ctx,
-							gqrlPath,
+							executionImage,
 							jsPath,
 							session.Participant.Execution.WebSocketURL,
 							scenario.name,
@@ -64,7 +64,7 @@ var _ = ginkgo.Describe(
 						return
 					}
 					gomega.Expect(
-						runSuite(ctx, gqrlPath, jsPath, rpcURL, scenario.name),
+						runSuite(ctx, executionImage, jsPath, rpcURL, scenario.name),
 					).To(gomega.Succeed())
 				},
 			)

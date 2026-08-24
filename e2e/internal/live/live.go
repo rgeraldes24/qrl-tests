@@ -18,9 +18,9 @@ type Runtime struct {
 	Wallet  qrlwallet.Wallet
 	ChainID *big.Int
 
-	environment devnet.Environment
-	gqrl        string
-	nodes       []*Node
+	environment    devnet.Environment
+	executionImage string
+	nodes          []*Node
 }
 
 // Node is an open handle to one network participant: its execution clients
@@ -46,18 +46,18 @@ func Load() (*Runtime, error) {
 	}
 
 	runtime := &Runtime{
-		Wallet:      wallet,
-		environment: suiteManifest.Environment,
-		gqrl:        suiteManifest.Tools.GQRL,
+		Wallet:         wallet,
+		environment:    suiteManifest.Environment,
+		executionImage: suiteManifest.ExecutionImage,
 	}
 	return runtime, nil
 }
 
-func (runtime *Runtime) GQRL() (string, error) {
-	if runtime.gqrl == "" {
-		return "", fmt.Errorf("gqrl test tool is not configured")
+func (runtime *Runtime) ExecutionImage() (string, error) {
+	if runtime.executionImage == "" {
+		return "", fmt.Errorf("execution image is not configured")
 	}
-	return runtime.gqrl, nil
+	return runtime.executionImage, nil
 }
 
 func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Node, error) {

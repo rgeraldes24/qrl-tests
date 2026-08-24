@@ -24,10 +24,11 @@ type runPlan struct {
 }
 
 type laneRun struct {
-	definition  lanes.Lane
-	enclaveName string
-	reportDir   string
-	seed        int64
+	definition     lanes.Lane
+	enclaveName    string
+	reportDir      string
+	executionImage string
+	seed           int64
 }
 
 func (lane laneRun) manifestPath() string {

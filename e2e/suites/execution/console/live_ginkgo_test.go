@@ -52,13 +52,13 @@ var _ = ginkgo.Describe(
 							ctx,
 							session.ExecutionImage,
 							jsPath,
-							session.Participant.Execution.WebSocketURL,
+							session.ExecutionWebSocketURL,
 							scenario.name,
 						)).To(gomega.Succeed())
 						return
 					}
 					gomega.Expect(
-						runSuite(ctx, session.ExecutionImage, jsPath, session.Participant.Execution.RPCURL, scenario.name),
+						runSuite(ctx, session.ExecutionImage, jsPath, session.ExecutionRPCURL, scenario.name),
 					).To(gomega.Succeed())
 				},
 			)

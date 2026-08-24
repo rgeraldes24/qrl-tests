@@ -24,7 +24,7 @@ reports/
 └── lanes/<lane>/
     ├── report.json           # Ginkgo test report
     ├── output.log            # test command output
-    ├── manifest.json         # lane, network environment, and console image
+    ├── manifest.json         # lane, profile, network environment, and execution image
     └── diagnostics/          # created only when the lane fails
         ├── diagnostics.json   # capture status and errors
         ├── inspect.txt        # Kurtosis enclave inspection
@@ -46,21 +46,14 @@ E2E_SUITE=execution-abi make e2e
 make network-stop
 ```
 
-The console suite runs `gqrl attach` directly from the configured execution
-image and reaches the runner-published endpoints through Docker's host-gateway
-mapping. Run it with `E2E_SUITE=execution-console make e2e-run` using the local
-Docker backend and built-in parameters.
-
 List registered lanes and suites with:
 
 ```bash
 go run ./cmd/qrltest list
 ```
 
-Network provisioning supports Docker and Kubernetes. Kubernetes requires
-registry-backed images and an active Kurtosis gateway. The `execution-console`
-suite requires a runner-provisioned local Docker network using built-in
-parameters.
+Docker and Kubernetes are supported. Kubernetes requires registry-backed images
+and an active Kurtosis gateway.
 
 See [development network configuration](devnet/README.md) and the
 [end-to-end suites](e2e/README.md).

@@ -12,11 +12,9 @@ E2E_LANE=execution E2E_SUITE=execution-console make e2e-run
 ```
 
 The suite runs `gqrl attach` directly inside the configured execution image.
-The runner establishes that image provenance and local runtime contract for
-runner-provisioned networks using the local Docker backend and built-in
-parameters. The container reaches the runner-published endpoints through
-Docker's host-gateway mapping on Linux and Docker Desktop with Linux containers
-on macOS or Windows. Use WSL2 as the runner environment on Windows.
+The container reaches the runner-published endpoints through Docker's
+host-gateway mapping on Linux and Docker Desktop with Linux containers on macOS
+or Windows. Use WSL2 as the runner environment on Windows.
 
 ## Coverage contract
 

@@ -1,0 +1,30 @@
+# Registered on main so GitHub accepts workflow_dispatch. Dispatch with
+# --ref soak/workflows to run the real Job.
+name: soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: steady-state window (Go duration)
+        default: 4h
+      load-percent:
+        description: share of block gas capacity the spammer targets; 0 is idle
+        default: "30"
+      enforce:
+        description: fail the check when a gate is breached
+        type: boolean
+        default: false
+      keep-network:
+        description: leave the enclave running after the Job finishes
+        type: boolean
+        default: false
+      chaos:
+        description: optional failure-path probe (none, abort-midrun, leak-enclave)
+        default: none
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Dispatch soak.yml with ref soak/workflows."

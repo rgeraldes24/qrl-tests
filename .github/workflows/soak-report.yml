@@ -1,0 +1,15 @@
+# Registered on main so GitHub accepts workflow_dispatch. Dispatch with
+# --ref soak/workflows to collect the artifact.
+name: soak-report
+
+on:
+  workflow_dispatch:
+    inputs:
+      job-name:
+        description: Job name to collect (empty = newest qrl-soak-* Job)
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Dispatch soak-report.yml with ref soak/workflows."

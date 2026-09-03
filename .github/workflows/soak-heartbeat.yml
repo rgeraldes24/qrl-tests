@@ -1,0 +1,15 @@
+# Registered on main so GitHub accepts workflow_dispatch. Dispatch with
+# --ref soak/workflows to inspect the live Job.
+name: soak-heartbeat
+
+on:
+  workflow_dispatch:
+    inputs:
+      job-name:
+        description: Job name to inspect (empty = newest qrl-soak-* Job)
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Dispatch soak-heartbeat.yml with ref soak/workflows."

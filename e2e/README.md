@@ -9,6 +9,7 @@ endpoints; suites do not provision infrastructure.
 | Lane | Profile | Coverage |
 | --- | --- | --- |
 | `execution` | `single` | Execution ABI calls, events, errors, and WebSocket filters |
+| `consensus` | `single` | Staker lifecycle via `consensus-staker-protocol` (keymanager HTTP) |
 
 Run one lane with a fresh network:
 

@@ -21,13 +21,15 @@ type Lane struct {
 type SuiteID string
 
 const (
-	suiteExecutionABI     SuiteID = "execution-abi"
-	suiteExecutionConsole SuiteID = "execution-console"
+	suiteExecutionABI            SuiteID = "execution-abi"
+	suiteExecutionConsole        SuiteID = "execution-console"
+	suiteConsensusStakerProtocol SuiteID = "consensus-staker-protocol"
 )
 
 var suitePackages = map[SuiteID]string{
-	suiteExecutionABI:     "./e2e/suites/execution/abi",
-	suiteExecutionConsole: "./e2e/suites/execution/console",
+	suiteExecutionABI:            "./e2e/suites/execution/abi",
+	suiteExecutionConsole:        "./e2e/suites/execution/console",
+	suiteConsensusStakerProtocol: "./e2e/suites/consensus/stakerprotocol",
 }
 
 var registry = []Lane{
@@ -36,6 +38,12 @@ var registry = []Lane{
 		Profile: devnet.ProfileSingle,
 		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
 		Timeout: 30 * time.Minute,
+	},
+	{
+		Name:    "consensus",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteConsensusStakerProtocol},
+		Timeout: 60 * time.Minute,
 	},
 }
 
@@ -89,6 +97,10 @@ func (lane Lane) Packages() []string {
 
 func (lane Lane) NeedsExecutionImage() bool {
 	return slices.Contains(lane.Suites, suiteExecutionConsole)
+}
+
+func (lane Lane) NeedsValidatorImage() bool {
+	return slices.Contains(lane.Suites, suiteConsensusStakerProtocol)
 }
 
 func RegisteredSuites() []SuiteID {

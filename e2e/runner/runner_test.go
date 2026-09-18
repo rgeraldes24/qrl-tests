@@ -25,6 +25,7 @@ import (
 
 const (
 	executionLaneName     = "execution"
+	consensusLaneName     = "consensus"
 	executionABISuite     = "execution-abi"
 	executionConsoleSuite = "execution-console"
 )
@@ -48,6 +49,9 @@ func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer)
 	runner := New(configuration, stdout, stderr)
 	runner.resolveExecutionImage = func(context.Context, devnet.Environment) (string, error) {
 		return "sha256:" + strings.Repeat("ab", 32), nil
+	}
+	runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
+		return "sha256:" + strings.Repeat("cd", 32), nil
 	}
 	return runner
 }
@@ -168,6 +172,34 @@ func TestRunRecordsResolvedImage(t *testing.T) {
 	configured, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
 	require.NoError(t, err)
 	require.Equal(t, actualImage, configured.ExecutionImage)
+	require.Empty(t, configured.ValidatorImage)
+}
+
+func TestRunRecordsResolvedValidatorImage(t *testing.T) {
+	reports := t.TempDir()
+	actualImage := "sha256:" + strings.Repeat("cd", 32)
+	runner := New(Config{
+		ReportDir: reports,
+		Images:    devnet.Images{Validator: "registry.example/qrysm-validator:configured"},
+	}, io.Discard, io.Discard)
+	runner.networks = new(recordingNetworks)
+	runner.resolveValidatorImage = func(ctx context.Context, _ devnet.Environment) (string, error) {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		require.WithinDuration(t, time.Now().Add(executionImageResolutionTimeout), deadline, time.Second)
+		return actualImage, nil
+	}
+
+	runner.runCommand = func(context.Context, commandSpec) error {
+		writeGinkgoReport(t, filepath.Join(reports, "lanes", consensusLaneName), types.SpecStatePassed)
+		return nil
+	}
+
+	require.NoError(t, runner.Run(t.Context(), consensusLaneName))
+	configured, err := manifest.Read(filepath.Join(reports, "lanes", consensusLaneName, manifest.FileName))
+	require.NoError(t, err)
+	require.Equal(t, actualImage, configured.ValidatorImage)
+	require.Empty(t, configured.ExecutionImage)
 }
 
 func TestRunImageResolutionError(t *testing.T) {
@@ -189,6 +221,26 @@ func TestRunImageResolutionError(t *testing.T) {
 
 	err := runner.Run(t.Context(), executionLaneName)
 	require.ErrorContains(t, err, "resolve execution image: inspect failed")
+	require.False(t, commandRan)
+	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
+}
+
+func TestRunValidatorImageResolutionError(t *testing.T) {
+	reports := t.TempDir()
+	networks := new(recordingNetworks)
+	runner := New(Config{ReportDir: reports}, io.Discard, io.Discard)
+	runner.networks = networks
+	runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
+		return "", errors.New("inspect failed")
+	}
+	commandRan := false
+	runner.runCommand = func(context.Context, commandSpec) error {
+		commandRan = true
+		return nil
+	}
+
+	err := runner.Run(t.Context(), consensusLaneName)
+	require.ErrorContains(t, err, "resolve validator image: inspect failed")
 	require.False(t, commandRan)
 	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
 }
@@ -465,7 +517,6 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 
 func TestRunAllProvisionsPerLane(t *testing.T) {
 	networks := new(recordingNetworks)
-	var command commandSpec
 	reports := t.TempDir()
 	runner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
@@ -474,19 +525,31 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
 	runner.networks = networks
+	var commands []commandSpec
 	runner.runCommand = func(_ context.Context, specification commandSpec) error {
-		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
-		command = specification
+		var outputDir string
+		for _, argument := range specification.Args {
+			if value, ok := strings.CutPrefix(argument, "--output-dir="); ok {
+				outputDir = value
+			}
+		}
+		require.NotEmpty(t, outputDir)
+		writeGinkgoReport(t, outputDir, types.SpecStatePassed)
+		commands = append(commands, specification)
 		return nil
 	}
 
 	require.NoError(t, runner.RunAll(t.Context()))
-	require.Equal(t, "qrl-tests-execution", networks.started.EnclaveName)
+	// Every registered lane provisions its own enclave and runs its own suites.
+	require.Equal(t, "qrl-tests-consensus", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
-	require.Equal(t, []string{"qrl-tests-execution"}, networks.stopped)
-	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
+	require.Equal(t, []string{"qrl-tests-execution", "qrl-tests-consensus"}, networks.stopped)
+	require.Len(t, commands, 2)
+	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
+	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/stakerprotocol")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
+	require.Equal(t, "qrl-tests-consensus", record.Lanes[1].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {

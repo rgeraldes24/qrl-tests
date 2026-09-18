@@ -24,12 +24,14 @@ const (
 	suiteExecutionABI            SuiteID = "execution-abi"
 	suiteExecutionConsole        SuiteID = "execution-console"
 	suiteConsensusStakerProtocol SuiteID = "consensus-staker-protocol"
+	suiteConsensusStakerCLI      SuiteID = "consensus-staker-cli"
 )
 
 var suitePackages = map[SuiteID]string{
 	suiteExecutionABI:            "./e2e/suites/execution/abi",
 	suiteExecutionConsole:        "./e2e/suites/execution/console",
 	suiteConsensusStakerProtocol: "./e2e/suites/consensus/stakerprotocol",
+	suiteConsensusStakerCLI:      "./e2e/suites/consensus/stakercli",
 }
 
 var registry = []Lane{
@@ -42,8 +44,8 @@ var registry = []Lane{
 	{
 		Name:    "consensus",
 		Profile: devnet.ProfileSingle,
-		Suites:  []SuiteID{suiteConsensusStakerProtocol},
-		Timeout: 60 * time.Minute,
+		Suites:  []SuiteID{suiteConsensusStakerProtocol, suiteConsensusStakerCLI},
+		Timeout: 90 * time.Minute,
 	},
 }
 
@@ -100,7 +102,8 @@ func (lane Lane) NeedsExecutionImage() bool {
 }
 
 func (lane Lane) NeedsValidatorImage() bool {
-	return slices.Contains(lane.Suites, suiteConsensusStakerProtocol)
+	return slices.Contains(lane.Suites, suiteConsensusStakerProtocol) ||
+		slices.Contains(lane.Suites, suiteConsensusStakerCLI)
 }
 
 func RegisteredSuites() []SuiteID {

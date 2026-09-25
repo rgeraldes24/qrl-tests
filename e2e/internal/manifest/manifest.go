@@ -3,20 +3,23 @@
 package manifest
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/internal/jsonfile"
 )
 
-const PathEnv = "QRL_TEST_MANIFEST"
+const (
+	FileName = "manifest.json"
+	PathEnv  = "QRL_TEST_MANIFEST"
+)
 
 type Manifest struct {
-	Lane        string             `json:"lane,omitempty"`
-	Profile     devnet.Profile     `json:"profile,omitempty"`
-	Environment devnet.Environment `json:"environment"`
+	Lane           string             `json:"lane,omitempty"`
+	Profile        devnet.Profile     `json:"profile,omitempty"`
+	Environment    devnet.Environment `json:"environment"`
+	ExecutionImage string             `json:"execution_image,omitempty"`
 }
 
 func Write(path string, manifest Manifest) error {
@@ -24,29 +27,13 @@ func Write(path string, manifest Manifest) error {
 		return err
 	}
 
-	payload, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode test manifest: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create test manifest directory: %w", err)
-	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o600); err != nil {
-		return fmt.Errorf("write test manifest: %w", err)
-	}
-	return nil
+	return jsonfile.Write(path, manifest, "test manifest")
 }
 
 func Read(path string) (Manifest, error) {
-	payload, err := os.ReadFile(path)
+	manifest, err := jsonfile.Read[Manifest](path, "test manifest")
 	if err != nil {
-		return Manifest{}, fmt.Errorf("read test manifest: %w", err)
-	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(payload, &manifest); err != nil {
-		return Manifest{}, fmt.Errorf("decode test manifest: %w", err)
+		return Manifest{}, err
 	}
 
 	if _, err := manifest.Environment.Primary(); err != nil {

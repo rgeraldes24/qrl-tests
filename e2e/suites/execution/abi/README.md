@@ -7,17 +7,17 @@ go test -tags=e2e -run '^$' ./e2e/suites/execution/abi
 ```
 
 Regenerate the bindings after changing the fixture contract at
-[`e2e/internal/abifixture/testdata/EventEmitter.hyp`](../../../internal/abifixture/testdata/EventEmitter.hyp) —
+[`contracts/EventEmitter.hyp`](contracts/EventEmitter.hyp) —
 `hypc --version` must report `commit.2b9a0f1d`:
 
 ```bash
-go generate ./e2e/internal/abifixture
+go generate ./e2e/suites/execution/abi/contracts
 ```
 
 Run against an already-running development network:
 
 ```bash
-make e2e E2E_LANE=execution-abi
+make e2e E2E_LANE=execution E2E_SUITE=execution-abi
 ```
 
 ## Coverage contract

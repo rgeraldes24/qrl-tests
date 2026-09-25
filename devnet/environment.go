@@ -12,13 +12,8 @@ import (
 	"github.com/cyyber/qrl-tests/devnet/internal/kurtosis"
 )
 
-// Contracts shared with qrl-package runs: the pinned engine secret, service
-// port identifiers, and service labels.
+// Contracts shared with qrl-package runs: service port identifiers and labels.
 const (
-	// engineJWTSecret mirrors static_files/jwt/jwtsecret in the qrl-package
-	// revision pinned by packageLocator; re-verify it when bumping the pin.
-	engineJWTSecret = "0xdc49981516e8e72b401a63e6405495a32dafc3939b5d6d83cc319ac0388bca1b"
-
 	rpcPortID           = "rpc"
 	webSocketPortID     = "ws"
 	engineRPCPortID     = "engine-rpc"
@@ -35,10 +30,9 @@ const (
 )
 
 type Environment struct {
-	EnclaveName     string        `json:"enclave_name"`
-	Backend         Backend       `json:"backend,omitempty"`
-	EngineJWTSecret string        `json:"engine_jwt_secret"`
-	Participants    []Participant `json:"participants"`
+	EnclaveName  string        `json:"enclave_name"`
+	Backend      Backend       `json:"backend,omitempty"`
+	Participants []Participant `json:"participants"`
 }
 
 // Primary returns the lowest-indexed participant. Readiness probes and
@@ -75,6 +69,7 @@ type ExecutionService struct {
 type ConsensusService struct {
 	ServiceInfo
 	URL        string `json:"url"`
+	GRPC       string `json:"grpc"`
 	MetricsURL string `json:"metrics_url"`
 }
 
@@ -84,7 +79,7 @@ type ValidatorService struct {
 	MetricsURL string `json:"metrics_url"`
 }
 
-func resolveEnvironment(ctx context.Context, client kurtosisClient, name string) (Environment, error) {
+func resolveEnvironment(ctx context.Context, client enclaveClient, name string) (Environment, error) {
 	services, err := client.Services(ctx, name)
 	if err != nil {
 		return Environment{}, err
@@ -96,9 +91,8 @@ func resolveEnvironment(ctx context.Context, client kurtosisClient, name string)
 	}
 
 	return Environment{
-		EnclaveName:     name,
-		EngineJWTSecret: engineJWTSecret,
-		Participants:    participants,
+		EnclaveName:  name,
+		Participants: participants,
 	}, nil
 }
 
@@ -140,6 +134,7 @@ func participantsFromServices(services map[string]kurtosis.Service) ([]Participa
 			if err != nil {
 				return nil, fmt.Errorf("consensus service %q: %w", name, err)
 			}
+			participant.Consensus.GRPC = optionalPublicHostPort(service, rpcPortID)
 			participant.Consensus.MetricsURL = optionalPublicEndpoint(service, metricsPortID, "http")
 		case "validator":
 			participant.Validator.ServiceInfo = info
@@ -193,4 +188,9 @@ func serviceIndex(name string) (int, error) {
 func optionalPublicEndpoint(service kurtosis.Service, portID, scheme string) string {
 	endpoint, _ := service.PublicEndpoint(portID, scheme)
 	return endpoint
+}
+
+func optionalPublicHostPort(service kurtosis.Service, portID string) string {
+	hostPort, _ := service.PublicHostPort(portID)
+	return hostPort
 }

@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/abi/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	qrl "github.com/theQRL/go-qrl"
@@ -76,13 +76,13 @@ func (fixture *liveFixture) assertCallRoundTrips(ctx context.Context) {
 	//     external pure returns (DynamicRecord, DynamicRecord[], uint16[][][]);
 	// Goal: generated bindings preserve nested tuples, arrays, and empty values.
 	ginkgo.By("round-tripping nested tuples and arrays through generated bindings")
-	nested := abifixture.EventEmitterDynamicRecord{
+	nested := contracts.EventEmitterDynamicRecord{
 		Amount:  inputs.amount,
 		Note:    inputs.note,
 		Payload: inputs.payload,
 		Values:  [][]uint16{{1, 2}, {}, {3}},
 	}
-	records := []abifixture.EventEmitterDynamicRecord{
+	records := []contracts.EventEmitterDynamicRecord{
 		nested,
 		{Amount: new(big.Int), Note: "", Payload: []byte{}, Values: [][]uint16{}},
 	}
@@ -106,8 +106,7 @@ func (fixture *liveFixture) assertCallRoundTrips(ctx context.Context) {
 	// Hyperion: function observe() external view returns (uint512 value, address caller);
 	// Goal: the generated view returns the constructor state and original caller.
 	ginkgo.By("reading constructor state through a generated view")
-	observed, err := fixture.binding.Observe(callOpts)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	observed := mustSucceed(fixture.binding.Observe(callOpts))
 	gomega.Expect(observed.Value).To(gomega.Equal(fixture.initial))
 	gomega.Expect(observed.Caller).To(gomega.Equal(fixture.from))
 
@@ -120,11 +119,9 @@ func (fixture *liveFixture) assertCallRoundTrips(ctx context.Context) {
 	integerMethod := fixture.contractABI.Methods["transform0"]
 	gomega.Expect(stringMethod.Sig).To(gomega.Equal("transform(string)"))
 	gomega.Expect(integerMethod.Sig).To(gomega.Equal("transform(uint16)"))
-	transformedString, err := fixture.binding.Transform(callOpts, inputs.note)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	transformedString := mustSucceed(fixture.binding.Transform(callOpts, inputs.note))
 	gomega.Expect(transformedString).To(gomega.Equal(inputs.note))
-	transformedInteger, err := fixture.binding.Transform0(callOpts, 0xfffe)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	transformedInteger := mustSucceed(fixture.binding.Transform0(callOpts, 0xfffe))
 	gomega.Expect(transformedInteger).To(gomega.Equal(uint16(0xffff)))
 }
 
@@ -144,8 +141,7 @@ func (fixture *liveFixture) assertLibraryCall(ctx context.Context) {
 	input := fixture.inputs.amount
 	want := new(big.Int).Add(input, big.NewInt(1))
 	fixture.assertCall(ctx, "addViaLibrary", []any{input}, []any{want})
-	got, err := fixture.binding.AddViaLibrary(fixture.callOpts(ctx), input)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	got := mustSucceed(fixture.binding.AddViaLibrary(fixture.callOpts(ctx), input))
 	gomega.Expect(got).To(gomega.Equal(want))
 }
 
@@ -225,15 +221,15 @@ func (fixture *liveFixture) assertNestedComposites(ctx context.Context) {
 	ginkgo.By("round-tripping offset-heavy arrays and nested tuples")
 	fixedMatrix := [2][2]uint16{{0, 0xffff}, {1, 0x1234}}
 	rows := [][2]uint16{{}, {1, 0xffff}, {0x1234, 0x4321}}
-	records := [2]abifixture.EventEmitterDynamicRecord{
+	records := [2]contracts.EventEmitterDynamicRecord{
 		{
 			Amount: fixture.inputs.amount, Note: fixture.inputs.note,
 			Payload: fixture.inputs.payload, Values: [][]uint16{{1, 2}, {}, {3}},
 		},
 		{Amount: new(big.Int), Note: "", Payload: []byte{}, Values: [][]uint16{}},
 	}
-	nested := abifixture.EventEmitterNestedRecord{
-		FixedRecord: abifixture.EventEmitterRecord{
+	nested := contracts.EventEmitterNestedRecord{
+		FixedRecord: contracts.EventEmitterRecord{
 			Amount: fixture.inputs.amount, Recipient: secondAddress, Tag: secondTag,
 		},
 		DynamicRecord: records[0],
@@ -256,7 +252,7 @@ func (fixture *liveFixture) assertNestedComposites(ctx context.Context) {
 	gomega.Expect(gotNested.Extra).To(gomega.Equal(nested.Extra))
 }
 
-func assertDynamicRecordEqual(got, want abifixture.EventEmitterDynamicRecord, label string) {
+func assertDynamicRecordEqual(got, want contracts.EventEmitterDynamicRecord, label string) {
 	ginkgo.GinkgoHelper()
 
 	gomega.Expect(got.Amount.Cmp(want.Amount)).To(gomega.Equal(0), label)

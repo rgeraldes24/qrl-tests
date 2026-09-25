@@ -17,14 +17,18 @@ const (
 	DefaultEnclaveName  = "go-qrl-devnet"
 	DefaultStartTimeout = 5 * time.Minute
 
-	startCleanupTimeout        = time.Minute // destroy call after a failed start
-	destroyConfirmationTimeout = time.Minute // confirm loop in destroyAndConfirm
+	startCleanupTimeout        = time.Minute     // destroy call after a failed start
+	destroyConfirmationTimeout = time.Minute     // confirm loop in destroyAndConfirm
+	startDiagnosticsTimeout    = 2 * time.Minute // inspection and logs before a failed start is cleaned up
 	retryInterval              = 500 * time.Millisecond
 
-	packageLocator = "github.com/rgeraldes24/qrl-package@3892c3d2596403c080424d9e8fc99ff172483fe0"
+	// PackageLocator pins the qrl-package revision every network runs.
+	PackageLocator = "github.com/cyyber/qrl-package@514f0835097b60f2485b8a64f62fb6ecf8bae087"
 )
 
-type kurtosisClient interface {
+// enclaveClient owns normal enclave and package operations through the
+// Kurtosis SDK.
+type enclaveClient interface {
 	EnclaveExists(ctx context.Context, name string) (bool, error)
 	CreateEnclave(ctx context.Context, name string) error
 	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
@@ -38,19 +42,31 @@ type StartOptions struct {
 	Images      Images
 	Parameters  []byte
 	Profile     Profile
+
+	// FailureDiagnosticsDir, when set, receives the enclave's diagnostics
+	// before cleanup of a failed start is attempted.
+	FailureDiagnosticsDir string
 }
 
 type Manager struct {
-	newClient func() (kurtosisClient, error)
-	probe     func(ctx context.Context, rpcURL, address string) error
+	newEnclaveClient     func() (enclaveClient, error)
+	newDiagnosticsClient func() (diagnosticsClient, error)
+	probe                func(ctx context.Context, rpcURL, address string) error
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		newClient: func() (kurtosisClient, error) {
-			client, err := kurtosis.NewClient()
+		newEnclaveClient: func() (enclaveClient, error) {
+			client, err := kurtosis.NewEnclaveClient()
 			if err != nil {
 				return nil, fmt.Errorf("connect to Kurtosis engine: %w", err)
+			}
+			return client, nil
+		},
+		newDiagnosticsClient: func() (diagnosticsClient, error) {
+			client, err := kurtosis.NewDiagnosticsClient()
+			if err != nil {
+				return nil, fmt.Errorf("connect to Kurtosis diagnostics API: %w", err)
 			}
 			return client, nil
 		},
@@ -59,7 +75,7 @@ func NewManager() *Manager {
 }
 
 func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
-	client, err := manager.newClient()
+	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -87,7 +103,7 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 	return environment, nil
 }
 
-func (manager *Manager) Start(ctx context.Context, options StartOptions) (Environment, error) {
+func (manager *Manager) Start(ctx context.Context, options StartOptions) (environment Environment, err error) {
 	options.EnclaveName = cmp.Or(options.EnclaveName, DefaultEnclaveName)
 	options.Backend = cmp.Or(options.Backend, BackendDocker)
 	options.Profile = cmp.Or(options.Profile, ProfileSingle)
@@ -97,7 +113,7 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 		return Environment{}, fmt.Errorf("prepare qrl-package parameters: %w", err)
 	}
 
-	client, err := manager.newClient()
+	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return Environment{}, err
 	}
@@ -112,48 +128,67 @@ func (manager *Manager) Start(ctx context.Context, options StartOptions) (Enviro
 	if err := client.CreateEnclave(ctx, options.EnclaveName); err != nil {
 		return Environment{}, fmt.Errorf("create enclave: %w", err)
 	}
-	if err := client.RunRemotePackage(ctx, options.EnclaveName, packageLocator, parameters); err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "run pinned qrl-package", err)
+	defer func() {
+		if err != nil {
+			err = manager.finishFailedStart(client, options, err)
+		}
+	}()
+
+	if err := client.RunRemotePackage(ctx, options.EnclaveName, PackageLocator, parameters); err != nil {
+		return Environment{}, fmt.Errorf("run pinned qrl-package: %w", err)
 	}
 
 	// Endpoints are fixed once the package run completes; only the probe has to
 	// wait for the chain to come up.
-	environment, err := resolveEnvironment(ctx, client, options.EnclaveName)
+	environment, err = resolveEnvironment(ctx, client, options.EnclaveName)
 	if err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve network endpoints", err)
+		return Environment{}, fmt.Errorf("resolve network endpoints: %w", err)
 	}
 	environment.Backend = options.Backend
 
 	primary, err := environment.Primary()
 	if err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "resolve primary participant", err)
+		return Environment{}, fmt.Errorf("resolve primary participant: %w", err)
 	}
 	if err := retryUntil(ctx, func() error {
 		return manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address)
 	}); err != nil {
-		return Environment{}, manager.startFailure(client, options.EnclaveName, "wait for network readiness", err)
+		return Environment{}, fmt.Errorf("wait for network readiness: %w", err)
 	}
 
 	return environment, nil
 }
 
-// startFailure wraps a failure that happened after the enclave was created,
-// destroying the partially provisioned network before returning.
-func (manager *Manager) startFailure(client kurtosisClient, name string, operation string, failure error) error {
-	result := fmt.Errorf("%s: %w", operation, failure)
-
-	// Clean up on a fresh context: the start context is typically already
-	// canceled or expired by the time the failure reaches here.
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), startCleanupTimeout)
-	defer cancel()
-	if err := manager.destroyAndConfirm(cleanupCtx, client, name); err != nil {
-		return errors.Join(result, fmt.Errorf("clean up failed network: %w", err))
+// finishFailedStart runs after any failure that follows enclave creation. It
+// collects the requested diagnostics and then destroys the partially
+// provisioned network. Diagnostics and cleanup problems are reported alongside
+// the start failure, never instead of it.
+func (manager *Manager) finishFailedStart(client enclaveClient, options StartOptions, failure error) error {
+	// Diagnostics and cleanup run on fresh contexts: the start context is
+	// typically already canceled or expired by the time the failure gets here.
+	var diagnosticsErr error
+	if options.FailureDiagnosticsDir != "" {
+		collectCtx, cancel := context.WithTimeout(context.Background(), startDiagnosticsTimeout)
+		if err := manager.CollectDiagnostics(collectCtx, options.EnclaveName, options.FailureDiagnosticsDir); err != nil {
+			diagnosticsErr = fmt.Errorf("collect start diagnostics: %w", err)
+		}
+		cancel()
 	}
-	return result
+
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), startCleanupTimeout)
+	cleanupErr := manager.destroyAndConfirm(cleanupCtx, client, options.EnclaveName)
+	cancel()
+	if cleanupErr != nil {
+		cleanupErr = fmt.Errorf("clean up failed network: %w", cleanupErr)
+	}
+	if diagnosticsErr == nil && cleanupErr == nil {
+		return failure
+	}
+	return errors.Join(failure, diagnosticsErr, cleanupErr)
 }
 
 func (manager *Manager) Stop(ctx context.Context, name string) error {
-	client, err := manager.newClient()
+	client, err := manager.newEnclaveClient()
 	if err != nil {
 		return err
 	}
@@ -167,7 +202,7 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 	return manager.destroyAndConfirm(ctx, client, name)
 }
 
-func (manager *Manager) destroyAndConfirm(ctx context.Context, client kurtosisClient, name string) error {
+func (manager *Manager) destroyAndConfirm(ctx context.Context, client enclaveClient, name string) error {
 	destroyErr := client.DestroyEnclave(ctx, name)
 	// Confirm the deterministic slot is actually free — on a fresh context so
 	// cancellation cannot fake a successful stop — because the next start

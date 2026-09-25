@@ -6,7 +6,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/abi/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi/bind"
@@ -47,7 +47,7 @@ func (fixture *liveFixture) assertFunctionValues(ctx context.Context) {
 	secondCallback[len(secondCallback)-1] ^= 0xff
 	fixedCallbacks := [2]functionValue{callback, secondCallback}
 	callbacks := []functionValue{secondCallback, callback}
-	functionRecord := abifixture.EventEmitterFunctionRecord{
+	functionRecord := contracts.EventEmitterFunctionRecord{
 		Callback: callback,
 		Note:     fixture.inputs.note,
 	}
@@ -141,18 +141,16 @@ func (fixture *liveFixture) assertFunctionValues(ctx context.Context) {
 		},
 	)
 
-	parsedEvent, err := fixture.binding.ParseFunctionObserved(*receipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	parsedEvent := mustSucceed(fixture.binding.ParseFunctionObserved(*receipt.Logs[0]))
 	gomega.Expect(parsedEvent.IndexedCallback).To(gomega.Equal(callbackHash))
 	gomega.Expect(parsedEvent.Callback).To(gomega.Equal(callback))
 	gomega.Expect(parsedEvent.Result).To(gomega.Equal(functionResult))
 
 	block := receipt.BlockNumber.Uint64()
-	iterator, err := fixture.binding.FilterFunctionObserved(
+	iterator := mustSucceed(fixture.binding.FilterFunctionObserved(
 		&bind.FilterOpts{Start: block, End: &block, Context: ctx},
 		[]functionValue{callback},
-	)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	))
 	defer iterator.Close()
 	gomega.Expect(iterator.Next()).To(gomega.BeTrue())
 	gomega.Expect(iterator.Event.Raw.TxHash).To(gomega.Equal(receipt.TxHash))

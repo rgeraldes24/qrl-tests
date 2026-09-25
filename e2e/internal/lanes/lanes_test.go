@@ -39,18 +39,25 @@ func TestRegistry(t *testing.T) {
 }
 
 func TestLaneWithSuites(t *testing.T) {
-	executionABI, err := Named("execution-abi")
+	execution, err := Named("execution")
 	require.NoError(t, err)
 
-	unchanged, err := executionABI.WithSuites(nil)
+	unchanged, err := execution.WithSuites(nil)
 	require.NoError(t, err)
-	require.Equal(t, executionABI, unchanged)
+	require.Equal(t, execution, unchanged)
 
-	selected, err := executionABI.WithSuites([]string{"execution-abi", "execution-abi"})
+	selected, err := execution.WithSuites([]string{
+		string(suiteExecutionConsole), string(suiteExecutionABI), string(suiteExecutionConsole),
+	})
 	require.NoError(t, err)
-	require.Equal(t, []SuiteID{suiteExecutionABI}, selected.Suites)
+	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
+	require.True(t, selected.NeedsExecutionImage())
 
-	_, err = executionABI.WithSuites([]string{"unknown"})
+	selected, err = execution.WithSuites([]string{string(suiteExecutionABI)})
+	require.NoError(t, err)
+	require.False(t, selected.NeedsExecutionImage())
+
+	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")
 }
 

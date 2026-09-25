@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/cyyber/qrl-tests/e2e/internal/abifixture"
+	"github.com/cyyber/qrl-tests/e2e/suites/execution/abi/contracts"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/accounts/abi"
@@ -57,7 +57,7 @@ func (fixture *liveFixture) assertErrors(ctx context.Context) {
 	ginkgo.GinkgoHelper()
 
 	inputs := fixture.inputs
-	record := abifixture.EventEmitterRecord{
+	record := contracts.EventEmitterRecord{
 		Amount:    inputs.amount,
 		Recipient: fixture.from,
 		Tag:       inputs.tag,
@@ -170,19 +170,18 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 	ginkgo.By("deploying with value through the payable constructor")
 	deployAuth := fixture.transactOpts(ctx)
 	deployAuth.Value = big.NewInt(23)
-	address, deployTx, _, err := abifixture.DeployEventEmitter(
+	address, deployTx, _, err := contracts.DeployEventEmitter(
 		deployAuth,
 		fixture.client,
 		big.NewInt(1),
 		"paid deployment",
 		[]byte{0x01},
-		abifixture.EventEmitterRecord{Amount: big.NewInt(1), Recipient: fixture.from, Tag: fixture.inputs.tag},
+		contracts.EventEmitterRecord{Amount: big.NewInt(1), Recipient: fixture.from, Tag: fixture.inputs.tag},
 		[]uint16{1},
 	)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	fixture.waitSuccessfulTransaction(ctx, deployTx)
-	deployedBalance, err := fixture.client.BalanceAt(ctx, address, nil)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	deployedBalance := mustSucceed(fixture.client.BalanceAt(ctx, address, nil))
 	gomega.Expect(deployedBalance).To(gomega.Equal(big.NewInt(23)))
 
 	// Hyperion:
@@ -212,8 +211,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 		},
 		want: map[string]any{"amount": amount},
 	})
-	received, err := fixture.binding.ParseReceived(*receipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	received := mustSucceed(fixture.binding.ParseReceived(*receipt.Logs[0]))
 	gomega.Expect(received.Amount).To(gomega.Equal(amount))
 
 	// Hyperion:
@@ -247,8 +245,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 			"amount":  amount,
 		},
 	})
-	fallback, err := fixture.binding.ParseFallbackCalled(*receipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	fallback := mustSucceed(fixture.binding.ParseFallbackCalled(*receipt.Logs[0]))
 	gomega.Expect(fallback.Payload).To(gomega.Equal(payload))
 	gomega.Expect(fallback.Amount).To(gomega.Equal(amount))
 
@@ -285,8 +282,7 @@ func (fixture *liveFixture) assertPayableEntrypoints(ctx context.Context) {
 		filter: [][]any{{fixture.from}, {marker}},
 		reject: [][]any{{fixture.from}, {marker + 1}},
 	})
-	paid, err := fixture.binding.ParsePaid(*payReceipt.Logs[0])
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	paid := mustSucceed(fixture.binding.ParsePaid(*payReceipt.Logs[0]))
 	gomega.Expect(paid.Sender).To(gomega.Equal(fixture.from))
 	gomega.Expect(paid.Marker).To(gomega.Equal(marker))
 	gomega.Expect(paid.Amount).To(gomega.Equal(amount))

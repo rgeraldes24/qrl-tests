@@ -14,7 +14,7 @@ import (
 
 func TestDefaultParameters(t *testing.T) {
 	address := "Q" + strings.Repeat("a", 128)
-	const executionImage = "local/go-qrl:test"
+	executionImage := "ghcr.io/example/go-qrl@sha256:" + strings.Repeat("0af1", 16)
 	payload, err := resolveParameters(address, StartOptions{
 		Images:  Images{Execution: executionImage},
 		Profile: ProfileSingle,
@@ -33,6 +33,7 @@ func TestDefaultParameters(t *testing.T) {
 	require.Equal(t, true, participant["use_remote_signer"])
 	require.Equal(t, "clef", participant["remote_signer_type"])
 	require.Equal(t, DefaultClefImage, participant["remote_signer_image"])
+	require.Equal(t, true, participant["remote_signer_auto_approve"])
 	require.Equal(t, float64(64), participant["validator_count"])
 	require.Equal(t, []any{"--graphql", "--graphql.vhosts=*"}, participant["el_extra_params"])
 	require.Equal(t, []any{"--min-sync-peers=0", "--minimum-peers-per-subnet=0"}, participant["cl_extra_params"])
@@ -104,6 +105,7 @@ func TestNetworkParametersTemplate(t *testing.T) {
 	require.Equal(t, DefaultConsensusImage, view.Participants[0].ConsensusImage)
 	require.Equal(t, DefaultValidatorImage, view.Participants[0].ValidatorImage)
 	require.Equal(t, DefaultGenesisImage, view.Genesis.Image)
+	require.True(t, view.Participants[0].RemoteSignerAutoApprove)
 	require.Contains(t, view.Network.PrefundedAccounts, devwallet.Address)
 }
 
@@ -123,11 +125,12 @@ func TestFileParametersRejectInvalid(t *testing.T) {
 
 type parametersFileView struct {
 	Participants []struct {
-		ExecutionImage    string `yaml:"el_image"`
-		ConsensusImage    string `yaml:"cl_image"`
-		ValidatorImage    string `yaml:"vc_image"`
-		RemoteSignerImage string `yaml:"remote_signer_image"`
-		Custom            int64  `yaml:"custom"`
+		ExecutionImage          string `yaml:"el_image"`
+		ConsensusImage          string `yaml:"cl_image"`
+		ValidatorImage          string `yaml:"vc_image"`
+		RemoteSignerImage       string `yaml:"remote_signer_image"`
+		RemoteSignerAutoApprove bool   `yaml:"remote_signer_auto_approve"`
+		Custom                  int64  `yaml:"custom"`
 	} `yaml:"participants"`
 	Network struct {
 		PrefundedAccounts map[string]struct {

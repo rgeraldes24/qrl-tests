@@ -10,12 +10,13 @@ import (
 )
 
 func TestManifestRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "manifest.json")
+	path := filepath.Join(t.TempDir(), FileName)
 	want := Manifest{
-		Lane:    "execution-abi",
-		Profile: devnet.ProfileSingle,
+		Lane:           "execution",
+		Profile:        devnet.ProfileSingle,
+		ExecutionImage: "registry.example/go-qrl@sha256:digest",
 		Environment: devnet.Environment{
-			EnclaveName: "qrl-tests-execution-abi",
+			EnclaveName: "qrl-tests-execution",
 			Backend:     devnet.BackendDocker,
 			Participants: []devnet.Participant{{
 				Index:     1,
@@ -37,7 +38,7 @@ func TestManifestRoundTrip(t *testing.T) {
 }
 
 func TestManifestRequiresParticipant(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "manifest.json")
+	path := filepath.Join(t.TempDir(), FileName)
 	require.Error(t, Write(path, Manifest{}))
 
 	require.NoError(t, os.WriteFile(path, []byte(`{"environment":{}}`), 0o600))

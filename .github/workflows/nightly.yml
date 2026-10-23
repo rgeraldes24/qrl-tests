@@ -4,6 +4,27 @@ on:
   schedule:
     - cron: "30 2 * * *"
   workflow_dispatch:
+    inputs:
+      go-qrl-repository:
+        description: "go-qrl repository to build, owner/name (default: the E2E_GO_QRL_REPOSITORY variable, then cyyber/go-qrl)"
+        type: string
+        default: ""
+      go-qrl-ref:
+        description: go-qrl branch to build
+        type: string
+        default: main
+      qrysm-repository:
+        description: "Qrysm repository to build, owner/name (default: the E2E_QRYSM_REPOSITORY variable, then cyyber/qrysm)"
+        type: string
+        default: ""
+      qrysm-ref:
+        description: Qrysm branch to build
+        type: string
+        default: main
+      lanes:
+        description: "JSON array of lanes to run (default: the E2E_NIGHTLY_LANES variable, then every lane)"
+        type: string
+        default: ""
 
 concurrency:
   group: qrl-tests-ghcr
@@ -18,8 +39,10 @@ jobs:
     runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-24.04-arm' }}
     timeout-minutes: 45
     env:
-      GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
-      QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+      GO_QRL_REPOSITORY: ${{ inputs.go-qrl-repository || vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+      GO_QRL_REF: ${{ inputs.go-qrl-ref || 'main' }}
+      QRYSM_REPOSITORY: ${{ inputs.qrysm-repository || vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+      QRYSM_REF: ${{ inputs.qrysm-ref || 'main' }}
       GENERATOR_REPOSITORY: ${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}
     permissions:
       contents: read
@@ -43,12 +66,12 @@ jobs:
         run: |
           resolve() {
             local sha
-            sha=$(git ls-remote "https://github.com/$1" refs/heads/main | cut -f1)
-            test -n "$sha" || { echo "cannot resolve $1@main" >&2; exit 1; }
+            sha=$(git ls-remote "https://github.com/$1" "refs/heads/${2:-main}" | cut -f1)
+            test -n "$sha" || { echo "cannot resolve $1@${2:-main}" >&2; exit 1; }
             echo "$sha"
           }
-          go_qrl_sha=$(resolve "${GO_QRL_REPOSITORY}")
-          qrysm_sha=$(resolve "${QRYSM_REPOSITORY}")
+          go_qrl_sha=$(resolve "${GO_QRL_REPOSITORY}" "${GO_QRL_REF}")
+          qrysm_sha=$(resolve "${QRYSM_REPOSITORY}" "${QRYSM_REF}")
           generator_sha=$(resolve "${GENERATOR_REPOSITORY}")
           {
             echo "go-qrl-sha=${go_qrl_sha}"
@@ -129,7 +152,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: ${{ fromJSON(vars.E2E_NIGHTLY_LANES || '["execution", "consensus-staking-automated", "consensus-staking-operator", "resilience-network-restart", "sync"]') }}
+        lane: ${{ fromJSON(inputs.lanes || vars.E2E_NIGHTLY_LANES || '["execution", "consensus-staking-automated", "consensus-staking-operator", "resilience-network-restart", "sync"]') }}
     uses: ./.github/workflows/e2e-reusable.yml
     with:
       # Immutable digest references from the images job.

@@ -87,6 +87,16 @@ var registry = []Lane{
 		LocalImages: true,
 	},
 	{
+		// The same suite, with the signer in token+mtls mode: the validator
+		// client also presents a client certificate. No qrl-package issues
+		// one yet (e2e/README.md says what it needs).
+		Name:        "consensus-remote-signer-mtls",
+		Profile:     devnet.ProfileRemoteSignerMTLS,
+		Suites:      []SuiteID{suiteConsensusRemoteSigner},
+		Timeout:     25 * time.Minute,
+		LocalImages: true,
+	},
+	{
 		// Finality, the outage and finality again take about a dozen
 		// 40-second epochs.
 		Name:             "resilience-network-restart",

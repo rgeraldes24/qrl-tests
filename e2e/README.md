@@ -12,6 +12,7 @@ endpoints; suites do not provision infrastructure.
 | `consensus-staking-automated` | `single` | Staking through contract deposits and the keymanager API |
 | `consensus-staking-operator` | `single` | Staking through the deposit and validator CLIs |
 | `consensus-remote-signer` | `remote-signer` | Validator duties signed by go-remotesigner: its keys and chain, finality, its metrics, and refused slashable requests; needs locally built images |
+| `consensus-remote-signer-mtls` | `remote-signer-mtls` | The same, with the validator client presenting a client certificate as well as the token; needs locally built images and a qrl-package that issues the certificate |
 | `resilience-network-restart` | `anchored` | Recovery from a full outage: proposing and finalizing after every node stops at once |
 | `sync` | `single` | A new full-mode node syncs from genesis, then catches up after a stop |
 
@@ -88,6 +89,28 @@ To record the commits the images were built from in
 go-remotesigner, `make e2e-run` with `DEVNET_CONSENSUS_IMAGE` and
 `DEVNET_VALIDATOR_IMAGE` naming the qrysm images provisions the network
 itself.
+
+`consensus-remote-signer-mtls` runs the same suite on the
+`remote-signer-mtls` profile, whose signer runs with
+`--http-auth-mode=token+mtls`: the validator client presents a client
+certificate as well as the token, the suite presents the validator client's
+certificate too, and it checks that the signer answers no request without
+one, not even `/upcheck`. Its parameters come from `qrltest network params
+--profile remote-signer-mtls`, which set the participant field
+`remote_signer_auth_mode: token+mtls`; no qrl-package has the field yet. A
+qrl-package that has it must, for a go-remotesigner participant:
+
+- issue a client certificate (`extendedKeyUsage=clientAuth`) from the CA that
+  issued the signer's certificate, and give it and its key (`0600`) to the
+  validator client as `/remote-signer/client-cert.pem` and
+  `/remote-signer/client-key.pem`;
+- give the signer that CA, and run it with `--http-auth-mode=token+mtls` and
+  `--tls-client-ca-file` naming it;
+- run the validator client with
+  `--validators-external-signer-tls-client-cert-file` and
+  `--validators-external-signer-tls-client-key-file` naming the two files;
+- present the certificate in its own readiness check of the signer, since
+  every route needs it.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result

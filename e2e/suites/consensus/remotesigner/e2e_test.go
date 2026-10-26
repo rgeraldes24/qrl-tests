@@ -83,6 +83,12 @@ var _ = ginkgo.Describe(
 			// signer to sign with.
 			keys     []string
 			forkInfo remotesigner.ForkInfo
+			// mtls is set when the lane's profile runs the signer in
+			// token+mtls mode, and withoutCertificate is then signer without
+			// the validator client's client certificate; in token mode the
+			// two clients are the same.
+			mtls               bool
+			withoutCertificate *remotesigner.Client
 		)
 
 		finalizedEpoch := func(ctx context.Context) (uint64, error) {
@@ -136,10 +142,13 @@ var _ = ginkgo.Describe(
 
 		ginkgo.BeforeAll(func(ctx ginkgo.SpecContext) {
 			runtime := testsuite.LoadRuntime()
+			authMode := runtime.Profile.RemoteSignerAuthMode()
+			gomega.Expect(authMode).NotTo(gomega.BeEmpty(), "the lane's profile %q runs no go-remotesigner", runtime.Profile)
+			mtls = authMode == devnet.RemoteSignerAuthTokenMTLS
 			node = testsuite.MustSucceed(runtime.PrimaryNode(ctx))
 			service = node.Participant.RemoteSigner
 			gomega.Expect(service.URL).NotTo(gomega.BeEmpty(),
-				"the network runs no go-remotesigner: start it with the %s profile", devnet.ProfileRemoteSigner)
+				"the network runs no go-remotesigner: start it with the %s profile", runtime.Profile)
 			validator = node.Participant.Validator
 			gomega.Expect(validator.ID).NotTo(gomega.BeEmpty(), "the participant runs no validator client")
 			chain = testsuite.MustSucceed(chaininfo.Load(ctx, node.Beacon))
@@ -148,14 +157,20 @@ var _ = ginkgo.Describe(
 
 			docker = testsuite.MustSucceed(dockerapi.New())
 			ginkgo.DeferCleanup(docker.Close)
-			// The validator client's files: the token is never logged.
+			// The validator client's files: the token and the client key are
+			// never logged.
 			readFile := func(file string) []byte {
 				ginkgo.GinkgoHelper()
 				return testsuite.MustSucceed(devnet.ReadServiceFile(ctx, docker, validator.ID, file))
 			}
 			keys = strings.Fields(string(readFile(devnet.ValidatorRemoteSignerKeyFile)))
 			token := strings.TrimSpace(string(readFile(devnet.ValidatorRemoteSignerTokenFile)))
-			signer = testsuite.MustSucceed(remotesigner.New(service.URL, readFile(devnet.ValidatorRemoteSignerCAFile), token))
+			withoutCertificate = testsuite.MustSucceed(remotesigner.New(service.URL, readFile(devnet.ValidatorRemoteSignerCAFile), token))
+			signer = withoutCertificate
+			if mtls {
+				signer = testsuite.MustSucceed(withoutCertificate.WithClientCertificate(
+					readFile(devnet.ValidatorRemoteSignerClientCertFile), readFile(devnet.ValidatorRemoteSignerClientKeyFile)))
+			}
 		}, ginkgo.NodeTimeout(time.Minute))
 
 		ginkgo.AfterEach(func(ctx ginkgo.SpecContext) {
@@ -204,6 +219,24 @@ var _ = ginkgo.Describe(
 				gomega.Expect(refusal.StatusCode).To(gomega.Equal(http.StatusUnauthorized), "with %s", name)
 				gomega.Expect(refusal.Authenticate).To(gomega.HavePrefix("Bearer"), "with %s", name)
 			}
+
+			if mtls {
+				// Without a client certificate the handshake fails on every
+				// route, /upcheck included: there is no HTTP answer to it.
+				for name, call := range map[string]func(context.Context) error{
+					"GET /upcheck": withoutCertificate.Upcheck,
+					"GET publicKeys": func(ctx context.Context) error {
+						_, err := withoutCertificate.PublicKeys(ctx)
+						return err
+					},
+				} {
+					err := call(ctx)
+					gomega.Expect(err).To(gomega.HaveOccurred(), "the signer served %s without a client certificate", name)
+					_, answered := remotesigner.AsResponseError(err)
+					gomega.Expect(answered).To(gomega.BeFalse(),
+						"the signer answered %s without a client certificate: %v", name, err)
+				}
+			}
 		}, ginkgo.SpecTimeout(time.Minute))
 
 		ginkgo.It("is bound to the chain the validator client follows", func(ctx ginkgo.SpecContext) {
@@ -236,11 +269,25 @@ var _ = ginkgo.Describe(
 			arguments := container.Command[1:]
 			gomega.Expect(arguments).To(gomega.ContainElement(
 				gomega.HavePrefix("--validators-external-signer-url=https://" + service.Name + ":")))
-			for _, flag := range []string{
+			flags := []string{
 				"--validators-external-signer-key-file=" + devnet.ValidatorRemoteSignerKeyFile,
 				"--validators-external-signer-auth-token-file=" + devnet.ValidatorRemoteSignerTokenFile,
 				"--validators-external-signer-tls-ca-file=" + devnet.ValidatorRemoteSignerCAFile,
-			} {
+			}
+			wantFiles := []string{
+				devnet.ValidatorRemoteSignerTokenFile, devnet.ValidatorRemoteSignerKeyFile, devnet.ValidatorRemoteSignerCAFile,
+			}
+			if mtls {
+				flags = append(flags,
+					"--validators-external-signer-tls-client-cert-file="+devnet.ValidatorRemoteSignerClientCertFile,
+					"--validators-external-signer-tls-client-key-file="+devnet.ValidatorRemoteSignerClientKeyFile)
+				wantFiles = append(wantFiles,
+					devnet.ValidatorRemoteSignerClientCertFile, devnet.ValidatorRemoteSignerClientKeyFile)
+			} else {
+				gomega.Expect(arguments).NotTo(gomega.ContainElement(
+					gomega.HavePrefix("--validators-external-signer-tls-client-")))
+			}
+			for _, flag := range flags {
 				gomega.Expect(arguments).To(gomega.ContainElement(flag))
 			}
 			gomega.Expect(arguments).To(gomega.ContainElement(gomega.HavePrefix("--datadir=")))
@@ -258,8 +305,7 @@ var _ = ginkgo.Describe(
 			for index, file := range files {
 				names[index] = file.Name
 			}
-			gomega.Expect(names).To(gomega.ConsistOf(
-				devnet.ValidatorRemoteSignerTokenFile, devnet.ValidatorRemoteSignerKeyFile, devnet.ValidatorRemoteSignerCAFile))
+			gomega.Expect(names).To(gomega.ConsistOf(wantFiles))
 
 			_, err := devnet.ReadServiceFile(ctx, docker, validator.ID, "/validator-keys")
 			gomega.Expect(err).To(gomega.Satisfy(cerrdefs.IsNotFound), "the validator client has /validator-keys: %v", err)

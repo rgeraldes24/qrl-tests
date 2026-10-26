@@ -91,6 +91,12 @@ func TestLaneWithSuites(t *testing.T) {
 	require.False(t, remoteSigner.RestartsServices)
 	require.False(t, execution.LocalImages)
 
+	mtls, err := Named("consensus-remote-signer-mtls")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileRemoteSignerMTLS, mtls.Profile)
+	require.Equal(t, remoteSigner.Suites, mtls.Suites)
+	require.True(t, mtls.LocalImages)
+
 	sync, err := Named("sync")
 	require.NoError(t, err)
 	require.Equal(t, devnet.ProfileSingle, sync.Profile)

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds the qrysm beacon-chain and validator images of the remote-signer
 # lane from one qrysm commit, without Bazel: a static go build of each client
-# for linux on this machine's Go architecture, in the image
-# scripts/qrysm.Dockerfile describes. The validator client must have the
-# remote signer client (--validators-external-signer-*).
+# for linux on the Docker daemon's architecture, as the go-remotesigner image
+# is built, in the image scripts/qrysm.Dockerfile describes. The validator
+# client must have the remote signer client (--validators-external-signer-*).
 #
 # QRYSM_SOURCE_DIR        the checkout (default: ../qrysm)
 # QRYSM_REF               a commit to build instead of the checkout's working
@@ -20,7 +20,10 @@ repo_root=$(cd -- "${script_dir}/.." && pwd)
 source_dir=$(cd -- "${QRYSM_SOURCE_DIR:-${repo_root}/../qrysm}" && pwd)
 beacon_image=${DEVNET_CONSENSUS_IMAGE:-local/qrysm:remote-signer-beacon-chain}
 validator_image=${DEVNET_VALIDATOR_IMAGE:-local/qrysm:remote-signer-validator}
-arch=$(go env GOARCH)
+# The daemon's architecture, which Docker names as Go does; Go's own only when
+# the daemon cannot be asked.
+arch=$(docker version --format '{{.Server.Arch}}' 2>/dev/null) || arch=
+arch=${arch:-$(go env GOARCH)}
 
 workdir=$(mktemp -d)
 trap 'rm -rf "${workdir}"' EXIT

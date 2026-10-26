@@ -1,5 +1,9 @@
 // Package rewards reads a validator's attestation rewards from a Qrysm beacon
 // node and waits for the first epoch whose reward meets a suite's condition.
+//
+// Waiting until a value read from the chain meets a condition is not specific
+// to rewards, and more suites will need it. The scan can then become a generic
+// wait over any per-epoch read, with this package one of its users.
 package rewards
 
 import (

@@ -28,18 +28,16 @@ func AwaitAttestationReward(
 	match func(beacon.AttestationReward) bool,
 ) uint64 {
 	ginkgo.GinkgoHelper()
-	next := from
+	scanner := &rewardScanner{client: client, chain: chain, index: index, match: match, next: from}
 	gomega.Eventually(func(g gomega.Gomega) {
-		var found bool
-		var err error
-		next, found, err = rewardedFrom(ctx, client, chain, index, next, match)
+		found, err := scanner.scan(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
 		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s", index, from, want)
 	}).WithContext(ctx).
 		WithTimeout(timeout).
 		WithPolling(PollInterval).
 		Should(gomega.Succeed())
-	return next
+	return scanner.next
 }
 
 // AttestationReward returns the attestation scores of one validator in a
@@ -62,30 +60,33 @@ func Served(chain chaininfo.Info, headSlot, epoch uint64) bool {
 	return epoch+2 <= chain.Epoch(headSlot)
 }
 
-// rewardedFrom checks the validator's attestation rewards for each epoch,
-// starting at epoch from, through the latest epoch whose rewards are served,
-// two before the head. It reports whether one satisfied match, and the epoch
-// to check next, which is that one if it did.
-func rewardedFrom(
-	ctx context.Context,
-	client *beacon.Client,
-	chain chaininfo.Info,
-	index, from uint64,
-	match func(beacon.AttestationReward) bool,
-) (uint64, bool, error) {
-	head, err := client.HeadSlot(ctx)
+// rewardScanner reads one validator's attestation rewards epoch by epoch, so
+// polling callers read each epoch once. next is the epoch it reads next, or
+// the one that satisfied match.
+type rewardScanner struct {
+	client *beacon.Client
+	chain  chaininfo.Info
+	index  uint64
+	match  func(beacon.AttestationReward) bool
+	next   uint64
+}
+
+// scan reads the rewards from next through the latest epoch whose rewards are
+// served, two before the head, and reports whether one satisfied match. A
+// failed read leaves next at its epoch, so the retry does not skip it.
+func (scanner *rewardScanner) scan(ctx context.Context) (bool, error) {
+	head, err := scanner.client.HeadSlot(ctx)
 	if err != nil {
-		return from, false, err
+		return false, err
 	}
-	epoch := from
-	for ; Served(chain, head, epoch); epoch++ {
-		reward, err := AttestationReward(ctx, client, epoch, index)
+	for ; Served(scanner.chain, head, scanner.next); scanner.next++ {
+		reward, err := AttestationReward(ctx, scanner.client, scanner.next, scanner.index)
 		if err != nil {
-			return epoch, false, err
+			return false, err
 		}
-		if match(reward) {
-			return epoch, true, nil
+		if scanner.match(reward) {
+			return true, nil
 		}
 	}
-	return epoch, false, nil
+	return false, nil
 }

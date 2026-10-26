@@ -46,12 +46,16 @@ permissions:
 
 env:
   # The defaults, which the repository variables and then the inputs override.
+  # Every step sees these, so their names must not be ones a step reads for
+  # something else: the image scripts read REMOTESIGNER_REF and QRYSM_REF as
+  # the commit to build, and the build steps set those to the commits the
+  # images job resolved.
   REMOTESIGNER_REPOSITORY: ${{ inputs.remotesigner-repository || vars.E2E_REMOTESIGNER_REPOSITORY || 'rgeraldes24/go-remotesigner' }}
-  REMOTESIGNER_REF: ${{ inputs.remotesigner-ref || vars.E2E_REMOTESIGNER_REF || '8447c2d29add5f52b5157038bc6b74bd0ecef36b' }}
+  REMOTESIGNER_GIT_REF: ${{ inputs.remotesigner-ref || vars.E2E_REMOTESIGNER_REF || '8447c2d29add5f52b5157038bc6b74bd0ecef36b' }}
   QRYSM_REPOSITORY: ${{ inputs.qrysm-repository || vars.E2E_REMOTE_SIGNER_QRYSM_REPOSITORY || 'rgeraldes24/qrysm' }}
-  QRYSM_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || '47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc' }}
+  QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || '47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc' }}
   QRL_PACKAGE_REPOSITORY: ${{ inputs.qrl-package-repository || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY || 'rgeraldes24/qrl-package' }}
-  QRL_PACKAGE_REF: ${{ inputs.qrl-package-ref || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF || 'ebf3b6ac1701b2ca3c721e325f4ca0d5ecfedea5' }}
+  QRL_PACKAGE_GIT_REF: ${{ inputs.qrl-package-ref || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF || 'ebf3b6ac1701b2ca3c721e325f4ca0d5ecfedea5' }}
   # The execution client and the genesis generator, from main as the nightly
   # builds them; the generator with the nightly's qrysm, whose genesis the
   # remote signer client does not change.
@@ -110,12 +114,12 @@ jobs:
                 print sha
               }'
           }
-          remotesigner_sha=$(resolve "${REMOTESIGNER_REPOSITORY}" "${REMOTESIGNER_REF}")
-          qrysm_sha=$(resolve "${QRYSM_REPOSITORY}" "${QRYSM_REF}")
-          if [ "${QRL_PACKAGE_REF}" = pinned ]; then
+          remotesigner_sha=$(resolve "${REMOTESIGNER_REPOSITORY}" "${REMOTESIGNER_GIT_REF}")
+          qrysm_sha=$(resolve "${QRYSM_REPOSITORY}" "${QRYSM_GIT_REF}")
+          if [ "${QRL_PACKAGE_GIT_REF}" = pinned ]; then
             qrl_package_sha=pinned
           else
-            qrl_package_sha=$(resolve "${QRL_PACKAGE_REPOSITORY}" "${QRL_PACKAGE_REF}")
+            qrl_package_sha=$(resolve "${QRL_PACKAGE_REPOSITORY}" "${QRL_PACKAGE_GIT_REF}")
           fi
           go_qrl_sha=$(resolve "${GO_QRL_REPOSITORY}" main)
           generator_sha=$(resolve "${GENERATOR_REPOSITORY}" main)
@@ -265,9 +269,12 @@ jobs:
           rm kurtosis.tar.gz
           kurtosis analytics disable
 
+      # The scripts export the commit with git archive, so the image is built
+      # from the commit the images job resolved, whatever ref named it.
       - name: Build the go-remotesigner image
         env:
           REMOTESIGNER_SOURCE_DIR: .build/go-remotesigner
+          REMOTESIGNER_REF: ${{ needs.images.outputs.remotesigner-sha }}
         run: |
           go install github.com/google/go-licenses/v2@v2.0.1
           GO_LICENSES="$(go env GOPATH)/bin/go-licenses" make remote-signer-image
@@ -275,6 +282,7 @@ jobs:
       - name: Build the qrysm images
         env:
           QRYSM_SOURCE_DIR: .build/qrysm
+          QRYSM_REF: ${{ needs.images.outputs.qrysm-sha }}
         run: make qrysm-images
 
       - name: Start the network from the qrl-package checkout

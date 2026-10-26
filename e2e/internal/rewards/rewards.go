@@ -28,12 +28,11 @@ func AwaitAttestationReward(
 	match func(beacon.AttestationReward) bool,
 ) uint64 {
 	ginkgo.GinkgoHelper()
-	scanner := &rewardScanner{client: client, chain: chain, index: index, match: match, next: from, from: from}
+	scanner := &rewardScanner{client: client, chain: chain, index: index, match: match, next: from}
 	gomega.Eventually(func(g gomega.Gomega) {
 		found, err := scanner.scan(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s: %s",
-			index, from, want, scanner.progress())
+		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s", index, from, want)
 	}).WithContext(ctx).
 		WithTimeout(timeout).
 		WithPolling(PollInterval).
@@ -67,8 +66,6 @@ type rewardScanner struct {
 	index  uint64
 	match  func(beacon.AttestationReward) bool
 	next   uint64
-	from   uint64
-	last   *beacon.AttestationReward
 }
 
 // scan reads the rewards from next through the latest epoch whose rewards are
@@ -84,23 +81,9 @@ func (scanner *rewardScanner) scan(ctx context.Context) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		scanner.last = &reward
 		if scanner.match(reward) {
 			return true, nil
 		}
 	}
 	return false, nil
-}
-
-// progress describes how far an unmatched scan got, for a failure message.
-func (scanner *rewardScanner) progress() string {
-	if scanner.last == nil {
-		return fmt.Sprintf("the rewards of epoch %d are not available yet", scanner.from)
-	}
-	last := *scanner.last
-	read := fmt.Sprintf("read epoch %d", scanner.from)
-	if lastEpoch := scanner.next - 1; lastEpoch > scanner.from {
-		read = fmt.Sprintf("read epochs %d to %d", scanner.from, lastEpoch)
-	}
-	return fmt.Sprintf("%s, the last with head %d, source %d and target %d", read, last.Head, last.Source, last.Target)
 }

@@ -61,12 +61,16 @@ env:
   QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || '47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc' }}
   QRL_PACKAGE_REPOSITORY: ${{ inputs.qrl-package-repository || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY || 'rgeraldes24/qrl-package' }}
   QRL_PACKAGE_GIT_REF: ${{ inputs.qrl-package-ref || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF || 'ebf3b6ac1701b2ca3c721e325f4ca0d5ecfedea5' }}
-  # The execution client and the genesis generator, from main as the nightly
+  # The execution client and the genesis generator, from the nightly's
+  # repositories and, unless a variable pins them, from main as the nightly
   # builds them; the generator with the nightly's qrysm, whose genesis the
   # remote signer client does not change.
   GO_QRL_REPOSITORY: ${{ vars.E2E_GO_QRL_REPOSITORY || 'cyyber/go-qrl' }}
+  GO_QRL_GIT_REF: ${{ vars.E2E_REMOTE_SIGNER_GO_QRL_REF || 'main' }}
   GENERATOR_REPOSITORY: ${{ vars.E2E_GENERATOR_REPOSITORY || 'cyyber/qrl-genesis-generator' }}
+  GENERATOR_GIT_REF: ${{ vars.E2E_REMOTE_SIGNER_GENERATOR_REF || 'main' }}
   GENERATOR_QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
+  GENERATOR_QRYSM_GIT_REF: ${{ vars.E2E_REMOTE_SIGNER_GENERATOR_QRYSM_REF || 'main' }}
   KURTOSIS_VERSION: 1.20.0
 
 jobs:
@@ -127,9 +131,9 @@ jobs:
           else
             qrl_package_sha=$(resolve "${QRL_PACKAGE_REPOSITORY}" "${QRL_PACKAGE_GIT_REF}")
           fi
-          go_qrl_sha=$(resolve "${GO_QRL_REPOSITORY}" main)
-          generator_sha=$(resolve "${GENERATOR_REPOSITORY}" main)
-          generator_qrysm_sha=$(resolve "${GENERATOR_QRYSM_REPOSITORY}" main)
+          go_qrl_sha=$(resolve "${GO_QRL_REPOSITORY}" "${GO_QRL_GIT_REF}")
+          generator_sha=$(resolve "${GENERATOR_REPOSITORY}" "${GENERATOR_GIT_REF}")
+          generator_qrysm_sha=$(resolve "${GENERATOR_QRYSM_REPOSITORY}" "${GENERATOR_QRYSM_GIT_REF}")
           {
             echo "go-remotesigner-sha=${go_remotesigner_sha}"
             echo "qrysm-sha=${qrysm_sha}"

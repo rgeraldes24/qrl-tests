@@ -120,7 +120,8 @@ qrl-package that has it must, for a go-remotesigner participant:
 runs the remote-signer lanes every night and on demand. It builds the signer
 image from go-remotesigner and the beacon node and validator client images
 from qrysm with the scripts above, at pinned commits, and takes the execution
-client and genesis generator images from the nightly's registry. It starts
+client and genesis generator images from the nightly's registry, building
+them when they are missing. It starts
 each lane's network from a qrl-package checkout and runs the lane with
 `make e2e`; `pinned` as the qrl-package revision runs `make e2e-run` on the
 qrl-package qrl-tests pins instead, once that runs go-remotesigner. The
@@ -132,11 +133,19 @@ pinned defaults:
 | go-remotesigner | `go-remotesigner-repository`, `go-remotesigner-ref` | `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY`, `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF` | `rgeraldes24/go-remotesigner` at `8447c2d29add5f52b5157038bc6b74bd0ecef36b` |
 | qrysm | `qrysm-repository`, `qrysm-ref` | `E2E_REMOTE_SIGNER_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_QRYSM_REF` | `rgeraldes24/qrysm` at `47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc` |
 | qrl-package | `qrl-package-repository`, `qrl-package-ref` | `E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY`, `E2E_REMOTE_SIGNER_QRL_PACKAGE_REF` | `rgeraldes24/qrl-package` at `ebf3b6ac1701b2ca3c721e325f4ca0d5ecfedea5` |
+| go-qrl | | the nightly's `E2E_GO_QRL_REPOSITORY`, `E2E_REMOTE_SIGNER_GO_QRL_REF` | `cyyber/go-qrl` at `main` |
+| qrl-genesis-generator | | the nightly's `E2E_GENERATOR_REPOSITORY`, `E2E_REMOTE_SIGNER_GENERATOR_REF` | `cyyber/qrl-genesis-generator` at `main` |
+| the generator's qrysm | | the nightly's `E2E_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_GENERATOR_QRYSM_REF` | `cyyber/qrysm` at `main` |
 
 A ref names a branch, a tag or a commit by its full 40-character SHA, which
 is all a remote resolves; every job runs the commit it resolved to. The
 workflow's own variables all start with `E2E_REMOTE_SIGNER_`; one misspelt is
 not an error, it leaves the default in force.
+
+go-qrl and the genesis generator, and the qrysm the generator is built with,
+follow main by default, as in the nightly. A run on the pinned signer, qrysm
+and qrl-package can still break, or change, with their main branches; pin
+them with the three variables to rule that out.
 
 Each lane uploads its reports: on a failure they also hold the services' logs,
 the signer's metrics, healthcheck and capabilities for each failed spec, and a

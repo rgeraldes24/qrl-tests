@@ -49,9 +49,11 @@ client's remote signer metrics, are saved under
 `reports/lanes/consensus-remote-signer/remote-signer/<spec>/`.
 
 Its images are not published yet, and the pinned qrl-package does not run
-go-remotesigner, so CI does not run the lane, `run-all` leaves it out, and
-`qrltest list` marks it. Build the images from local checkouts, the validator
-client and beacon node from one qrysm commit with the remote signer client:
+go-remotesigner, so the nightly does not run the lane, `run-all` leaves it
+out, and `qrltest list` marks it; the
+[remote signer nightly](#remote-signer-nightly) builds the images and runs it.
+Build the images from local checkouts, the validator client and beacon node
+from one qrysm commit with the remote signer client:
 
 ```bash
 REMOTESIGNER_SOURCE_DIR=../go-remotesigner make remote-signer-image
@@ -111,6 +113,37 @@ qrl-package that has it must, for a go-remotesigner participant:
   `--validators-external-signer-tls-client-key-file` naming the two files;
 - present the certificate in its own readiness check of the signer, since
   every route needs it.
+
+### Remote signer nightly
+
+[`remote-signer-nightly.yml`](../.github/workflows/remote-signer-nightly.yml)
+runs both remote-signer lanes every night and on demand. It builds the signer
+image from go-remotesigner and the beacon node and validator client images
+from qrysm with the scripts above, at pinned commits, and takes the execution
+client and genesis generator images from the nightly's registry. It starts
+each lane's network from a qrl-package checkout and runs the lane with
+`make e2e`; `pinned` as the qrl-package revision runs `make e2e-run` on the
+qrl-package qrl-tests pins instead, once that runs go-remotesigner. The
+revisions are inputs of a manual run, then repository variables, then the
+pinned defaults:
+
+| Source | Input | Variable | Default |
+| --- | --- | --- | --- |
+| go-remotesigner | `remotesigner-repository`, `remotesigner-ref` | `E2E_REMOTESIGNER_REPOSITORY`, `E2E_REMOTESIGNER_REF` | `rgeraldes24/go-remotesigner` at `8447c2d` |
+| qrysm | `qrysm-repository`, `qrysm-ref` | `E2E_REMOTE_SIGNER_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_QRYSM_REF` | `rgeraldes24/qrysm` at `47f6b65e` |
+| qrl-package | `qrl-package-repository`, `qrl-package-ref` | `E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY`, `E2E_REMOTE_SIGNER_QRL_PACKAGE_REF` | `rgeraldes24/qrl-package` at `ebf3b6a` |
+
+A ref may name a commit, a branch or a tag; every job runs the commit it
+resolved to. Each lane uploads its reports: on a failure they also hold the
+services' logs, the signer's metrics, healthcheck and capabilities for each
+failed spec, and a dump of the enclave without its files artifacts, which hold
+the keys and the token, so that a network that did not start is diagnosed too.
+Until a qrl-package issues client certificates, the mTLS lane fails without
+failing the run.
+
+GitHub runs a scheduled workflow, and offers a manual run of one, only once
+the workflow is on the default branch: the nightly runs, and so three
+consecutive green ones, can only start after it is merged.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result

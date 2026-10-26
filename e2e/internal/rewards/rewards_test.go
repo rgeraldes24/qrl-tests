@@ -95,6 +95,11 @@ func TestAvailable(t *testing.T) {
 	require.True(t, Available(chain, 23, 0))
 	require.False(t, Available(chain, 23, 1))
 	require.True(t, Available(chain, 24, 1))
+
+	// Before epoch 2 no rewards are available.
+	require.False(t, Available(chain, 0, 0))
+	require.False(t, Available(chain, 15, 0))
+	require.True(t, Available(chain, 16, 0))
 }
 
 func TestRewardScanner(t *testing.T) {
@@ -128,6 +133,13 @@ func TestRewardScanner(t *testing.T) {
 
 	// A failed read leaves next at its epoch, so the retry does not skip it.
 	fake.set(func(fake *fakeBeacon) { fake.failures["/qrl/v1/beacon/rewards/attestations/3"] = 1 })
+	found, err = scanner.scan(t.Context())
+	require.Error(t, err)
+	require.False(t, found)
+	require.Equal(t, uint64(3), scanner.next)
+
+	// So does a failed head read, which comes before any epoch's.
+	fake.set(func(fake *fakeBeacon) { fake.failures["/qrl/v1/beacon/headers/head"] = 1 })
 	found, err = scanner.scan(t.Context())
 	require.Error(t, err)
 	require.False(t, found)

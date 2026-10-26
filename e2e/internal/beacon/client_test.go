@@ -171,7 +171,8 @@ func TestClientDecodesChainProgress(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/qrl/v1/beacon/headers/32":
-			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","canonical":true,"header":{"message":{"slot":"32"}}}}`))
+			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","canonical":true,"header":{"message":{"slot":"32",` +
+				`"proposer_index":"7","parent_root":"0x01","state_root":"0x02","body_root":"0x03"},"signature":"0x04"}}}`))
 		case "/qrl/v1/beacon/states/head/finality_checkpoints":
 			_, _ = writer.Write([]byte(`{"data":{"previous_justified":{"epoch":"2","root":"0x02"},"current_justified":{"epoch":"3","root":"0x03"},"finalized":{"epoch":"2","root":"0x02"}}}`))
 		case "/qrl/v1/beacon/states/head/validators":
@@ -188,7 +189,9 @@ func TestClientDecodesChainProgress(t *testing.T) {
 
 	header, err := client.BlockHeader(t.Context(), "32")
 	require.NoError(t, err)
-	require.Equal(t, BlockHeader{Slot: 32, Root: "0xab"}, header)
+	require.Equal(t, BlockHeader{
+		Slot: 32, Root: "0xab", ProposerIndex: 7, ParentRoot: "0x01", StateRoot: "0x02", BodyRoot: "0x03",
+	}, header)
 
 	_, err = client.BlockHeader(t.Context(), "33")
 	require.True(t, IsNotFound(err))

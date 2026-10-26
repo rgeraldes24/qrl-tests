@@ -42,11 +42,14 @@ const (
 // go-remotesigner, in place of a wallet: the sign token, the client's public
 // keys (one 0x-prefixed key per line) and the CA that issued the signer's TLS
 // certificate. The certificate is valid for the signer's service name,
-// localhost and 127.0.0.1.
+// localhost and 127.0.0.1. When the signer runs in token+mtls mode, the
+// client also gets a client certificate the same CA issued, and its key.
 const (
-	ValidatorRemoteSignerTokenFile = "/remote-signer/auth-token"
-	ValidatorRemoteSignerKeyFile   = "/remote-signer/keys.txt"
-	ValidatorRemoteSignerCAFile    = "/remote-signer/ca.pem"
+	ValidatorRemoteSignerTokenFile      = "/remote-signer/auth-token"
+	ValidatorRemoteSignerKeyFile        = "/remote-signer/keys.txt"
+	ValidatorRemoteSignerCAFile         = "/remote-signer/ca.pem"
+	ValidatorRemoteSignerClientCertFile = "/remote-signer/client-cert.pem"
+	ValidatorRemoteSignerClientKeyFile  = "/remote-signer/client-key.pem"
 )
 
 type Environment struct {

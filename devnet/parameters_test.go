@@ -95,6 +95,28 @@ func TestRemoteSignerProfileParameters(t *testing.T) {
 	require.Equal(t, "1", participant["remote_signer_extra_labels"].(map[string]any)[participantLabel])
 	require.Equal(t, float64(64), participant["validator_count"])
 	require.Equal(t, DefaultValidatorImage, participant["vc_image"])
+	// qrl-package's default, which a qrl-package without the field runs.
+	require.NotContains(t, participant, "remote_signer_auth_mode")
+}
+
+func TestRemoteSignerMTLSProfileParameters(t *testing.T) {
+	images := Images{RemoteSigner: "registry.example/go-remotesigner:test"}
+	tokenPayload, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSigner})
+	require.NoError(t, err)
+	mtlsPayload, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSignerMTLS})
+	require.NoError(t, err)
+
+	var token, mtls map[string]any
+	require.NoError(t, json.Unmarshal([]byte(tokenPayload), &token))
+	require.NoError(t, json.Unmarshal([]byte(mtlsPayload), &mtls))
+	participants := mtls["participants"].([]any)
+	require.Len(t, participants, 1)
+	participant := participants[0].(map[string]any)
+	require.Equal(t, "token+mtls", participant["remote_signer_auth_mode"])
+
+	// Everything else is the remote-signer profile's.
+	delete(participant, "remote_signer_auth_mode")
+	require.Equal(t, token, mtls)
 }
 
 func TestProfileParameters(t *testing.T) {

@@ -36,6 +36,11 @@ type participant struct {
 	// go-remotesigner takes its global flags from environment variables.
 	RemoteSignerExtraEnvVars map[string]string `json:"remote_signer_extra_env_vars,omitempty"`
 	RemoteSignerExtraLabels  map[string]string `json:"remote_signer_extra_labels,omitempty"`
+	// RemoteSignerAuthMode is go-remotesigner's --http-auth-mode; qrl-package
+	// gives a client certificate to a validator client whose signer wants one.
+	// It is left out unless a profile sets it, since no qrl-package release
+	// has the field yet.
+	RemoteSignerAuthMode string `json:"remote_signer_auth_mode,omitempty"`
 }
 
 type networkParams struct {
@@ -124,6 +129,7 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			// duration, never a key or a body.
 			participants[index].RemoteSignerExtraEnvVars = map[string]string{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"}
 			participants[index].RemoteSignerExtraLabels = labels
+			participants[index].RemoteSignerAuthMode = configuration.remoteSignerAuthMode
 		}
 	}
 

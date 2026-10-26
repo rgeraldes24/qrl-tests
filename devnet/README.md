@@ -42,6 +42,7 @@ and waits for readiness. It does not build images or run the test suites.
 | `single` | One participant with 64 validators |
 | `anchored` | Two participants with 32 validators each; the first beacon node recovers a network whose nodes all stopped |
 | `remote-signer` | One participant with 64 validators, whose validator client holds no keys and signs through go-remotesigner |
+| `remote-signer-mtls` | `remote-signer`, with the validator client presenting a client certificate to go-remotesigner as well as the token |
 
 Every participant's execution client signs through Clef, except in the
 `remote-signer` profile: qrl-package gives a participant one remote signer,
@@ -52,6 +53,10 @@ sign token and the CA certificate, in `/remote-signer`. Its validator image
 must have qrysm's remote signer client, and its signer image is built with
 `make remote-signer-image`; the
 [remote signer lane](../e2e/README.md#remote-signer-lane) describes both.
+The `remote-signer-mtls` profile runs the signer with
+`--http-auth-mode=token+mtls`, through the participant field
+`remote_signer_auth_mode`, which no qrl-package has yet; the lane's
+description says what it needs.
 
 `go run ./cmd/qrltest network params --profile <profile>` prints the
 qrl-package parameters a profile renders, with the configured images, for a

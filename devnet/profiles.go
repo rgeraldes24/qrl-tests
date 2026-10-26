@@ -29,6 +29,18 @@ const (
 	// qrl-package generated for it. Clef, the execution signer, does not run,
 	// since qrl-package gives one participant a single remote signer.
 	ProfileRemoteSigner Profile = "remote-signer"
+	// ProfileRemoteSignerMTLS is ProfileRemoteSigner with go-remotesigner in
+	// token+mtls mode: the validator client presents a client certificate
+	// as well as the sign token. It needs a qrl-package with the participant
+	// field remote_signer_auth_mode, which no qrl-package has yet.
+	ProfileRemoteSignerMTLS Profile = "remote-signer-mtls"
+)
+
+// go-remotesigner's API authentication, its --http-auth-mode, in the profiles
+// that run it.
+const (
+	RemoteSignerAuthToken     = "token"
+	RemoteSignerAuthTokenMTLS = "token+mtls"
 )
 
 type profileSpec struct {
@@ -42,6 +54,9 @@ type participantSpec struct {
 	clExtraParams  []string
 	vcExtraParams  []string
 	remoteSigner   bool
+	// remoteSignerAuthMode is the signer's authentication when it is not
+	// qrl-package's default, token.
+	remoteSignerAuthMode string
 }
 
 var profileSpecs = map[Profile]profileSpec{
@@ -51,6 +66,9 @@ var profileSpecs = map[Profile]profileSpec{
 		{validatorCount: 32, clExtraParams: []string{"--minimum-peers-per-subnet=0"}},
 	}},
 	ProfileRemoteSigner: {participants: []participantSpec{{validatorCount: 64, remoteSigner: true}}},
+	ProfileRemoteSignerMTLS: {participants: []participantSpec{
+		{validatorCount: 64, remoteSigner: true, remoteSignerAuthMode: RemoteSignerAuthTokenMTLS},
+	}},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the
@@ -66,4 +84,20 @@ func ParseProfile(value string) (Profile, error) {
 		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
 	return profile, nil
+}
+
+// RemoteSignerAuthMode returns how the validator clients of the profile
+// authenticate to go-remotesigner: RemoteSignerAuthToken or
+// RemoteSignerAuthTokenMTLS, or "" when no participant signs through it.
+func (profile Profile) RemoteSignerAuthMode() string {
+	for _, participant := range profileSpecs[profile].participants {
+		if !participant.remoteSigner {
+			continue
+		}
+		if participant.remoteSignerAuthMode != "" {
+			return participant.remoteSignerAuthMode
+		}
+		return RemoteSignerAuthToken
+	}
+	return ""
 }

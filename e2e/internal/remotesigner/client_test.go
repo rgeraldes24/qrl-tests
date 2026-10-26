@@ -199,6 +199,41 @@ func TestNewChecksTheEndpointAndCA(t *testing.T) {
 	require.Empty(t, server.requests)
 }
 
+func TestClientPresentsItsClientCertificate(t *testing.T) {
+	server := newMTLSSigner(t, map[string]http.HandlerFunc{
+		"GET /upcheck": func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(writer, "OK")
+		},
+	})
+	withoutCertificate := server.client(t, testToken)
+	client := must(withoutCertificate.WithClientCertificate(server.clientCertPEM, server.clientKeyPEM))
+
+	require.NoError(t, client.Upcheck(t.Context()))
+	require.Len(t, server.requests, 1)
+	require.NotEmpty(t, server.requests[0].TLS.PeerCertificates)
+	require.Equal(t, "validator client", server.requests[0].TLS.PeerCertificates[0].Subject.CommonName)
+	require.Equal(t, "Bearer "+testToken, server.requests[0].Header.Get("Authorization"))
+	// Another token keeps the certificate.
+	require.NoError(t, client.WithToken("").Upcheck(t.Context()))
+	require.Empty(t, server.requests[1].Header.Get("Authorization"))
+
+	// The handshake fails without one: there is no HTTP answer, so no
+	// ResponseError.
+	err := withoutCertificate.Upcheck(t.Context())
+	require.Error(t, err)
+	_, ok := AsResponseError(err)
+	require.False(t, ok, "%v", err)
+	require.Len(t, server.requests, 2)
+}
+
+func TestClientRefusesAMismatchedClientKey(t *testing.T) {
+	server := newMTLSSigner(t, map[string]http.HandlerFunc{})
+	_, otherKey := newTestCA(t).clientCertificate(t)
+	_, err := server.client(t, testToken).WithClientCertificate(server.clientCertPEM, otherKey)
+	require.ErrorContains(t, err, "load remote signer client certificate")
+	require.NotContains(t, err.Error(), string(otherKey))
+}
+
 func TestClientRefusesASignatureInARefusal(t *testing.T) {
 	server := newSigner(t, map[string]http.HandlerFunc{
 		"POST /api/v1/consensus/sign/{identifier}": func(writer http.ResponseWriter, _ *http.Request) {
@@ -220,11 +255,27 @@ type fakeSigner struct {
 	*httptest.Server
 	caPEM    []byte
 	requests []*http.Request
+	// clientCertPEM and clientKeyPEM are a client certificate of the
+	// signer's CA, which an mtls signer requires.
+	clientCertPEM []byte
+	clientKeyPEM  []byte
 }
 
 // newSigner serves routes over TLS with a certificate for 127.0.0.1 that a
 // CA of its own issued, as qrl-package sets the signer up.
 func newSigner(t *testing.T, routes map[string]http.HandlerFunc) *fakeSigner {
+	t.Helper()
+	return startSigner(t, routes, false)
+}
+
+// newMTLSSigner is newSigner in an mtls mode: the handshake requires a
+// client certificate of the signer's CA.
+func newMTLSSigner(t *testing.T, routes map[string]http.HandlerFunc) *fakeSigner {
+	t.Helper()
+	return startSigner(t, routes, true)
+}
+
+func startSigner(t *testing.T, routes map[string]http.HandlerFunc, requireClientCertificate bool) *fakeSigner {
 	t.Helper()
 	signer := new(fakeSigner)
 	mux := http.NewServeMux()
@@ -234,10 +285,17 @@ func newSigner(t *testing.T, routes map[string]http.HandlerFunc) *fakeSigner {
 			handler(writer, request)
 		})
 	}
-	var certificate tls.Certificate
-	signer.caPEM, certificate = newCertificateAuthority(t)
+	authority := newTestCA(t)
+	signer.caPEM = authority.pem
 	signer.Server = httptest.NewUnstartedServer(mux)
-	signer.TLS = &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13}
+	signer.TLS = &tls.Config{Certificates: []tls.Certificate{authority.serverCertificate(t)}, MinVersion: tls.VersionTLS13}
+	if requireClientCertificate {
+		roots := x509.NewCertPool()
+		roots.AddCert(authority.certificate)
+		signer.TLS.ClientCAs = roots
+		signer.TLS.ClientAuth = tls.RequireAndVerifyClientCert
+		signer.clientCertPEM, signer.clientKeyPEM = authority.clientCertificate(t)
+	}
 	signer.StartTLS()
 	t.Cleanup(signer.Close)
 	return signer
@@ -252,8 +310,21 @@ func (signer *fakeSigner) client(t *testing.T, token string) *Client {
 // server certificate it issued for 127.0.0.1.
 func newCertificateAuthority(t *testing.T) ([]byte, tls.Certificate) {
 	t.Helper()
-	caKey := must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
-	caTemplate := &x509.Certificate{
+	authority := newTestCA(t)
+	return authority.pem, authority.serverCertificate(t)
+}
+
+type testCA struct {
+	certificate *x509.Certificate
+	key         *ecdsa.PrivateKey
+	pem         []byte
+	serial      int64
+}
+
+func newTestCA(t *testing.T) *testCA {
+	t.Helper()
+	key := must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
+	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "signer CA"},
 		NotBefore:             time.Now().Add(-time.Hour),
@@ -262,22 +333,47 @@ func newCertificateAuthority(t *testing.T) ([]byte, tls.Certificate) {
 		BasicConstraintsValid: true,
 		KeyUsage:              x509.KeyUsageCertSign,
 	}
-	caDER := must(x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey))
-	ca := must(x509.ParseCertificate(caDER))
-
-	serverKey := must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
-	serverTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject:      pkix.Name{CommonName: "signer"},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+	der := must(x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key))
+	return &testCA{
+		certificate: must(x509.ParseCertificate(der)),
+		key:         key,
+		pem:         pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		serial:      1,
 	}
-	serverDER := must(x509.CreateCertificate(rand.Reader, serverTemplate, ca, &serverKey.PublicKey, caKey))
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}),
-		tls.Certificate{Certificate: [][]byte{serverDER}, PrivateKey: serverKey}
+}
+
+// issue returns a certificate the CA issued for template, and its key.
+func (authority *testCA) issue(t *testing.T, template *x509.Certificate) ([]byte, *ecdsa.PrivateKey) {
+	t.Helper()
+	authority.serial++
+	template.SerialNumber = big.NewInt(authority.serial)
+	template.NotBefore = time.Now().Add(-time.Hour)
+	template.NotAfter = time.Now().Add(time.Hour)
+	template.KeyUsage = x509.KeyUsageDigitalSignature
+	key := must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
+	return must(x509.CreateCertificate(rand.Reader, template, authority.certificate, &key.PublicKey, authority.key)), key
+}
+
+// serverCertificate is a server certificate for 127.0.0.1.
+func (authority *testCA) serverCertificate(t *testing.T) tls.Certificate {
+	t.Helper()
+	der, key := authority.issue(t, &x509.Certificate{
+		Subject:     pkix.Name{CommonName: "signer"},
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+	})
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+// clientCertificate is a client certificate and its key, in PEM.
+func (authority *testCA) clientCertificate(t *testing.T) ([]byte, []byte) {
+	t.Helper()
+	der, key := authority.issue(t, &x509.Certificate{
+		Subject:     pkix.Name{CommonName: "validator client"},
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	})
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: must(x509.MarshalPKCS8PrivateKey(key))})
 }
 
 func must[T any](value T, err error) T {

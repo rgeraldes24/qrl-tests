@@ -70,6 +70,22 @@ func (client *Client) WithToken(token string) *Client {
 	return &other
 }
 
+// WithClientCertificate returns a client that presents the PEM certificate
+// and key in every TLS handshake, as a validator client does when the signer
+// runs in an mtls mode. The client it is called on keeps presenting none.
+func (client *Client) WithClientCertificate(certPEM, keyPEM []byte) (*Client, error) {
+	certificate, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("load remote signer client certificate: %w", err)
+	}
+	// Clone copies the TLS configuration too.
+	transport := client.http.Transport.(*http.Transport).Clone()
+	transport.TLSClientConfig.Certificates = []tls.Certificate{certificate}
+	other := *client
+	other.http = &http.Client{Timeout: client.http.Timeout, Transport: transport}
+	return &other, nil
+}
+
 // ResponseError is an answer other than the expected 2xx. Its error string
 // names the route, never the identifier or the token.
 type ResponseError struct {

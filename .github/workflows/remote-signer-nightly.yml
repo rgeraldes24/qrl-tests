@@ -388,10 +388,11 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The sources, the run manifest and Ginkgo report; on a failure also the services'
-      # logs and inspection, and the signer's metrics, healthcheck and
-      # capabilities for every failed spec; on a failure before the tests, a
-      # cancellation or a timeout, the enclave dump and the signer's metrics.
+      # The sources, the run manifest and Ginkgo report; on a failure also
+      # the services' logs and inspection, and the signer's metrics,
+      # healthcheck and capabilities for every failed spec; on a failure
+      # before the tests, a cancellation or a timeout, the enclave dump and
+      # the signer's metrics.
       - name: Upload the reports
         if: always()
         uses: actions/upload-artifact@v7

@@ -17,14 +17,13 @@ const PollInterval = 2 * time.Second
 
 // AwaitAttestationReward checks the validator's reward for each epoch,
 // starting at epoch from, once it is available, and returns the first epoch
-// whose reward satisfies match. want describes match in the failure message.
+// whose reward satisfies match.
 func AwaitAttestationReward(
 	ctx context.Context,
 	client *beacon.Client,
 	chain chaininfo.Info,
 	index, from uint64,
 	timeout time.Duration,
-	want string,
 	match func(beacon.AttestationReward) bool,
 ) uint64 {
 	ginkgo.GinkgoHelper()
@@ -32,7 +31,7 @@ func AwaitAttestationReward(
 	gomega.Eventually(func(g gomega.Gomega) {
 		found, err := scanner.scan(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s", index, from, want)
+		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d whose reward matches", index, from)
 	}).WithContext(ctx).
 		WithTimeout(timeout).
 		WithPolling(PollInterval).

@@ -95,7 +95,7 @@ func ExpectActiveAndAttesting(
 	// can be made up in a later epoch.
 	ginkgo.By("waiting for the validator client to attest")
 	rewards.AwaitAttestationReward(ctx, node.Beacon, chain, validator.Index, validator.ActivationEpoch,
-		attestationTimeout, "an attestation reward", earnedAny)
+		attestationTimeout, earnedAny)
 	return validator
 }
 

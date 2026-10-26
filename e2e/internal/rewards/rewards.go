@@ -1,5 +1,5 @@
-// Package rewards reads the attestation rewards Qrysm serves, so suites can
-// wait for an epoch whose reward meets a condition of their own.
+// Package rewards reads a validator's attestation rewards from a Qrysm beacon
+// node and waits for the first epoch whose reward meets a suite's condition.
 package rewards
 
 import (

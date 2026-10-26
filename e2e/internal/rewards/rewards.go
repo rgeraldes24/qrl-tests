@@ -68,9 +68,7 @@ type rewardScanner struct {
 	next   uint64
 }
 
-// scan reads the rewards from next through the latest epoch whose rewards are
-// available, two before the head, and reports whether one satisfied match. A
-// failed read leaves next at its epoch, so the retry does not skip it.
+// A failed read leaves next at its epoch, so the retry rereads it.
 func (scanner *rewardScanner) scan(ctx context.Context) (bool, error) {
 	head, err := scanner.client.HeadSlot(ctx)
 	if err != nil {

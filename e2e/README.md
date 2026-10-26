@@ -40,11 +40,11 @@ duty is signed by go-remotesigner, which loads the validator client's
 keystores, over TLS with a bearer token. The suite checks that the signer
 serves exactly the validator client's keys and is bound to its chain, that the
 validator client has no keystore, that the chain finalizes, that the signer's
-metrics show signed attestations and blocks, RANDAO reveals and no refusal or
-fault, that it refuses a double vote and a double proposal sent to it
-directly, and that the chain keeps finalizing afterwards. When a spec fails,
-the signer's metrics, healthcheck and capabilities, and the validator client's
-remote signer metrics, are saved under
+metrics show every duty type signed, a RANDAO reveal for every block and no
+refusal or fault, that it refuses a double vote and a double proposal sent to
+it directly, and that the chain keeps finalizing afterwards. When a spec
+fails, the signer's metrics, healthcheck and capabilities, and the validator
+client's remote signer metrics, are saved under
 `reports/lanes/consensus-remote-signer/remote-signer/<spec>/`.
 
 Its images are not published yet, so CI does not run the lane, `run-all`

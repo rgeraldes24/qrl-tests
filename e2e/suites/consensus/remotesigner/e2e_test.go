@@ -43,9 +43,10 @@ const (
 	diagnosticsDirectory = "remote-signer"
 )
 
-// The types the signer enables by default: exits are off unless it runs with
-// --voluntary-exit-signing-enabled.
-var enabledTypes = []string{
+// The duties the validator client signs on this network: every type the
+// signer enables but the validator registration, which it signs only for a
+// builder.
+var dutyTypes = []string{
 	remotesigner.TypeBlockV2,
 	remotesigner.TypeAttestation,
 	remotesigner.TypeAggregationSlot,
@@ -53,8 +54,11 @@ var enabledTypes = []string{
 	remotesigner.TypeSyncCommitteeMessage,
 	remotesigner.TypeSyncCommitteeSelectionProof,
 	remotesigner.TypeSyncCommitteeContributionAndProof,
-	remotesigner.TypeValidatorRegistration,
 }
+
+// The types the signer enables by default: exits are off unless it runs with
+// --voluntary-exit-signing-enabled.
+var enabledTypes = append(slices.Clone(dutyTypes), remotesigner.TypeValidatorRegistration)
 
 func TestE2E(t *testing.T) {
 	testsuite.Run(t, "Remote signer E2E suite")
@@ -274,12 +278,21 @@ var _ = ginkgo.Describe(
 				metrics.ByLabel(remotesigner.MetricSigningRequests, "type", remotesigner.With("result", "ok")))
 			ginkgo.AddReportEntry("RANDAO reveals by result", metrics.ByLabel(remotesigner.MetricRandaoReveals, "result", nil))
 
-			for _, artifact := range []string{remotesigner.TypeAttestation, remotesigner.TypeBlockV2} {
+			// Every duty went through the signer: finality alone does not
+			// show the aggregates and the sync committee's messages.
+			for _, artifact := range dutyTypes {
 				gomega.Expect(sum(metrics, remotesigner.MetricSigningRequests, remotesigner.With("type", artifact, "result", "ok"))).
 					To(gomega.BeNumerically(">", 0), "signed %s requests", artifact)
 			}
 			gomega.Expect(sum(metrics, remotesigner.MetricRandaoReveals, remotesigner.OneOf("result", "first_use", "new_layer"))).
 				To(gomega.BeNumerically(">", 0), "RANDAO reveals that released a new layer")
+			// The validator client asks for the slot's RANDAO reveal before it
+			// asks for the block, and proposes nothing without it: every
+			// block it had signed came after a reveal the signer released.
+			blocks := sum(metrics, remotesigner.MetricSigningRequests, remotesigner.With("type", remotesigner.TypeBlockV2, "result", "ok"))
+			gomega.Expect(sum(metrics, remotesigner.MetricRandaoReveals,
+				remotesigner.OneOf("result", "first_use", "new_layer", "gap_advanced", "re_reveal"))).
+				To(gomega.BeNumerically(">=", blocks), "RANDAO reveals released for the %v blocks signed", blocks)
 			gomega.Expect(sum(metrics, remotesigner.MetricSigningRequests, remotesigner.With("result", "refused"))).
 				To(gomega.BeZero(), "sign requests the signer refused")
 			gomega.Expect(sum(metrics, remotesigner.MetricPreventedSignings, nil)).

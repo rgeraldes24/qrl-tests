@@ -10,8 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A scrape with every label value of contract section 18, most at zero as
-// the signer exports them from startup.
+// A scrape with every label value of go-remotesigner's docs/contract.md,
+// section "Metric label values", most at zero as the signer exports them from
+// startup, and the 503s of /upcheck that a readiness probe polling it while
+// the signer loaded its keys leaves behind.
 const metricsFixture = `# HELP signing_requests_total Sign requests by artifact type and outcome
 # TYPE signing_requests_total counter
 signing_requests_total{result="ok",type="ATTESTATION"} 120
@@ -54,6 +56,12 @@ http_request_duration_seconds_count{code="200",route="/api/v1/consensus/sign/{id
 http_request_duration_seconds_bucket{code="412",route="/api/v1/consensus/sign/{identifier}",le="+Inf"} 1
 http_request_duration_seconds_sum{code="412",route="/api/v1/consensus/sign/{identifier}"} 0.01
 http_request_duration_seconds_count{code="412",route="/api/v1/consensus/sign/{identifier}"} 1
+http_request_duration_seconds_bucket{code="503",route="/upcheck",le="+Inf"} 2
+http_request_duration_seconds_sum{code="503",route="/upcheck"} 0.001
+http_request_duration_seconds_count{code="503",route="/upcheck"} 2
+http_request_duration_seconds_bucket{code="200",route="/upcheck",le="+Inf"} 1
+http_request_duration_seconds_sum{code="200",route="/upcheck"} 0.001
+http_request_duration_seconds_count{code="200",route="/upcheck"} 1
 `
 
 func TestMetricsSum(t *testing.T) {
@@ -67,9 +75,11 @@ func TestMetricsSum(t *testing.T) {
 	require.Equal(t, 1.0, must(metrics.Sum(MetricPreventedSignings, nil)))
 	require.Equal(t, 0.0, must(metrics.Sum(MetricVerifyFailures, nil)))
 	// A histogram contributes its count of observations.
-	require.Equal(t, 255.0, must(metrics.Sum(MetricHTTPRequestDurations, nil)))
-	require.Equal(t, 0.0, must(metrics.Sum(MetricHTTPRequestDurations, ServerErrors())))
+	require.Equal(t, 258.0, must(metrics.Sum(MetricHTTPRequestDurations, nil)))
 	require.Equal(t, 1.0, must(metrics.Sum(MetricHTTPRequestDurations, With("code", "412"))))
+	// The 503s of /upcheck while the signer loaded its keys are no fault.
+	require.Equal(t, 2.0, must(metrics.Sum(MetricHTTPRequestDurations, With("code", "503"))))
+	require.Equal(t, 0.0, must(metrics.Sum(MetricHTTPRequestDurations, ServerFaults())))
 
 	_, err := metrics.Sum("signing_requests", nil)
 	require.EqualError(t, err, "the scrape has no metric signing_requests")
@@ -85,11 +95,20 @@ func TestMetricsSum(t *testing.T) {
 	require.Empty(t, metrics.ByLabel("absent_total", "type", nil))
 }
 
-func TestServerErrors(t *testing.T) {
-	match := ServerErrors()
+func TestServerFaults(t *testing.T) {
+	match := ServerFaults()
+	sign := "/api/v1/consensus/sign/{identifier}"
+	require.True(t, match(Labels{"code": "500", "route": sign}))
+	require.True(t, match(Labels{"code": "503", "route": sign}))
+	require.True(t, match(Labels{"code": "503", "route": "-"}))
+	require.True(t, match(Labels{"code": "503", "route": "/healthcheck"}))
 	require.True(t, match(Labels{"code": "500"}))
-	require.True(t, match(Labels{"code": "503"}))
-	require.False(t, match(Labels{"code": "412"}))
+	// /upcheck answers 503 LOADING until the keys are loaded, but any other
+	// 5xx of it is a fault.
+	require.False(t, match(Labels{"code": "503", "route": "/upcheck"}))
+	require.True(t, match(Labels{"code": "500", "route": "/upcheck"}))
+	require.False(t, match(Labels{"code": "200", "route": "/upcheck"}))
+	require.False(t, match(Labels{"code": "412", "route": sign}))
 	require.False(t, match(Labels{"code": "5"}))
 	require.False(t, match(Labels{}))
 }

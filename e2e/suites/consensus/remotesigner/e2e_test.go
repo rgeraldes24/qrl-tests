@@ -120,8 +120,8 @@ var _ = ginkgo.Describe(
 				To(gomega.BeZero(), "RANDAO reveals refused by the new-layer bucket")
 			gomega.Expect(sum(metrics, remotesigner.MetricVerifyFailures, nil)).
 				To(gomega.BeZero(), "signatures that failed verify-before-release")
-			gomega.Expect(sum(metrics, remotesigner.MetricHTTPRequestDurations, remotesigner.ServerErrors())).
-				To(gomega.BeZero(), "API requests answered with a 5xx")
+			gomega.Expect(sum(metrics, remotesigner.MetricHTTPRequestDurations, remotesigner.ServerFaults())).
+				To(gomega.BeZero(), "API requests answered with a 5xx other than the 503 of /upcheck while loading")
 		}
 
 		expectValidatorClientHealthy := func(ctx context.Context) {

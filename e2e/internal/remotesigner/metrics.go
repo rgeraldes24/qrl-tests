@@ -64,12 +64,17 @@ func OneOf(name string, values ...string) Matcher {
 	}
 }
 
-// ServerErrors matches the series of http_request_duration_seconds answered
-// with a 5xx.
-func ServerErrors() Matcher {
+// ServerFaults matches the series of http_request_duration_seconds answered
+// with a 5xx, but for the 503 LOADING of /upcheck: the signer listens before
+// it has loaded its keys, and answers a readiness probe that polls it until
+// then with a 503, by design. The route label of /upcheck is its path.
+func ServerFaults() Matcher {
 	return func(labels Labels) bool {
 		code := labels["code"]
-		return len(code) == 3 && code[0] == '5'
+		if len(code) != 3 || code[0] != '5' {
+			return false
+		}
+		return labels["route"] != upcheckPath || code != "503"
 	}
 }
 

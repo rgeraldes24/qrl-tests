@@ -4,7 +4,6 @@ package staking
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/chaininfo"
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
+	"github.com/cyyber/qrl-tests/e2e/internal/rewards"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	PollInterval = 2 * time.Second
+	PollInterval = rewards.PollInterval
 
 	// Activation waits for eligibility finalization and the seed lookahead.
 	// Attestation rewards are only served after two later epochs.
@@ -94,56 +94,9 @@ func ExpectActiveAndAttesting(
 	// Every active validator attests once per epoch, so a missed attestation
 	// can be made up in a later epoch.
 	ginkgo.By("waiting for the validator client to attest")
-	AwaitAttestationReward(ctx, node.Beacon, chain, validator.Index, validator.ActivationEpoch,
+	rewards.AwaitAttestationReward(ctx, node.Beacon, chain, validator.Index, validator.ActivationEpoch,
 		attestationTimeout, "an attestation reward", earnedAny)
 	return validator
-}
-
-// AwaitAttestationReward checks the validator's reward for each epoch,
-// starting at epoch from, once it is served, and returns the first epoch whose
-// reward satisfies match. want describes match in the failure message.
-func AwaitAttestationReward(
-	ctx context.Context,
-	client *beacon.Client,
-	chain chaininfo.Info,
-	index, from uint64,
-	timeout time.Duration,
-	want string,
-	match func(beacon.AttestationReward) bool,
-) uint64 {
-	ginkgo.GinkgoHelper()
-	next := from
-	gomega.Eventually(func(g gomega.Gomega) {
-		var found bool
-		var err error
-		next, found, err = rewardedFrom(ctx, client, chain, index, next, match)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s", index, from, want)
-	}).WithContext(ctx).
-		WithTimeout(timeout).
-		WithPolling(PollInterval).
-		Should(gomega.Succeed())
-	return next
-}
-
-// AttestationReward returns the attestation scores of one validator in a
-// completed epoch.
-func AttestationReward(ctx context.Context, client *beacon.Client, epoch, index uint64) (beacon.AttestationReward, error) {
-	rewards, err := client.AttestationRewards(ctx, epoch, []uint64{index})
-	if err != nil {
-		return beacon.AttestationReward{}, err
-	}
-	if len(rewards) != 1 || rewards[0].ValidatorIndex != index {
-		return beacon.AttestationReward{}, fmt.Errorf("epoch %d rewards do not cover validator %d", epoch, index)
-	}
-	return rewards[0], nil
-}
-
-// RewardsServed reports whether Qrysm serves the attestation rewards of epoch
-// once the head is at headSlot: only two epochs later, so every attestation
-// has had a chance of inclusion.
-func RewardsServed(chain chaininfo.Info, headSlot, epoch uint64) bool {
-	return epoch+2 <= chain.Epoch(headSlot)
 }
 
 // earnedAny reports whether any vote earned a reward.
@@ -239,34 +192,6 @@ func ExpectExitAndWithdrawal(
 		WithPolling(PollInterval).
 		Should(gomega.Succeed())
 	return validator
-}
-
-// rewardedFrom checks the validator's attestation rewards for each epoch,
-// starting at epoch from, through the latest epoch whose rewards are served,
-// two before the head. It reports whether one satisfied match, and the epoch
-// to check next, which is that one if it did.
-func rewardedFrom(
-	ctx context.Context,
-	client *beacon.Client,
-	chain chaininfo.Info,
-	index, from uint64,
-	match func(beacon.AttestationReward) bool,
-) (uint64, bool, error) {
-	head, err := client.HeadSlot(ctx)
-	if err != nil {
-		return from, false, err
-	}
-	epoch := from
-	for ; RewardsServed(chain, head, epoch); epoch++ {
-		reward, err := AttestationReward(ctx, client, epoch, index)
-		if err != nil {
-			return epoch, false, err
-		}
-		if match(reward) {
-			return epoch, true, nil
-		}
-	}
-	return epoch, false, nil
 }
 
 // operationScanner walks every block after a starting slot exactly once, so

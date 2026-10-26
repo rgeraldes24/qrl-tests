@@ -145,7 +145,15 @@ func TestOperationScanner(t *testing.T) {
 	require.Equal(t, 2, fake.requestCount("/qrl/v1/beacon/blocks/15"))
 }
 
-func TestAttestedFrom(t *testing.T) {
+func TestRewardsServed(t *testing.T) {
+	chain := chaininfo.Info{SlotsPerEpoch: 8}
+	// Slot 23 is in epoch 2, which serves epoch 0 only.
+	require.True(t, RewardsServed(chain, 23, 0))
+	require.False(t, RewardsServed(chain, 23, 1))
+	require.True(t, RewardsServed(chain, 24, 1))
+}
+
+func TestRewardedFrom(t *testing.T) {
 	chain := chaininfo.Info{SlotsPerEpoch: 8}
 	fake, client := newFakeBeacon(t, 25)
 	fake.set(func(fake *fakeBeacon) {
@@ -155,14 +163,14 @@ func TestAttestedFrom(t *testing.T) {
 	})
 
 	// The head is in epoch 3, so rewards are served through epoch 1.
-	next, attested, err := attestedFrom(t.Context(), client, chain, validatorIndex, 1)
+	next, attested, err := rewardedFrom(t.Context(), client, chain, validatorIndex, 1, earnedAny)
 	require.NoError(t, err)
 	require.False(t, attested)
 	require.Equal(t, uint64(2), next)
 
 	// A missed epoch is followed by a rewarded one.
 	fake.set(func(fake *fakeBeacon) { fake.head = 41 })
-	next, attested, err = attestedFrom(t.Context(), client, chain, validatorIndex, next)
+	next, attested, err = rewardedFrom(t.Context(), client, chain, validatorIndex, next, earnedAny)
 	require.NoError(t, err)
 	require.True(t, attested)
 	require.Equal(t, uint64(3), next)
@@ -170,19 +178,19 @@ func TestAttestedFrom(t *testing.T) {
 
 	// A failed request keeps its epoch as next, so the retry does not skip it.
 	fake.set(func(fake *fakeBeacon) { fake.failures["/qrl/v1/beacon/rewards/attestations/3"] = 1 })
-	next, attested, err = attestedFrom(t.Context(), client, chain, validatorIndex, 3)
+	next, attested, err = rewardedFrom(t.Context(), client, chain, validatorIndex, 3, earnedAny)
 	require.Error(t, err)
 	require.False(t, attested)
 	require.Equal(t, uint64(3), next)
 
 	// A late attestation misses the head reward but still earns the target one.
 	fake.set(func(fake *fakeBeacon) { fake.rewards[3] = reward(validatorIndex, 0, 7) })
-	_, attested, err = attestedFrom(t.Context(), client, chain, validatorIndex, 3)
+	_, attested, err = rewardedFrom(t.Context(), client, chain, validatorIndex, 3, earnedAny)
 	require.NoError(t, err)
 	require.True(t, attested)
 
 	// Rewards for another validator are an error, not a miss.
 	fake.set(func(fake *fakeBeacon) { fake.rewards[3] = reward(validatorIndex+1, 7, 7) })
-	_, _, err = attestedFrom(t.Context(), client, chain, validatorIndex, 3)
+	_, _, err = rewardedFrom(t.Context(), client, chain, validatorIndex, 3, earnedAny)
 	require.ErrorContains(t, err, "epoch 3 rewards do not cover validator 64")
 }

@@ -94,19 +94,61 @@ func ExpectActiveAndAttesting(
 	// Every active validator attests once per epoch, so a missed attestation
 	// can be made up in a later epoch.
 	ginkgo.By("waiting for the validator client to attest")
-	next := validator.ActivationEpoch
+	AwaitAttestationReward(ctx, node.Beacon, chain, validator.Index, validator.ActivationEpoch,
+		attestationTimeout, "an attestation reward", earnedAny)
+	return validator
+}
+
+// AwaitAttestationReward waits, as the rewards of each epoch from from on are
+// served, for the first epoch whose reward for the validator satisfies match,
+// and returns it. want describes match in the failure message.
+func AwaitAttestationReward(
+	ctx context.Context,
+	client *beacon.Client,
+	chain chaininfo.Info,
+	index, from uint64,
+	timeout time.Duration,
+	want string,
+	match func(beacon.AttestationReward) bool,
+) uint64 {
+	ginkgo.GinkgoHelper()
+	next := from
 	gomega.Eventually(func(g gomega.Gomega) {
-		var attested bool
+		var found bool
 		var err error
-		next, attested, err = attestedFrom(ctx, node.Beacon, chain, validator.Index, next)
+		next, found, err = rewardedFrom(ctx, client, chain, index, next, match)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(attested).To(gomega.BeTrue(),
-			"validator client produced no attestation reward since epoch %d", validator.ActivationEpoch)
+		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s", index, from, want)
 	}).WithContext(ctx).
-		WithTimeout(attestationTimeout).
+		WithTimeout(timeout).
 		WithPolling(PollInterval).
 		Should(gomega.Succeed())
-	return validator
+	return next
+}
+
+// AttestationReward returns the attestation scores of one validator in a
+// completed epoch.
+func AttestationReward(ctx context.Context, client *beacon.Client, epoch, index uint64) (beacon.AttestationReward, error) {
+	rewards, err := client.AttestationRewards(ctx, epoch, []uint64{index})
+	if err != nil {
+		return beacon.AttestationReward{}, err
+	}
+	if len(rewards) != 1 || rewards[0].ValidatorIndex != index {
+		return beacon.AttestationReward{}, fmt.Errorf("epoch %d rewards do not cover validator %d", epoch, index)
+	}
+	return rewards[0], nil
+}
+
+// RewardsServed reports whether Qrysm serves the attestation rewards of epoch
+// once the head is at headSlot: only two epochs later, so every attestation
+// has had a chance of inclusion.
+func RewardsServed(chain chaininfo.Info, headSlot, epoch uint64) bool {
+	return epoch+2 <= chain.Epoch(headSlot)
+}
+
+// earnedAny reports whether any vote earned a reward.
+func earnedAny(reward beacon.AttestationReward) bool {
+	return reward.Head > 0 || reward.Target > 0 || reward.Source > 0
 }
 
 // ExpectExitAndWithdrawal waits out the committee period, submits the exit
@@ -199,29 +241,28 @@ func ExpectExitAndWithdrawal(
 	return validator
 }
 
-// attestedFrom checks the validator's attestation rewards from epoch from
+// rewardedFrom checks the validator's attestation rewards from epoch from
 // through the latest epoch whose rewards are served, two before the head. It
-// reports whether one was positive, and the epoch to check next.
-func attestedFrom(
+// reports whether one satisfied match, and the epoch to check next, which is
+// that one if it did.
+func rewardedFrom(
 	ctx context.Context,
 	client *beacon.Client,
 	chain chaininfo.Info,
 	index, from uint64,
+	match func(beacon.AttestationReward) bool,
 ) (uint64, bool, error) {
 	head, err := client.HeadSlot(ctx)
 	if err != nil {
 		return from, false, err
 	}
 	epoch := from
-	for ; epoch+2 <= chain.Epoch(head); epoch++ {
-		rewards, err := client.AttestationRewards(ctx, epoch, []uint64{index})
+	for ; RewardsServed(chain, head, epoch); epoch++ {
+		reward, err := AttestationReward(ctx, client, epoch, index)
 		if err != nil {
 			return epoch, false, err
 		}
-		if len(rewards) != 1 || rewards[0].ValidatorIndex != index {
-			return epoch, false, fmt.Errorf("epoch %d rewards do not cover validator %d", epoch, index)
-		}
-		if rewards[0].Head > 0 || rewards[0].Target > 0 || rewards[0].Source > 0 {
+		if match(reward) {
 			return epoch, true, nil
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/devnet"
@@ -96,4 +97,38 @@ func requireJSONLiteral(t *testing.T, expression string, target any) {
 	literals := regexp.MustCompile(`'([^']*)'`).FindAllStringSubmatch(expression, -1)
 	require.Lenf(t, literals, 1, "literals in %q", expression)
 	require.NoError(t, json.Unmarshal([]byte(literals[0][1]), target))
+}
+
+// The workflows install Kurtosis through one action, whose version is the one
+// the Makefile's preflight wants.
+func TestWorkflowsInstallKurtosisThroughTheAction(t *testing.T) {
+	root := repositoryRoot(t)
+	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	require.NoError(t, err)
+	require.NotEmpty(t, workflows)
+	for _, path := range workflows {
+		payload, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.NotContainsf(t, string(payload), "kurtosis-cli-release-artifacts", "%s downloads Kurtosis itself", filepath.Base(path))
+	}
+
+	payload, err := os.ReadFile(filepath.Join(root, ".github", "actions", "install-kurtosis", "action.yml"))
+	require.NoError(t, err)
+	var action struct {
+		Runs struct {
+			Steps []struct {
+				Env map[string]string `yaml:"env"`
+			} `yaml:"steps"`
+		} `yaml:"runs"`
+	}
+	require.NoError(t, yaml.Unmarshal(payload, &action))
+	require.NotEmpty(t, action.Runs.Steps)
+	version := action.Runs.Steps[0].Env["KURTOSIS_VERSION"]
+	require.Regexp(t, `^\d+\.\d+\.\d+$`, version)
+
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	require.NoError(t, err)
+	preflight := regexp.MustCompile(`CLI Version:\[\[:space:\]\]\+(\d+)\\\.(\d+)\\\.`).FindStringSubmatch(string(makefile))
+	require.Len(t, preflight, 3, "the Makefile's Kurtosis version check")
+	require.Truef(t, strings.HasPrefix(version, preflight[1]+"."+preflight[2]+"."), "Kurtosis %s, the preflight wants %s.%s.x", version, preflight[1], preflight[2])
 }

@@ -71,7 +71,6 @@ env:
   GENERATOR_GIT_REF: ${{ vars.E2E_REMOTE_SIGNER_GENERATOR_REF || 'main' }}
   GENERATOR_QRYSM_REPOSITORY: ${{ vars.E2E_QRYSM_REPOSITORY || 'cyyber/qrysm' }}
   GENERATOR_QRYSM_GIT_REF: ${{ vars.E2E_REMOTE_SIGNER_GENERATOR_QRYSM_REF || 'main' }}
-  KURTOSIS_VERSION: 1.20.0
 
 jobs:
   # Image and lane runners must use the same architecture.
@@ -288,17 +287,7 @@ jobs:
           exit "${status}"
 
       - name: Install Kurtosis CLI
-        run: |
-          case "$(uname -m)" in
-            aarch64) arch=arm64 sha256=8c5f50adbb27ca2d0693b9ac8643a148d55240cfdbc5b36fa8eef4b02325af16 ;;
-            x86_64) arch=amd64 sha256=3866e805a83a63d3d0b177f54c3fb556066b8c0e12f6442a0579bb7deaa1d5ae ;;
-            *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
-          esac
-          curl -fsSL --retry 3 --retry-connrefused -o kurtosis.tar.gz "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/${KURTOSIS_VERSION}/kurtosis-cli_${KURTOSIS_VERSION}_linux_${arch}.tar.gz"
-          echo "${sha256}  kurtosis.tar.gz" | sha256sum -c -
-          sudo tar -xzf kurtosis.tar.gz -C /usr/local/bin kurtosis
-          rm kurtosis.tar.gz
-          kurtosis analytics disable
+        uses: ./.github/actions/install-kurtosis
 
       # The scripts export the commit with git archive, so the image is built
       # from the commit the images job resolved, whatever ref named it.

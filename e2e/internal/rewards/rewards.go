@@ -57,10 +57,10 @@ func AttestationReward(ctx context.Context, client *beacon.Client, epoch, index 
 	return rewards[0], nil
 }
 
-// RewardsServed reports whether Qrysm serves the attestation rewards of epoch
+// Served reports whether Qrysm serves the attestation rewards of epoch
 // once the head is at headSlot: only two epochs later, so every attestation
 // has had a chance of inclusion.
-func RewardsServed(chain chaininfo.Info, headSlot, epoch uint64) bool {
+func Served(chain chaininfo.Info, headSlot, epoch uint64) bool {
 	return epoch+2 <= chain.Epoch(headSlot)
 }
 
@@ -80,7 +80,7 @@ func rewardedFrom(
 		return from, false, err
 	}
 	epoch := from
-	for ; RewardsServed(chain, head, epoch); epoch++ {
+	for ; Served(chain, head, epoch); epoch++ {
 		reward, err := AttestationReward(ctx, client, epoch, index)
 		if err != nil {
 			return epoch, false, err

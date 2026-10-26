@@ -90,12 +90,12 @@ func anyReward(reward beacon.AttestationReward) bool {
 	return reward.Head > 0 || reward.Target > 0 || reward.Source > 0
 }
 
-func TestRewardsServed(t *testing.T) {
+func TestServed(t *testing.T) {
 	chain := chaininfo.Info{SlotsPerEpoch: 8}
 	// Slot 23 is in epoch 2, which serves epoch 0 only.
-	require.True(t, RewardsServed(chain, 23, 0))
-	require.False(t, RewardsServed(chain, 23, 1))
-	require.True(t, RewardsServed(chain, 24, 1))
+	require.True(t, Served(chain, 23, 0))
+	require.False(t, Served(chain, 23, 1))
+	require.True(t, Served(chain, 24, 1))
 }
 
 func TestRewardedFrom(t *testing.T) {

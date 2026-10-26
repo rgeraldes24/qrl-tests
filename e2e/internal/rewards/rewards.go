@@ -16,8 +16,8 @@ import (
 const PollInterval = 2 * time.Second
 
 // AwaitAttestationReward checks the validator's reward for each epoch,
-// starting at epoch from, once it is available, and returns the first epoch whose
-// reward satisfies match. want describes match in the failure message.
+// starting at epoch from, once it is available, and returns the first epoch
+// whose reward satisfies match. want describes match in the failure message.
 func AwaitAttestationReward(
 	ctx context.Context,
 	client *beacon.Client,

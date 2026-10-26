@@ -13,8 +13,6 @@ import (
 	gomega "github.com/onsi/gomega"
 )
 
-// PollInterval is how often AwaitAttestationReward reads the head and the
-// rewards it serves.
 const PollInterval = 2 * time.Second
 
 // AwaitAttestationReward checks the validator's reward for each epoch,

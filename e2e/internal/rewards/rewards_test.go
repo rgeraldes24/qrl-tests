@@ -92,7 +92,7 @@ func anyReward(reward beacon.AttestationReward) bool {
 
 func TestAvailable(t *testing.T) {
 	chain := chaininfo.Info{SlotsPerEpoch: 8}
-	// Slot 23 is in epoch 2, which serves epoch 0 only.
+	// Slot 23 is in epoch 2, where only the rewards of epoch 0 are available.
 	require.True(t, Available(chain, 23, 0))
 	require.False(t, Available(chain, 23, 1))
 	require.True(t, Available(chain, 24, 1))

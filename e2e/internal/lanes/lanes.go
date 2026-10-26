@@ -19,8 +19,9 @@ type Lane struct {
 
 	RestartsServices bool
 	// LocalImages marks a lane whose network needs images that CI does not
-	// build yet, so the nightly leaves it out. The scripts directory builds
-	// them from local checkouts.
+	// build yet, so the nightly and run-all leave it out. The scripts
+	// directory builds them from local checkouts, and e2e/README.md says how
+	// to run each such lane.
 	LocalImages bool
 }
 
@@ -77,6 +78,8 @@ var registry = []Lane{
 		// first, then the refused requests and two more finalized epochs.
 		// The signer is go-remotesigner, and the validator client a qrysm
 		// with its remote signer client: neither image is published yet.
+		// The pinned qrl-package does not run go-remotesigner either, so
+		// the network is started from a qrl-package checkout that does.
 		Name:        "consensus-remote-signer",
 		Profile:     devnet.ProfileRemoteSigner,
 		Suites:      []SuiteID{suiteConsensusRemoteSigner},

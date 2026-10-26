@@ -148,7 +148,7 @@ func (runner *Runner) List() error {
 		fmt.Fprintf(&listing, "%-16s profile=%-16s timeout=%-8s suites=%s",
 			lane.Name, lane.Profile, lane.Timeout, suiteIDs(lane.Suites))
 		if lane.LocalImages {
-			listing.WriteString(" (needs locally built images)")
+			listing.WriteString(" (needs locally built images; see e2e/README.md)")
 		}
 		listing.WriteString("\n")
 	}

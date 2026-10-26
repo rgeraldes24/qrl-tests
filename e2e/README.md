@@ -47,8 +47,9 @@ fails, the signer's metrics, healthcheck and capabilities, and the validator
 client's remote signer metrics, are saved under
 `reports/lanes/consensus-remote-signer/remote-signer/<spec>/`.
 
-Its images are not published yet, so CI does not run the lane, `run-all`
-leaves it out, and `qrltest list` marks it. Build them from local checkouts, the validator
+Its images are not published yet, and the pinned qrl-package does not run
+go-remotesigner, so CI does not run the lane, `run-all` leaves it out, and
+`qrltest list` marks it. Build the images from local checkouts, the validator
 client and beacon node from one qrysm commit with the remote signer client:
 
 ```bash
@@ -59,26 +60,34 @@ QRYSM_SOURCE_DIR=../qrysm QRYSM_REF=<commit> make qrysm-images
 The scripts build the working tree of the checkout, or the commit
 `REMOTESIGNER_REF` or `QRYSM_REF` names. The signer image is built with
 go-remotesigner's own Dockerfile and needs `go-licenses` v2; the qrysm images
-are static `go build`s, without Bazel. Then run the lane with them:
+are static `go build`s, without Bazel.
+
+Then start the network from a qrl-package checkout that runs go-remotesigner,
+with the parameters of the `remote-signer` profile, and run the lane against
+it. The network gets an enclave of its own, which `kurtosis enclave add`
+creates and refuses when the name is taken, and its parameters go to the
+ignored `reports/` directory:
 
 ```bash
-DEVNET_CONSENSUS_IMAGE=local/qrysm:remote-signer-beacon-chain \
-DEVNET_VALIDATOR_IMAGE=local/qrysm:remote-signer-validator \
-E2E_LANE=consensus-remote-signer make e2e-run
-```
-
-The lane also needs a qrl-package that runs go-remotesigner. Until the pinned
-package does, start the network from a qrl-package checkout with the
-parameters of the `remote-signer` profile, and run the lane against it:
-
-```bash
+mkdir -p reports
 go run ./cmd/qrltest network params --profile remote-signer \
 	--consensus-image local/qrysm:remote-signer-beacon-chain \
-	--validator-image local/qrysm:remote-signer-validator > remote-signer.json
-kurtosis run --enclave go-qrl-devnet ../qrl-package --args-file remote-signer.json
+	--validator-image local/qrysm:remote-signer-validator \
+	> reports/remote-signer.json
+kurtosis enclave add --name remote-signer-devnet &&
+	kurtosis run --enclave remote-signer-devnet ../qrl-package \
+		--args-file reports/remote-signer.json
+DEVNET_ENCLAVE_NAME=remote-signer-devnet \
 E2E_LANE=consensus-remote-signer make e2e
-make network-stop
+DEVNET_ENCLAVE_NAME=remote-signer-devnet make network-stop
 ```
+
+To record the commits the images were built from in
+`reports/run-manifest.json`, set `E2E_SOURCE_REMOTESIGNER` and
+`E2E_SOURCE_QRYSM` for `make e2e`. Once the pinned qrl-package runs
+go-remotesigner, `make e2e-run` with `DEVNET_CONSENSUS_IMAGE` and
+`DEVNET_VALIDATOR_IMAGE` naming the qrysm images provisions the network
+itself.
 
 The Ginkgo runner writes its JSON report, output log and resolved environment
 manifest under `reports/lanes/<lane>/`, next to the run manifest and result

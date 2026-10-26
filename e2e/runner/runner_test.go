@@ -530,7 +530,7 @@ func TestListDescribesLanesAndSuites(t *testing.T) {
 	require.Contains(t, output.String(), executionABISuite)
 	require.Contains(t, output.String(), "profile=single")
 	require.Contains(t, output.String(), "package=./e2e/suites/execution/abi")
-	require.Regexp(t, `(?m)^consensus-remote-signer\s+profile=remote-signer\s.*\(needs locally built images\)$`, output.String())
+	require.Regexp(t, `(?m)^consensus-remote-signer\s+profile=remote-signer\s.*\(needs locally built images; see e2e/README\.md\)$`, output.String())
 	require.NotRegexp(t, `(?m)^execution\s.*locally built`, output.String())
 }
 

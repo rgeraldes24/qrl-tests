@@ -50,12 +50,14 @@ serves its API over TLS with a certificate qrl-package issues, and keeps
 slashing protection on. The validator client gets only its public keys, the
 sign token and the CA certificate, in `/remote-signer`. Its validator image
 must have qrysm's remote signer client, and its signer image is built with
-`make remote-signer-image`; the [remote signer lane](../e2e/README.md#remote-signer-lane)
-describes both.
+`make remote-signer-image`; the
+[remote signer lane](../e2e/README.md#remote-signer-lane) describes both.
 
 `go run ./cmd/qrltest network params --profile <profile>` prints the
 qrl-package parameters a profile renders, with the configured images, for a
-network started with `kurtosis run` from a qrl-package checkout.
+network started with `kurtosis run` from a qrl-package checkout. The
+`remote-signer` profile needs one until the pinned qrl-package runs
+go-remotesigner: `network-start` would start it without the signer.
 
 `DEVNET_ENCLAVE_NAME` is optional. Without it, every command uses
 `go-qrl-devnet`. Set it only to use another enclave name, and use the same value

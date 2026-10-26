@@ -37,7 +37,7 @@ func (validator spareValidator) reward(ctx context.Context, epoch uint64) (beaco
 func (validator spareValidator) firstAttestedEpoch(ctx context.Context, from uint64, timeout time.Duration) uint64 {
 	ginkgo.GinkgoHelper()
 	return rewards.AwaitAttestationReward(ctx, validator.client, validator.chain, validator.index, from,
-		timeout, "timely source and target votes", attested)
+		timeout, attested)
 }
 
 func attested(reward beacon.AttestationReward) bool {

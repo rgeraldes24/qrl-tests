@@ -129,15 +129,19 @@ pinned defaults:
 
 | Source | Input | Variable | Default |
 | --- | --- | --- | --- |
-| go-remotesigner | `remotesigner-repository`, `remotesigner-ref` | `E2E_REMOTESIGNER_REPOSITORY`, `E2E_REMOTESIGNER_REF` | `rgeraldes24/go-remotesigner` at `8447c2d` |
-| qrysm | `qrysm-repository`, `qrysm-ref` | `E2E_REMOTE_SIGNER_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_QRYSM_REF` | `rgeraldes24/qrysm` at `47f6b65e` |
-| qrl-package | `qrl-package-repository`, `qrl-package-ref` | `E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY`, `E2E_REMOTE_SIGNER_QRL_PACKAGE_REF` | `rgeraldes24/qrl-package` at `ebf3b6a` |
+| go-remotesigner | `go-remotesigner-repository`, `go-remotesigner-ref` | `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY`, `E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF` | `rgeraldes24/go-remotesigner` at `8447c2d29add5f52b5157038bc6b74bd0ecef36b` |
+| qrysm | `qrysm-repository`, `qrysm-ref` | `E2E_REMOTE_SIGNER_QRYSM_REPOSITORY`, `E2E_REMOTE_SIGNER_QRYSM_REF` | `rgeraldes24/qrysm` at `47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc` |
+| qrl-package | `qrl-package-repository`, `qrl-package-ref` | `E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY`, `E2E_REMOTE_SIGNER_QRL_PACKAGE_REF` | `rgeraldes24/qrl-package` at `ebf3b6ac1701b2ca3c721e325f4ca0d5ecfedea5` |
 
-A ref may name a commit, a branch or a tag; every job runs the commit it
-resolved to. Each lane uploads its reports: on a failure they also hold the
-services' logs, the signer's metrics, healthcheck and capabilities for each
-failed spec, and a dump of the enclave without its files artifacts, which hold
-the keys and the token, so that a network that did not start is diagnosed too.
+A ref names a branch, a tag or a commit by its full 40-character SHA, which
+is all a remote resolves; every job runs the commit it resolved to. The
+workflow's own variables all start with `E2E_REMOTE_SIGNER_`; one misspelt is
+not an error, it leaves the default in force.
+
+Each lane uploads its reports: on a failure they also hold the services' logs,
+the signer's metrics, healthcheck and capabilities for each failed spec, and a
+dump of the enclave without its files artifacts, which hold the keys and the
+token, so that a network that did not start is diagnosed too.
 
 The lanes are the JSON list of the `lanes` input, then of the
 `E2E_REMOTE_SIGNER_LANES` variable, then `["consensus-remote-signer"]`: mTLS

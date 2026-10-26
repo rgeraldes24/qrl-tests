@@ -11,25 +11,27 @@ on:
     - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
-      remotesigner-repository:
+      go-remotesigner-repository:
         description: go-remotesigner repository; empty uses
-          vars.E2E_REMOTESIGNER_REPOSITORY, else rgeraldes24/go-remotesigner
-      remotesigner-ref:
-        description: go-remotesigner commit, branch or tag; empty uses
-          vars.E2E_REMOTESIGNER_REF, else the pinned commit
+          vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY, else
+          rgeraldes24/go-remotesigner
+      go-remotesigner-ref:
+        description: go-remotesigner branch, tag or full 40-character commit
+          SHA; empty uses vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF, else the
+          pinned commit
       qrysm-repository:
         description: qrysm repository with the remote signer client; empty
           uses vars.E2E_REMOTE_SIGNER_QRYSM_REPOSITORY, else rgeraldes24/qrysm
       qrysm-ref:
-        description: qrysm commit, branch or tag; empty uses
-          vars.E2E_REMOTE_SIGNER_QRYSM_REF, else the pinned commit
+        description: qrysm branch, tag or full 40-character commit SHA; empty
+          uses vars.E2E_REMOTE_SIGNER_QRYSM_REF, else the pinned commit
       qrl-package-repository:
         description: qrl-package repository the network starts from; empty
           uses vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY, else
           rgeraldes24/qrl-package
       qrl-package-ref:
-        description: qrl-package commit, branch or tag, or "pinned" for the
-          qrl-package qrl-tests pins; empty uses
+        description: qrl-package branch, tag or full 40-character commit SHA,
+          or "pinned" for the qrl-package qrl-tests pins; empty uses
           vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF, else the pinned commit
       lanes:
         description: JSON list of the remote-signer lanes to run; empty uses
@@ -53,8 +55,8 @@ env:
   # something else: the image scripts read REMOTESIGNER_REF and QRYSM_REF as
   # the commit to build, and the build steps set those to the commits the
   # images job resolved.
-  REMOTESIGNER_REPOSITORY: ${{ inputs.remotesigner-repository || vars.E2E_REMOTESIGNER_REPOSITORY || 'rgeraldes24/go-remotesigner' }}
-  REMOTESIGNER_GIT_REF: ${{ inputs.remotesigner-ref || vars.E2E_REMOTESIGNER_REF || '8447c2d29add5f52b5157038bc6b74bd0ecef36b' }}
+  GO_REMOTESIGNER_REPOSITORY: ${{ inputs.go-remotesigner-repository || vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY || 'rgeraldes24/go-remotesigner' }}
+  GO_REMOTESIGNER_GIT_REF: ${{ inputs.go-remotesigner-ref || vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF || '8447c2d29add5f52b5157038bc6b74bd0ecef36b' }}
   QRYSM_REPOSITORY: ${{ inputs.qrysm-repository || vars.E2E_REMOTE_SIGNER_QRYSM_REPOSITORY || 'rgeraldes24/qrysm' }}
   QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || '47f6b65e6c58bb8c268d3dfd94aca8cbd1718bcc' }}
   QRL_PACKAGE_REPOSITORY: ${{ inputs.qrl-package-repository || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY || 'rgeraldes24/qrl-package' }}
@@ -80,7 +82,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      remotesigner-sha: ${{ steps.refs.outputs.remotesigner-sha }}
+      go-remotesigner-sha: ${{ steps.refs.outputs.go-remotesigner-sha }}
       qrysm-sha: ${{ steps.refs.outputs.qrysm-sha }}
       qrl-package-sha: ${{ steps.refs.outputs.qrl-package-sha }}
       go-qrl-sha: ${{ steps.refs.outputs.go-qrl-sha }}
@@ -103,7 +105,8 @@ jobs:
               return
             fi
             # A branch, else the commit a tag names; only a pattern that
-            # ends in * lists the commit of an annotated tag.
+            # ends in * lists the commit of an annotated tag. A remote
+            # resolves no abbreviated commit.
             git ls-remote "https://github.com/$1" "refs/heads/$2" "refs/tags/$2*" | awk -v repository="$1" -v ref="$2" '
               $2 == "refs/heads/" ref { branch = $1 }
               $2 == "refs/tags/" ref { tag = $1 }
@@ -111,13 +114,13 @@ jobs:
               END {
                 sha = branch != "" ? branch : peeled != "" ? peeled : tag
                 if (sha == "") {
-                  print "cannot resolve " repository "@" ref > "/dev/stderr"
+                  print "cannot resolve " repository "@" ref ": no such branch or tag, and a commit must be its full 40-character SHA" > "/dev/stderr"
                   exit 1
                 }
                 print sha
               }'
           }
-          remotesigner_sha=$(resolve "${REMOTESIGNER_REPOSITORY}" "${REMOTESIGNER_GIT_REF}")
+          go_remotesigner_sha=$(resolve "${GO_REMOTESIGNER_REPOSITORY}" "${GO_REMOTESIGNER_GIT_REF}")
           qrysm_sha=$(resolve "${QRYSM_REPOSITORY}" "${QRYSM_GIT_REF}")
           if [ "${QRL_PACKAGE_GIT_REF}" = pinned ]; then
             qrl_package_sha=pinned
@@ -128,7 +131,7 @@ jobs:
           generator_sha=$(resolve "${GENERATOR_REPOSITORY}" main)
           generator_qrysm_sha=$(resolve "${GENERATOR_QRYSM_REPOSITORY}" main)
           {
-            echo "remotesigner-sha=${remotesigner_sha}"
+            echo "go-remotesigner-sha=${go_remotesigner_sha}"
             echo "qrysm-sha=${qrysm_sha}"
             echo "qrl-package-sha=${qrl_package_sha}"
             echo "go-qrl-sha=${go_qrl_sha}"
@@ -210,7 +213,7 @@ jobs:
       DEVNET_VALIDATOR_IMAGE: local/qrysm:nightly-validator
       # One enclave per run, attempt, and lane.
       DEVNET_ENCLAVE_NAME: qrl-e2e-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.lane }}
-      E2E_SOURCE_REMOTESIGNER: ${{ needs.images.outputs.remotesigner-sha }}
+      E2E_SOURCE_REMOTESIGNER: ${{ needs.images.outputs.go-remotesigner-sha }}
       E2E_SOURCE_QRYSM: ${{ needs.images.outputs.qrysm-sha }}
       E2E_SOURCE_GO_QRL: ${{ needs.images.outputs.go-qrl-sha }}
       E2E_SOURCE_GENERATOR: ${{ needs.images.outputs.generator-sha }}
@@ -223,8 +226,8 @@ jobs:
       - name: Check out go-remotesigner
         uses: actions/checkout@v7
         with:
-          repository: ${{ env.REMOTESIGNER_REPOSITORY }}
-          ref: ${{ needs.images.outputs.remotesigner-sha }}
+          repository: ${{ env.GO_REMOTESIGNER_REPOSITORY }}
+          ref: ${{ needs.images.outputs.go-remotesigner-sha }}
           path: .build/go-remotesigner
           # Its tags, once it has any, name the image's version.
           fetch-depth: 0
@@ -298,7 +301,7 @@ jobs:
       - name: Build the go-remotesigner image
         env:
           REMOTESIGNER_SOURCE_DIR: .build/go-remotesigner
-          REMOTESIGNER_REF: ${{ needs.images.outputs.remotesigner-sha }}
+          REMOTESIGNER_REF: ${{ needs.images.outputs.go-remotesigner-sha }}
         run: |
           go install github.com/google/go-licenses/v2@v2.0.1
           GO_LICENSES="$(go env GOPATH)/bin/go-licenses" make remote-signer-image
@@ -355,7 +358,7 @@ jobs:
             echo
             echo "| Source | Revision |"
             echo "| --- | --- |"
-            echo "| ${REMOTESIGNER_REPOSITORY} | ${E2E_SOURCE_REMOTESIGNER} |"
+            echo "| ${GO_REMOTESIGNER_REPOSITORY} | ${E2E_SOURCE_REMOTESIGNER} |"
             echo "| ${QRYSM_REPOSITORY} | ${E2E_SOURCE_QRYSM} |"
             echo "| ${GO_QRL_REPOSITORY} | ${E2E_SOURCE_GO_QRL} |"
             echo "| ${GENERATOR_REPOSITORY}, with ${GENERATOR_QRYSM_REPOSITORY} ${GENERATOR_QRYSM_SHA} | ${E2E_SOURCE_GENERATOR} |"

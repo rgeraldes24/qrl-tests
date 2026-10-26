@@ -44,7 +44,7 @@ func readWorkflow(t *testing.T, name string) workflow {
 func TestRemoteSignerNightlyBuildsTheResolvedCommits(t *testing.T) {
 	nightly := readWorkflow(t, "remote-signer-nightly.yml")
 	commits := map[string]string{
-		"REMOTESIGNER_REF": "${{ needs.images.outputs.remotesigner-sha }}",
+		"REMOTESIGNER_REF": "${{ needs.images.outputs.go-remotesigner-sha }}",
 		"QRYSM_REF":        "${{ needs.images.outputs.qrysm-sha }}",
 	}
 	for variable, commit := range commits {

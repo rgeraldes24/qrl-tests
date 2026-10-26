@@ -31,6 +31,10 @@ type participant struct {
 	ELExtraLabels           map[string]string `json:"el_extra_labels,omitempty"`
 	CLExtraLabels           map[string]string `json:"cl_extra_labels,omitempty"`
 	VCExtraLabels           map[string]string `json:"vc_extra_labels,omitempty"`
+
+	// go-remotesigner takes its global flags from environment variables.
+	RemoteSignerExtraEnvVars map[string]string `json:"remote_signer_extra_env_vars,omitempty"`
+	RemoteSignerExtraLabels  map[string]string `json:"remote_signer_extra_labels,omitempty"`
 }
 
 type networkParams struct {
@@ -93,13 +97,22 @@ func profileParameters(address string, options StartOptions) (string, error) {
 			VCImage:                 images.Validator,
 			VCExtraParams:           participantParameters(configuration.vcExtraParams),
 			UseRemoteSigner:         true,
-			RemoteSignerType:        "clef",
+			RemoteSignerType:        remoteSignerTypeClef,
 			RemoteSignerImage:       images.Clef,
 			RemoteSignerAutoApprove: true,
 			ValidatorCount:          configuration.validatorCount,
 			ELExtraLabels:           labels,
 			CLExtraLabels:           labels,
 			VCExtraLabels:           labels,
+		}
+		if configuration.remoteSigner {
+			participants[index].RemoteSignerType = goRemoteSigner
+			participants[index].RemoteSignerImage = images.RemoteSigner
+			participants[index].RemoteSignerAutoApprove = false
+			// The access log names each request's route, status and
+			// duration, never a key or a body.
+			participants[index].RemoteSignerExtraEnvVars = map[string]string{"REMOTESIGNER_ACCESS_LOGS_ENABLED": "true"}
+			participants[index].RemoteSignerExtraLabels = labels
 		}
 	}
 

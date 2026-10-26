@@ -79,6 +79,12 @@ func imageFlags() []cli.Flag {
 			Value:   images.Genesis,
 			EnvVars: []string{"DEVNET_GENESIS_IMAGE"},
 		},
+		&cli.StringFlag{
+			Name:    "remote-signer-image",
+			Usage:   "go-remotesigner image reference, for the remote-signer profile",
+			Value:   images.RemoteSigner,
+			EnvVars: []string{"DEVNET_REMOTE_SIGNER_IMAGE"},
+		},
 	}
 }
 
@@ -89,5 +95,7 @@ func imagesFromFlags(command *cli.Context) devnet.Images {
 		Consensus: command.String("consensus-image"),
 		Validator: command.String("validator-image"),
 		Genesis:   command.String("genesis-image"),
+
+		RemoteSigner: command.String("remote-signer-image"),
 	}
 }

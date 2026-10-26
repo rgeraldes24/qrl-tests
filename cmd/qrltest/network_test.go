@@ -50,6 +50,8 @@ func TestNetworkStart(t *testing.T) {
 			Consensus: devnet.DefaultConsensusImage,
 			Validator: devnet.DefaultValidatorImage,
 			Genesis:   devnet.DefaultGenesisImage,
+
+			RemoteSigner: devnet.DefaultRemoteSignerImage,
 		},
 		Parameters: parameters,
 		Profile:    devnet.ProfileSingle,

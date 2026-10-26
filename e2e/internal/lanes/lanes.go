@@ -18,10 +18,10 @@ type Lane struct {
 	Timeout time.Duration
 
 	RestartsServices bool
-	// LocalImages marks a lane whose network needs images that CI does not
-	// build yet, so the nightly and run-all leave it out. The scripts
-	// directory builds them from local checkouts, and e2e/README.md says how
-	// to run each such lane.
+	// LocalImages marks a lane whose network needs images the nightly does
+	// not build, so the nightly and run-all leave it out. The scripts
+	// directory builds them from local checkouts, remote-signer-nightly.yml
+	// builds them in CI, and e2e/README.md says how to run each such lane.
 	LocalImages bool
 }
 

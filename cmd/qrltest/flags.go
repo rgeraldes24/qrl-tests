@@ -90,7 +90,7 @@ func imageFlags() []cli.Flag {
 		},
 		&cli.StringFlag{
 			Name:    "remote-signer-image",
-			Usage:   "go-remotesigner image reference, for the remote-signer profile",
+			Usage:   "go-remotesigner image reference, for the remote-signer profiles",
 			Value:   images.RemoteSigner,
 			EnvVars: []string{"DEVNET_REMOTE_SIGNER_IMAGE"},
 		},

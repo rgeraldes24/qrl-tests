@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds go-remotesigner's consensus-only image for the remote-signer profile
+# Builds go-remotesigner's consensus-only image for the remote-signer profiles
 # from a go-remotesigner checkout, with the checkout's own Dockerfile
 # (deploy/docker/Dockerfile, through its `make image` target). The image is
 # tagged DEVNET_REMOTE_SIGNER_IMAGE, the image the profile runs.

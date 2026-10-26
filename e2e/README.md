@@ -46,7 +46,7 @@ refusal or fault, that it refuses a double vote and a double proposal sent to
 it directly, and that the chain keeps finalizing afterwards. When a spec
 fails, the signer's metrics, healthcheck and capabilities, and the validator
 client's remote signer metrics, are saved under
-`reports/lanes/consensus-remote-signer/remote-signer/<spec>/`.
+`reports/lanes/<lane>/remote-signer/<spec>/`.
 
 Its images are not published yet, and the pinned qrl-package does not run
 go-remotesigner, so the nightly does not run the lane, `run-all` leaves it
@@ -121,12 +121,11 @@ runs the remote-signer lanes every night and on demand. It builds the signer
 image from go-remotesigner and the beacon node and validator client images
 from qrysm with the scripts above, at pinned commits, and takes the execution
 client and genesis generator images from the nightly's registry, building
-them when they are missing. It starts
-each lane's network from a qrl-package checkout and runs the lane with
-`make e2e`; `pinned` as the qrl-package revision runs `make e2e-run` on the
-qrl-package qrl-tests pins instead, once that runs go-remotesigner. The
-revisions are inputs of a manual run, then repository variables, then the
-pinned defaults:
+them when they are missing. It starts each lane's network from a qrl-package
+checkout and runs the lane with `make e2e`; `pinned` as the qrl-package
+revision runs `make e2e-run` on the qrl-package qrl-tests pins instead, once
+that runs go-remotesigner. The revisions are inputs of a manual run, then
+repository variables, then the pinned defaults:
 
 | Source | Input | Variable | Default |
 | --- | --- | --- | --- |
@@ -152,10 +151,10 @@ revision: the run manifest has neither the qrl-package of a network the job
 starts itself nor the qrysm the genesis generator was built with, and its
 `qrysm` is the beacon node's and validator client's. On a failure the reports
 also hold the services' logs, and the signer's metrics, healthcheck and
-capabilities for each failed spec. When
-a job fails, is cancelled or times out they also hold a dump of the enclave
-without its files artifacts, which hold the keys and the token, and the
-signer's metrics, so that a network that did not start is diagnosed too.
+capabilities for each failed spec. When a job fails, is cancelled or times
+out they also hold a dump of the enclave without its files artifacts, which
+hold the keys and the token, and the signer's metrics, so that a network that
+did not start is diagnosed too.
 
 The lanes are the JSON list of the `lanes` input, then of the
 `E2E_REMOTE_SIGNER_LANES` variable, then `["consensus-remote-signer"]`: mTLS

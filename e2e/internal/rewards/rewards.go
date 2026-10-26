@@ -41,8 +41,8 @@ func AwaitAttestationReward(
 	return scanner.next
 }
 
-// AttestationReward returns the attestation scores of one validator in a
-// completed epoch.
+// AttestationReward returns one validator's attestation reward for a completed
+// epoch: its head, source and target rewards in shor, negative for a penalty.
 func AttestationReward(ctx context.Context, client *beacon.Client, epoch, index uint64) (beacon.AttestationReward, error) {
 	rewards, err := client.AttestationRewards(ctx, epoch, []uint64{index})
 	if err != nil {

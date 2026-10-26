@@ -365,23 +365,32 @@ jobs:
             make network-stop
           fi
 
+      # The sources go into the reports as well, since the run manifest has
+      # neither the qrl-package of a network started here nor the qrysm the
+      # genesis generator was built with.
       - name: Publish the job summary
         if: always()
         run: |
+          mkdir -p reports
           {
-            echo "## ${E2E_LANE}"
+            echo "## ${E2E_LANE} sources"
             echo
             echo "| Source | Revision |"
             echo "| --- | --- |"
             echo "| ${GO_REMOTESIGNER_REPOSITORY} | ${E2E_SOURCE_REMOTESIGNER} |"
             echo "| ${QRYSM_REPOSITORY} | ${E2E_SOURCE_QRYSM} |"
             echo "| ${GO_QRL_REPOSITORY} | ${E2E_SOURCE_GO_QRL} |"
-            echo "| ${GENERATOR_REPOSITORY}, with ${GENERATOR_QRYSM_REPOSITORY} ${GENERATOR_QRYSM_SHA} | ${E2E_SOURCE_GENERATOR} |"
+            echo "| ${GENERATOR_REPOSITORY} | ${E2E_SOURCE_GENERATOR} |"
+            echo "| ${GENERATOR_QRYSM_REPOSITORY}, the genesis generator's | ${GENERATOR_QRYSM_SHA} |"
             if [ "${QRL_PACKAGE_SHA}" = pinned ]; then
               echo "| qrl-package | the qrl-package qrl-tests pins |"
             else
               echo "| ${QRL_PACKAGE_REPOSITORY} | ${QRL_PACKAGE_SHA} |"
             fi
+            echo "| ${GITHUB_REPOSITORY} | ${GITHUB_SHA} |"
+          } > reports/sources.md
+          {
+            cat reports/sources.md
             echo
             if [ -f reports/summary.md ]; then
               cat reports/summary.md
@@ -390,7 +399,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The run manifest and Ginkgo report; on a failure also the services'
+      # The sources, the run manifest and Ginkgo report; on a failure also the services'
       # logs and inspection, and the signer's metrics, healthcheck and
       # capabilities for every failed spec; on a failure before the tests, a
       # cancellation or a timeout, the enclave dump and the signer's metrics.

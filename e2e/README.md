@@ -147,8 +147,12 @@ follow main by default, as in the nightly. A run on the pinned signer, qrysm
 and qrl-package can still break, or change, with their main branches; pin
 them with the three variables to rule that out.
 
-Each lane uploads its reports: on a failure they also hold the services' logs,
-the signer's metrics, healthcheck and capabilities for each failed spec. When
+Each lane uploads its reports, with `reports/sources.md` naming every source
+revision: the run manifest has neither the qrl-package of a network the job
+starts itself nor the qrysm the genesis generator was built with, and its
+`qrysm` is the beacon node's and validator client's. On a failure the reports
+also hold the services' logs, and the signer's metrics, healthcheck and
+capabilities for each failed spec. When
 a job fails, is cancelled or times out they also hold a dump of the enclave
 without its files artifacts, which hold the keys and the token, and the
 signer's metrics, so that a network that did not start is diagnosed too.

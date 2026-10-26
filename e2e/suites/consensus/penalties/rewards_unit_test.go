@@ -47,7 +47,6 @@ func TestMissedVotePenalties(t *testing.T) {
 }
 
 // fakeBeacon serves canned data per path and records every path requested.
-// Handlers run on the server goroutine, so its state is guarded by mu.
 type fakeBeacon struct {
 	mu        sync.Mutex
 	responses map[string]string

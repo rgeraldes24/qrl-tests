@@ -61,10 +61,6 @@ func Available(chain chaininfo.Info, headSlot, epoch uint64) bool {
 	return epoch+2 <= chain.Epoch(headSlot)
 }
 
-// rewardScanner reads one validator's attestation rewards epoch by epoch, so
-// polling callers read each epoch once. It starts at epoch from; next is the
-// epoch it reads next, or the one that satisfied match, and last is the last
-// reward it read, if any.
 type rewardScanner struct {
 	client *beacon.Client
 	chain  chaininfo.Info

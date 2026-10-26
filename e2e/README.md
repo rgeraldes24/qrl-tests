@@ -148,9 +148,10 @@ and qrl-package can still break, or change, with their main branches; pin
 them with the three variables to rule that out.
 
 Each lane uploads its reports: on a failure they also hold the services' logs,
-the signer's metrics, healthcheck and capabilities for each failed spec, and a
-dump of the enclave without its files artifacts, which hold the keys and the
-token, so that a network that did not start is diagnosed too.
+the signer's metrics, healthcheck and capabilities for each failed spec. When
+a job fails, is cancelled or times out they also hold a dump of the enclave
+without its files artifacts, which hold the keys and the token, and the
+signer's metrics, so that a network that did not start is diagnosed too.
 
 The lanes are the JSON list of the `lanes` input, then of the
 `E2E_REMOTE_SIGNER_LANES` variable, then `["consensus-remote-signer"]`: mTLS

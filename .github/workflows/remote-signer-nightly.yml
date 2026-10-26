@@ -333,18 +333,29 @@ jobs:
         if: env.QRL_PACKAGE_SHA == 'pinned'
         run: make e2e-run
 
-      # make e2e diagnoses a failed lane; a network that failed to start
-      # never got that far. The dump holds every service's log and
-      # container spec, and the files artifacts, which are left out: they
-      # hold the keystores, their password, the sign token and the TLS keys.
+      # make e2e diagnoses a failed lane; a network that failed to start, or
+      # a job that was cancelled or timed out, never got that far. The dump
+      # holds every service's log and container spec, and the files
+      # artifacts, which are left out: they hold the keystores, their
+      # password, the sign token and the TLS keys. The signer's metrics
+      # listener is plain HTTP and takes no credential.
       - name: Collect the network diagnostics
-        if: failure() && env.QRL_PACKAGE_SHA != 'pinned'
+        if: ${{ !success() && env.QRL_PACKAGE_SHA != 'pinned' }}
         run: |
           if kurtosis enclave inspect "${DEVNET_ENCLAVE_NAME}" > /dev/null 2>&1; then
             mkdir -p reports
             kurtosis enclave inspect "${DEVNET_ENCLAVE_NAME}" > reports/enclave-inspection.txt 2>&1 || true
             kurtosis enclave dump "${DEVNET_ENCLAVE_NAME}" reports/enclave-dump || true
             rm -rf reports/enclave-dump/files
+            awk '/User Services/ { services = 1; next } services && $2 ~ /^signer-/ { print $2 }' reports/enclave-inspection.txt |
+              while read -r service; do
+                url=$(kurtosis port print "${DEVNET_ENCLAVE_NAME}" "${service}" metrics 2> /dev/null) || continue
+                case "${url}" in
+                  *://*) ;;
+                  *) url=http://${url} ;;
+                esac
+                curl -fsS --max-time 10 -o "reports/${service}-metrics.txt" "${url}/metrics" || true
+              done
           fi
 
       - name: Stop the network
@@ -381,7 +392,8 @@ jobs:
 
       # The run manifest and Ginkgo report; on a failure also the services'
       # logs and inspection, and the signer's metrics, healthcheck and
-      # capabilities for every failed spec.
+      # capabilities for every failed spec; on a failure before the tests, a
+      # cancellation or a timeout, the enclave dump and the signer's metrics.
       - name: Upload the reports
         if: always()
         uses: actions/upload-artifact@v7

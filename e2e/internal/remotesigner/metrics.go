@@ -14,8 +14,8 @@ import (
 	"github.com/prometheus/common/expfmt"
 )
 
-// Metric names and label values of contract section 18, which the signer
-// exports from startup, at zero.
+// Metric names of go-remotesigner's docs/contract.md, section "Metric label
+// values", which the signer exports from startup, at zero.
 const (
 	MetricSigningRequests      = "signing_requests_total"
 	MetricRandaoReveals        = "consensus_randao_reveals_total"

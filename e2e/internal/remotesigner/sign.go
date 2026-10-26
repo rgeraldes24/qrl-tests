@@ -1,6 +1,7 @@
 package remotesigner
 
-// The artifact types of the contract, the values of a sign request's type.
+// The artifact types of go-remotesigner's docs/contract.md, section
+// "Artifact types", the values of a sign request's type.
 // Every uint64 travels as a decimal string and every byte string as
 // 0x-prefixed hex. A request without a signing root lets the signer compute
 // it from its own network.

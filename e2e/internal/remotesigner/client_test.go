@@ -23,7 +23,8 @@ import (
 
 const testToken = "0x" + "5a" + "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
 
-// The capabilities example of contract section 16.
+// The capabilities example of go-remotesigner's docs/contract.md, section
+// "Capabilities and `api_version`".
 const capabilitiesBody = `{"api_version":"1.0.0",
  "types":["BLOCK_V2","ATTESTATION","AGGREGATION_SLOT","AGGREGATE_AND_PROOF","SYNC_COMMITTEE_MESSAGE",
           "SYNC_COMMITTEE_SELECTION_PROOF","SYNC_COMMITTEE_CONTRIBUTION_AND_PROOF","VALIDATOR_REGISTRATION"],

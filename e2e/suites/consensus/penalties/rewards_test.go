@@ -93,7 +93,7 @@ func (validator spareValidator) voteAmounts(ctx context.Context, epoch uint64) (
 	if err != nil {
 		return voteAmounts{}, err
 	}
-	ideal, err := validator.client.IdealAttestationRewards(ctx, epoch)
+	ideal, err := validator.client.IdealAttestationRewards(ctx, epoch, []uint64{validator.index})
 	if err != nil {
 		return voteAmounts{}, err
 	}

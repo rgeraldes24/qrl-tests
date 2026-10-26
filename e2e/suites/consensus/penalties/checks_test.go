@@ -21,11 +21,11 @@ func (validator spareValidator) awaitRewards(ctx context.Context, epoch uint64) 
 	gomega.Eventually(func(g gomega.Gomega) {
 		head, err := validator.client.HeadSlot(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(rewards.Served(validator.chain, head, epoch)).To(gomega.BeTrue())
+		g.Expect(rewards.Available(validator.chain, head, epoch)).To(gomega.BeTrue())
 	}).WithContext(ctx).
 		WithTimeout(time.Duration(remaining+2)*validator.chain.EpochDuration).
 		WithPolling(rewards.PollInterval).
-		Should(gomega.Succeed(), "the rewards of epoch %d are not served", epoch)
+		Should(gomega.Succeed(), "the rewards of epoch %d are not available", epoch)
 }
 
 func (validator spareValidator) reward(ctx context.Context, epoch uint64) (beacon.AttestationReward, error) {

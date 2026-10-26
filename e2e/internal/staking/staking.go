@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	PollInterval = rewards.PollInterval
+	PollInterval = 2 * time.Second
 
 	// Activation waits for eligibility finalization and the seed lookahead.
 	// Attestation rewards are only served after two later epochs.

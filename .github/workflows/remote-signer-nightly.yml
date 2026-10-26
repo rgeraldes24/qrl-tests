@@ -31,6 +31,9 @@ on:
         description: qrl-package commit, branch or tag, or "pinned" for the
           qrl-package qrl-tests pins; empty uses
           vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF, else the pinned commit
+      lanes:
+        description: JSON list of the remote-signer lanes to run; empty uses
+          vars.E2E_REMOTE_SIGNER_LANES, else ["consensus-remote-signer"]
       seed:
         description: ginkgo spec-order seed (empty draws a fresh one per lane)
       runner:
@@ -188,24 +191,18 @@ jobs:
     # The lane's 25 minutes, the image builds, the network start, the
     # diagnostics and the teardown.
     timeout-minutes: 75
-    # The mTLS lane needs a qrl-package option that no qrl-package has yet
-    # (e2e/README.md): until one does, it runs, but its failure does not
-    # fail the run.
-    continue-on-error: ${{ matrix.optional }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - lane: consensus-remote-signer
-            profile: remote-signer
-            optional: false
-          - lane: consensus-remote-signer-mtls
-            profile: remote-signer-mtls
-            optional: true
+        # consensus-remote-signer-mtls needs a qrl-package option that no
+        # qrl-package has yet (e2e/README.md), so only the token lane runs
+        # unless the variable or the input names the mTLS lane too.
+        lane: ${{ fromJSON(inputs.lanes || vars.E2E_REMOTE_SIGNER_LANES || '["consensus-remote-signer"]') }}
     env:
       E2E_LANE: ${{ matrix.lane }}
       E2E_SEED: ${{ inputs.seed }}
-      DEVNET_PROFILE: ${{ matrix.profile }}
+      # The lane's profile; empty for a lane this workflow does not run.
+      DEVNET_PROFILE: ${{ fromJSON('{"consensus-remote-signer":"remote-signer","consensus-remote-signer-mtls":"remote-signer-mtls"}')[matrix.lane] }}
       DEVNET_EXECUTION_IMAGE: ${{ needs.images.outputs.execution-image }}
       DEVNET_GENESIS_IMAGE: ${{ needs.images.outputs.genesis-image }}
       DEVNET_REMOTE_SIGNER_IMAGE: local/go-remotesigner:nightly
@@ -256,6 +253,33 @@ jobs:
             .build/go-remotesigner/go.sum
             .build/qrysm/go.sum
 
+      # Before the image builds, so that a lane the qrl-package cannot start
+      # fails in seconds: qrl-package refuses a participant field it does not
+      # know, and a profile sets only the fields it needs.
+      - name: Check the lane's network parameters
+        run: |
+          if [ -z "${DEVNET_PROFILE}" ]; then
+            echo "${E2E_LANE} is not a lane this workflow runs" >&2
+            exit 1
+          fi
+          mkdir -p reports
+          go run ./cmd/qrltest network params > reports/network-params.json
+          sanity_check=.build/qrl-package/src/package_io/sanity_check.star
+          if [ "${QRL_PACKAGE_SHA}" = pinned ]; then
+            exit 0
+          elif [ ! -f "${sanity_check}" ]; then
+            echo "::warning::${sanity_check} is gone: the participant fields are not checked"
+            exit 0
+          fi
+          status=0
+          for field in $(jq -r '[.participants[] | keys[]] | unique[]' reports/network-params.json); do
+            if ! grep -Fq "\"${field}\"" "${sanity_check}"; then
+              echo "::error::${QRL_PACKAGE_REPOSITORY}@${QRL_PACKAGE_SHA} does not take the participant field ${field}, which the ${DEVNET_PROFILE} profile sets"
+              status=1
+            fi
+          done
+          exit "${status}"
+
       - name: Install Kurtosis CLI
         run: |
           case "$(uname -m)" in
@@ -289,8 +313,6 @@ jobs:
         if: env.QRL_PACKAGE_SHA != 'pinned'
         run: |
           make network-preflight
-          mkdir -p reports
-          go run ./cmd/qrltest network params > reports/network-params.json
           kurtosis enclave add --name "${DEVNET_ENCLAVE_NAME}"
           kurtosis run --enclave "${DEVNET_ENCLAVE_NAME}" ./.build/qrl-package --args-file reports/network-params.json
 

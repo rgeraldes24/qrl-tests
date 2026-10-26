@@ -117,7 +117,7 @@ qrl-package that has it must, for a go-remotesigner participant:
 ### Remote signer nightly
 
 [`remote-signer-nightly.yml`](../.github/workflows/remote-signer-nightly.yml)
-runs both remote-signer lanes every night and on demand. It builds the signer
+runs the remote-signer lanes every night and on demand. It builds the signer
 image from go-remotesigner and the beacon node and validator client images
 from qrysm with the scripts above, at pinned commits, and takes the execution
 client and genesis generator images from the nightly's registry. It starts
@@ -138,8 +138,14 @@ resolved to. Each lane uploads its reports: on a failure they also hold the
 services' logs, the signer's metrics, healthcheck and capabilities for each
 failed spec, and a dump of the enclave without its files artifacts, which hold
 the keys and the token, so that a network that did not start is diagnosed too.
-Until a qrl-package issues client certificates, the mTLS lane fails without
-failing the run.
+
+The lanes are the JSON list of the `lanes` input, then of the
+`E2E_REMOTE_SIGNER_LANES` variable, then `["consensus-remote-signer"]`: mTLS
+is not covered until a qrl-package issues client certificates and the
+variable names `consensus-remote-signer-mtls` too. Before it builds any image,
+each lane job checks that the qrl-package takes every participant field the
+lane's profile sets, so a lane whose qrl-package lacks
+`remote_signer_auth_mode` fails in seconds.
 
 GitHub runs a scheduled workflow, and offers a manual run of one, only once
 the workflow is on the default branch: the nightly runs, and so three

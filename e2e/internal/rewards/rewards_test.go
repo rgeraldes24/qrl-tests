@@ -18,7 +18,6 @@ import (
 const validatorIndex = 64
 
 // fakeBeacon serves the head and the attestation rewards the scan reads.
-// Handlers run on the server goroutine, so its state is guarded by mu.
 type fakeBeacon struct {
 	mu       sync.Mutex
 	head     uint64

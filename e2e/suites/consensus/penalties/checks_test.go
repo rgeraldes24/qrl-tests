@@ -32,8 +32,8 @@ func (validator spareValidator) reward(ctx context.Context, epoch uint64) (beaco
 	return staking.AttestationReward(ctx, validator.client, epoch, validator.index)
 }
 
-// firstAttestedEpoch waits for the first epoch from from on whose source and
-// target votes were both timely, and returns it.
+// firstAttestedEpoch waits for the first epoch, starting at epoch from, whose
+// source and target votes were both timely, and returns it.
 func (validator spareValidator) firstAttestedEpoch(ctx context.Context, from uint64, timeout time.Duration) uint64 {
 	ginkgo.GinkgoHelper()
 	return staking.AwaitAttestationReward(ctx, validator.client, validator.chain, validator.index, from,

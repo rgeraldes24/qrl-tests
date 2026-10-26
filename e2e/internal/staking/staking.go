@@ -99,9 +99,9 @@ func ExpectActiveAndAttesting(
 	return validator
 }
 
-// AwaitAttestationReward waits, as the rewards of each epoch from from on are
-// served, for the first epoch whose reward for the validator satisfies match,
-// and returns it. want describes match in the failure message.
+// AwaitAttestationReward checks the validator's reward for each epoch,
+// starting at epoch from, once it is served, and returns the first epoch whose
+// reward satisfies match. want describes match in the failure message.
 func AwaitAttestationReward(
 	ctx context.Context,
 	client *beacon.Client,
@@ -241,10 +241,10 @@ func ExpectExitAndWithdrawal(
 	return validator
 }
 
-// rewardedFrom checks the validator's attestation rewards from epoch from
-// through the latest epoch whose rewards are served, two before the head. It
-// reports whether one satisfied match, and the epoch to check next, which is
-// that one if it did.
+// rewardedFrom checks the validator's attestation rewards for each epoch,
+// starting at epoch from, through the latest epoch whose rewards are served,
+// two before the head. It reports whether one satisfied match, and the epoch
+// to check next, which is that one if it did.
 func rewardedFrom(
 	ctx context.Context,
 	client *beacon.Client,

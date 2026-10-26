@@ -21,7 +21,7 @@ func (validator spareValidator) awaitRewards(ctx context.Context, epoch uint64) 
 	gomega.Eventually(func(g gomega.Gomega) {
 		head, err := validator.client.HeadSlot(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(rewards.RewardsServed(validator.chain, head, epoch)).To(gomega.BeTrue())
+		g.Expect(rewards.Served(validator.chain, head, epoch)).To(gomega.BeTrue())
 	}).WithContext(ctx).
 		WithTimeout(time.Duration(remaining+2)*validator.chain.EpochDuration).
 		WithPolling(rewards.PollInterval).

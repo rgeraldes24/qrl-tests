@@ -12,7 +12,6 @@ import (
 
 // rewardSpec holds the consensus constants of the Altair base reward.
 type rewardSpec struct {
-	maxEffectiveBalance          uint64
 	increment                    uint64
 	baseRewardFactor             uint64
 	sourceWeight                 uint64
@@ -27,7 +26,6 @@ func loadRewardSpec(ctx context.Context, client *beacon.Client) (rewardSpec, err
 		name  string
 		field *uint64
 	}{
-		{"MAX_EFFECTIVE_BALANCE", &spec.maxEffectiveBalance},
 		{"EFFECTIVE_BALANCE_INCREMENT", &spec.increment},
 		{"BASE_REWARD_FACTOR", &spec.baseRewardFactor},
 		{"TIMELY_SOURCE_WEIGHT", &spec.sourceWeight},
@@ -63,30 +61,51 @@ type spareValidator struct {
 	index  uint64
 }
 
-// expectedMissedVotePenalties computes the penalties for missing the votes of
-// epoch from the state the rewards of epoch are processed in: the one at the
-// last slot of the next epoch. It refuses an epoch processed in an inactivity
-// leak, whose penalty Qrysm folds into the target score.
-func (validator spareValidator) expectedMissedVotePenalties(ctx context.Context, epoch uint64) (source, target uint64, err error) {
+// voteAmounts is what a validator's votes of an epoch earn or lose: timely is
+// what each vote earns when it is timely, the ideal reward at the validator's
+// effective balance, and missedSource and missedTarget what missing those
+// votes costs. Missing the head vote costs nothing.
+type voteAmounts struct {
+	timely       beacon.IdealAttestationReward
+	missedSource uint64
+	missedTarget uint64
+}
+
+// voteAmounts computes the vote amounts of epoch from the state its rewards
+// are processed in: the one at the last slot of the next epoch. It refuses an
+// epoch processed in an inactivity leak, whose penalty Qrysm folds into the
+// target score.
+func (validator spareValidator) voteAmounts(ctx context.Context, epoch uint64) (voteAmounts, error) {
 	stateID := strconv.FormatUint((epoch+2)*validator.chain.SlotsPerEpoch-1, 10)
 	checkpoints, err := validator.client.FinalityCheckpointsAt(ctx, stateID)
 	if err != nil {
-		return 0, 0, err
+		return voteAmounts{}, err
 	}
 	if finalized := checkpoints.Finalized.Epoch; epoch > finalized+validator.spec.minEpochsToInactivityPenalty {
-		return 0, 0, fmt.Errorf(
+		return voteAmounts{}, fmt.Errorf(
 			"the rewards of epoch %d are processed in an inactivity leak: the last finalized epoch is %d", epoch, finalized)
 	}
 	record, err := validator.client.ValidatorAt(ctx, stateID, strconv.FormatUint(validator.index, 10))
 	if err != nil {
-		return 0, 0, err
+		return voteAmounts{}, err
 	}
 	total, err := validator.client.TotalActiveBalance(ctx, stateID)
 	if err != nil {
-		return 0, 0, err
+		return voteAmounts{}, err
 	}
-	source, target = validator.spec.missedVotePenalties(record.EffectiveBalance, total)
-	return source, target, nil
+	ideal, err := validator.client.IdealAttestationRewards(ctx, epoch)
+	if err != nil {
+		return voteAmounts{}, err
+	}
+	amounts := voteAmounts{}
+	amounts.missedSource, amounts.missedTarget = validator.spec.missedVotePenalties(record.EffectiveBalance, total)
+	for _, reward := range ideal {
+		if reward.EffectiveBalance == record.EffectiveBalance {
+			amounts.timely = reward
+			return amounts, nil
+		}
+	}
+	return voteAmounts{}, fmt.Errorf("epoch %d has no ideal reward for effective balance %d", epoch, record.EffectiveBalance)
 }
 
 // balanceAtEpochStart is the balance in the state at the first slot of epoch:
@@ -99,10 +118,10 @@ func (validator spareValidator) balanceAtEpochStart(ctx context.Context, epoch u
 }
 
 // blockBalanceChanges sums what the blocks after the first slot of epoch,
-// through the first slot of the next, did to the balance of a validator that
-// proposes none of them: its sync committee rewards, negative for missed
-// duties, less its withdrawals. Those blocks lie between balanceAtEpochStart
-// of epoch and of the next.
+// through the first slot of the next, did to the validator's balance: the
+// rewards of the blocks it proposed and its sync committee rewards, negative
+// for missed duties, less its withdrawals. Those blocks lie between
+// balanceAtEpochStart of epoch and of the next.
 func (validator spareValidator) blockBalanceChanges(ctx context.Context, epoch uint64) (int64, error) {
 	var change int64
 	start := epoch * validator.chain.SlotsPerEpoch
@@ -114,6 +133,13 @@ func (validator spareValidator) blockBalanceChanges(ctx context.Context, epoch u
 		}
 		if err != nil {
 			return 0, err
+		}
+		if operations.ProposerIndex == validator.index {
+			proposed, err := validator.client.BlockRewards(ctx, blockID)
+			if err != nil {
+				return 0, err
+			}
+			change += int64(proposed.Total)
 		}
 		for _, withdrawal := range operations.Withdrawals {
 			if withdrawal.ValidatorIndex == validator.index {

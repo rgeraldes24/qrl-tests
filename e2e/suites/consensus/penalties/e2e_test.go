@@ -145,12 +145,11 @@ var _ = ginkgo.Describe(
 
 			for epoch := first; epoch <= last; epoch++ {
 				reward := testsuite.MustSucceed(spare.reward(ctx, epoch))
-				source, target, err := spare.expectedMissedVotePenalties(ctx, epoch)
-				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+				amounts := testsuite.MustSucceed(spare.voteAmounts(ctx, epoch))
 				gomega.Expect(reward).To(gomega.Equal(beacon.AttestationReward{
 					ValidatorIndex: spare.index,
-					Source:         -int64(source),
-					Target:         -int64(target),
+					Source:         -int64(amounts.missedSource),
+					Target:         -int64(amounts.missedTarget),
 				}), "attestation rewards of epoch %d", epoch)
 
 				// The rewards of epoch apply when epoch+2 starts. The blocks
@@ -159,34 +158,43 @@ var _ = ginkgo.Describe(
 				before := testsuite.MustSucceed(spare.balanceAtEpochStart(ctx, epoch+1))
 				after := testsuite.MustSucceed(spare.balanceAtEpochStart(ctx, epoch+2))
 				blocks := testsuite.MustSucceed(spare.blockBalanceChanges(ctx, epoch+1))
-				want := int64(before) - int64(source+target) + blocks
+				penalty := amounts.missedSource + amounts.missedTarget
+				want := int64(before) - int64(penalty) + blocks
 				gomega.Expect(int64(after)).To(gomega.Equal(want),
 					"balance went from %d to %d over epoch %d: the %d shor penalty of epoch %d and %d shor from blocks make %d",
-					before, after, epoch+1, source+target, epoch, blocks, want)
+					before, after, epoch+1, penalty, epoch, blocks, want)
 			}
 		}, ginkgo.SpecTimeout(offlineTimeout))
 
-		ginkgo.It("stops being penalized once its validator client starts again", func(ctx ginkgo.SpecContext) {
+		ginkgo.It("earns exactly the timely-vote rewards once its validator client starts again", func(ctx ginkgo.SpecContext) {
 			head := testsuite.MustSucceed(node.Beacon.HeadSlot(ctx))
 			startValidatorClient(ctx)
 			resumed := spare.firstAttestedEpoch(ctx, spare.chain.Epoch(head), attestTimeout)
 
-			// A timely source vote needs inclusion within two slots, which
-			// two empty slots take away from a healthy client; the target
-			// vote has the whole epoch.
+			// The target vote has the whole epoch, so a healthy client's is
+			// timely. A timely source vote needs inclusion within two slots
+			// and a timely head vote within one, which empty slots can take
+			// away, so each of those earns its reward or costs its penalty.
 			next := resumed + 1
 			spare.awaitRewards(ctx, next)
 			reward := testsuite.MustSucceed(spare.reward(ctx, next))
-			gomega.Expect(reward.Target).To(gomega.BeNumerically(">", 0),
-				"epoch %d after the first attested epoch has target %d", next, reward.Target)
+			amounts := testsuite.MustSucceed(spare.voteAmounts(ctx, next))
+			gomega.Expect(reward.Target).To(gomega.Equal(amounts.timely.Target), "target reward of epoch %d", next)
+			gomega.Expect(reward.Source).To(gomega.BeElementOf(amounts.timely.Source, -int64(amounts.missedSource)),
+				"source reward of epoch %d", next)
+			gomega.Expect(reward.Head).To(gomega.BeElementOf(amounts.timely.Head, int64(0)), "head reward of epoch %d", next)
 
-			// The offline epochs left the balance under the maximum, so no
-			// partial withdrawal takes the reward before it is read.
+			// The rewards of next apply when next+2 starts. The blocks of
+			// next+1 add the validator's proposer and sync committee rewards
+			// and take any withdrawal.
 			before := testsuite.MustSucceed(spare.balanceAtEpochStart(ctx, next+1))
 			after := testsuite.MustSucceed(spare.balanceAtEpochStart(ctx, next+2))
-			gomega.Expect(before).To(gomega.BeNumerically("<", spare.spec.maxEffectiveBalance))
-			gomega.Expect(after).To(gomega.BeNumerically(">", before),
-				"balance went from %d to %d over epoch %d", before, after, next+1)
+			blocks := testsuite.MustSucceed(spare.blockBalanceChanges(ctx, next+1))
+			earned := reward.Head + reward.Source + reward.Target
+			want := int64(before) + earned + blocks
+			gomega.Expect(int64(after)).To(gomega.Equal(want),
+				"balance went from %d to %d over epoch %d: the %d shor reward of epoch %d and %d shor from blocks make %d",
+				before, after, next+1, earned, next, blocks, want)
 		}, ginkgo.SpecTimeout(attestTimeout+2*time.Minute))
 	},
 )

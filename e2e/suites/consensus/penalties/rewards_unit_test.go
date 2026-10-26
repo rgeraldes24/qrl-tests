@@ -20,7 +20,6 @@ const (
 
 func testRewardSpec() rewardSpec {
 	return rewardSpec{
-		maxEffectiveBalance:          40_000 * shorPerQRL,
 		increment:                    shorPerQRL,
 		baseRewardFactor:             2048,
 		sourceWeight:                 14,
@@ -102,7 +101,7 @@ func finalizedJSON(epoch uint64) string {
 
 func TestLoadRewardSpec(t *testing.T) {
 	_, client := newFakeBeacon(t, map[string]string{"config/spec": `{
-		"MAX_EFFECTIVE_BALANCE":"40000000000000","EFFECTIVE_BALANCE_INCREMENT":"1000000000",
+		"EFFECTIVE_BALANCE_INCREMENT":"1000000000",
 		"BASE_REWARD_FACTOR":"2048","TIMELY_SOURCE_WEIGHT":"14","TIMELY_TARGET_WEIGHT":"26",
 		"WEIGHT_DENOMINATOR":"64","MIN_EPOCHS_TO_INACTIVITY_PENALTY":"4"}`})
 
@@ -111,38 +110,68 @@ func TestLoadRewardSpec(t *testing.T) {
 	require.Equal(t, testRewardSpec(), spec)
 }
 
-func TestExpectedMissedVotePenaltiesReadsTheProcessingState(t *testing.T) {
+func idealJSON(effectiveBalances ...uint64) string {
+	var rewards []string
+	for _, balance := range effectiveBalances {
+		rewards = append(rewards, fmt.Sprintf(`{"effective_balance":"%d","head":"%d","target":"%d","source":"%d"}`,
+			balance, balance/100_000, balance/50_000, balance/100_000))
+	}
+	return `{"ideal_rewards":[` + strings.Join(rewards, ",") + `],"total_rewards":[]}`
+}
+
+func TestVoteAmountsReadTheProcessingState(t *testing.T) {
 	// The rewards of epoch 5 are processed in the state at slot 55, the last
 	// of epoch 6.
 	responses := map[string]string{
 		"beacon/states/55/finality_checkpoints": finalizedJSON(3),
 		"beacon/states/55/validators/64":        validatorJSON(39_997*shorPerQRL, 39_997*shorPerQRL),
 		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}},{"validator":{"effective_balance":"%d"}}]`, 64*40_000*shorPerQRL, 39_997*shorPerQRL),
+		"beacon/rewards/attestations/5":         idealJSON(39_997*shorPerQRL, 40_000*shorPerQRL),
 	}
 	fake, client := newFakeBeacon(t, responses)
 
-	source, target, err := testSpare(client).expectedMissedVotePenalties(t.Context(), 5)
+	amounts, err := testSpare(client).voteAmounts(t.Context(), 5)
 	require.NoError(t, err)
-	require.Equal(t, uint64(351_408_642), source)
-	require.Equal(t, uint64(652_616_050), target)
+	require.Equal(t, uint64(351_408_642), amounts.missedSource)
+	require.Equal(t, uint64(652_616_050), amounts.missedTarget)
+	// The ideal reward is the one at the validator's own effective balance.
+	require.Equal(t, beacon.IdealAttestationReward{
+		EffectiveBalance: 39_997 * shorPerQRL,
+		Head:             39_997 * shorPerQRL / 100_000,
+		Target:           39_997 * shorPerQRL / 50_000,
+		Source:           39_997 * shorPerQRL / 100_000,
+	}, amounts.timely)
 	for _, path := range fake.paths() {
-		require.True(t, strings.HasPrefix(path, "beacon/states/55/"), "read %s", path)
+		require.True(t, strings.HasPrefix(path, "beacon/states/55/") || path == "beacon/rewards/attestations/5",
+			"read %s", path)
 	}
 }
 
-func TestExpectedMissedVotePenaltiesRefusesAnInactivityLeak(t *testing.T) {
+func TestVoteAmountsNeedTheValidatorsIdealReward(t *testing.T) {
+	_, client := newFakeBeacon(t, map[string]string{
+		"beacon/states/55/finality_checkpoints": finalizedJSON(3),
+		"beacon/states/55/validators/64":        validatorJSON(39_997*shorPerQRL, 39_997*shorPerQRL),
+		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}}]`, 65*40_000*shorPerQRL),
+		"beacon/rewards/attestations/5":         idealJSON(40_000 * shorPerQRL),
+	})
+	_, err := testSpare(client).voteAmounts(t.Context(), 5)
+	require.EqualError(t, err, "epoch 5 has no ideal reward for effective balance 39997000000000")
+}
+
+func TestVoteAmountsRefuseAnInactivityLeak(t *testing.T) {
 	// Epoch 5 is four epochs past finalized epoch 1, the most without a leak.
 	_, client := newFakeBeacon(t, map[string]string{
 		"beacon/states/55/finality_checkpoints": finalizedJSON(1),
 		"beacon/states/55/validators/64":        validatorJSON(40_000*shorPerQRL, 40_000*shorPerQRL),
 		"beacon/states/55/validators":           fmt.Sprintf(`[{"validator":{"effective_balance":"%d"}}]`, 65*40_000*shorPerQRL),
+		"beacon/rewards/attestations/5":         idealJSON(40_000 * shorPerQRL),
 	})
-	_, _, err := testSpare(client).expectedMissedVotePenalties(t.Context(), 5)
+	_, err := testSpare(client).voteAmounts(t.Context(), 5)
 	require.NoError(t, err)
 
 	// Five epochs past finalized epoch 0 is a leak.
 	_, client = newFakeBeacon(t, map[string]string{"beacon/states/55/finality_checkpoints": finalizedJSON(0)})
-	_, _, err = testSpare(client).expectedMissedVotePenalties(t.Context(), 5)
+	_, err = testSpare(client).voteAmounts(t.Context(), 5)
 	require.EqualError(t, err,
 		"the rewards of epoch 5 are processed in an inactivity leak: the last finalized epoch is 0")
 }
@@ -158,7 +187,7 @@ func TestBalanceAtEpochStartReadsTheFirstSlot(t *testing.T) {
 
 func TestBlockBalanceChangesCoverTheBlocksBetweenTwoEpochStarts(t *testing.T) {
 	block := func(withdrawals string) string {
-		return fmt.Sprintf(`{"message":{"body":{"execution_payload":{"withdrawals":[%s]}}}}`, withdrawals)
+		return fmt.Sprintf(`{"message":{"proposer_index":"3","body":{"execution_payload":{"withdrawals":[%s]}}}}`, withdrawals)
 	}
 	withdrawal := func(index, amount uint64) string {
 		return fmt.Sprintf(`{"validator_index":"%d","amount":"%d"}`, index, amount)
@@ -167,8 +196,8 @@ func TestBlockBalanceChangesCoverTheBlocksBetweenTwoEpochStarts(t *testing.T) {
 		return fmt.Sprintf(`[{"validator_index":"%d","reward":"%d"}]`, spareIndex, reward)
 	}
 	// Epoch 6 covers slots 49 through 56. Slots 48 and 57 belong to the
-	// balances either side, slot 50 is empty, and at slot 52 the validator
-	// is outside the sync committee.
+	// balances either side, slot 50 is empty, at slot 52 the validator is
+	// outside the sync committee, and it proposed the block at slot 54.
 	responses := map[string]string{
 		"beacon/blocks/48":                 block(withdrawal(spareIndex, 1000)),
 		"beacon/blocks/49":                 block(withdrawal(spareIndex, 7) + "," + withdrawal(3, 500)),
@@ -185,11 +214,20 @@ func TestBlockBalanceChangesCoverTheBlocksBetweenTwoEpochStarts(t *testing.T) {
 		responses[fmt.Sprintf("beacon/blocks/%d", slot)] = block("")
 		responses[fmt.Sprintf("beacon/rewards/sync_committee/%d", slot)] = `[]`
 	}
+	responses["beacon/blocks/54"] = fmt.Sprintf(
+		`{"message":{"proposer_index":"%d","body":{"execution_payload":{"withdrawals":[]}}}}`, spareIndex)
+	responses["beacon/rewards/blocks/54"] = fmt.Sprintf(`{"proposer_index":"%d","total":"40"}`, spareIndex)
 	fake, client := newFakeBeacon(t, responses)
 
 	change, err := testSpare(client).blockBalanceChanges(t.Context(), 6)
 	require.NoError(t, err)
-	require.Equal(t, int64(-7-2+5-3), change)
+	require.Equal(t, int64(-7-2+5+40-3), change)
+	// Only the block the validator proposed is asked for its rewards.
+	for _, path := range fake.paths() {
+		if strings.HasPrefix(path, "beacon/rewards/blocks/") {
+			require.Equal(t, "beacon/rewards/blocks/54", path)
+		}
+	}
 	require.NotContains(t, fake.paths(), "beacon/blocks/48")
 	require.NotContains(t, fake.paths(), "beacon/blocks/57")
 	require.NotContains(t, fake.paths(), "beacon/rewards/sync_committee/50")

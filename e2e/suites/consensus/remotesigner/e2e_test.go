@@ -179,18 +179,20 @@ var _ = ginkgo.Describe(
 			gomega.Expect(keys).NotTo(gomega.BeEmpty(), "the validator client's key file lists no key")
 
 			served := testsuite.MustSucceed(signer.PublicKeys(ctx))
+			gomega.Expect(slices.IsSorted(served)).To(gomega.BeTrue(), "the signer serves its keys unsorted")
 			gomega.Expect(sortedLower(served)).To(gomega.Equal(sortedLower(keys)),
 				"the signer serves %d keys, the validator client's key file lists %d", len(served), len(keys))
 
-			// The single participant's validator client holds every genesis
-			// validator.
-			genesisKeys := make([]string, len(keys))
-			for index := range genesisKeys {
-				record := testsuite.MustSucceed(node.Beacon.Validator(ctx, strconv.Itoa(index)))
-				genesisKeys[index] = record.PublicKey
+			// The single participant's validator client holds every validator
+			// of the network, which are the genesis validators: none of them
+			// signs elsewhere, so finality depends on the signer alone.
+			validators := testsuite.MustSucceed(node.Beacon.Validators(ctx))
+			networkKeys := make([]string, len(validators))
+			for index, record := range validators {
+				networkKeys[index] = record.PublicKey
 			}
-			gomega.Expect(sortedLower(genesisKeys)).To(gomega.Equal(sortedLower(keys)),
-				"the key file does not list the keys of genesis validators 0-%d", len(keys)-1)
+			gomega.Expect(sortedLower(networkKeys)).To(gomega.Equal(sortedLower(keys)),
+				"the network has %d validators, the validator client's key file lists %d", len(networkKeys), len(keys))
 
 			for name, client := range map[string]*remotesigner.Client{
 				"no token":      signer.WithToken(""),

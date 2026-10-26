@@ -82,9 +82,16 @@ func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoi
 // SlashedValidators returns the validators of the head state that have been
 // slashed.
 func (client *Client) SlashedValidators(ctx context.Context) ([]Validator, error) {
-	records, err := getData[[]validatorWire](
-		ctx, client, "/qrl/v1/beacon/states/head/validators?status=active_slashed&status=exited_slashed",
-	)
+	return client.validators(ctx, "?status=active_slashed&status=exited_slashed")
+}
+
+// Validators returns every validator of the head state.
+func (client *Client) Validators(ctx context.Context) ([]Validator, error) {
+	return client.validators(ctx, "")
+}
+
+func (client *Client) validators(ctx context.Context, query string) ([]Validator, error) {
+	records, err := getData[[]validatorWire](ctx, client, "/qrl/v1/beacon/states/head/validators"+query)
 	if err != nil {
 		return nil, err
 	}

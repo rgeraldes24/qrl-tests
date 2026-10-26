@@ -16,7 +16,7 @@ import (
 const PollInterval = 2 * time.Second
 
 // AwaitAttestationReward checks the validator's reward for each epoch,
-// starting at epoch from, once it is served, and returns the first epoch whose
+// starting at epoch from, once it is available, and returns the first epoch whose
 // reward satisfies match. want describes match in the failure message.
 func AwaitAttestationReward(
 	ctx context.Context,
@@ -54,10 +54,10 @@ func AttestationReward(ctx context.Context, client *beacon.Client, epoch, index 
 	return rewards[0], nil
 }
 
-// Served reports whether Qrysm serves the attestation rewards of epoch
+// Available reports whether Qrysm serves the attestation rewards of epoch
 // once the head is at headSlot: only two epochs later, so every attestation
 // has had a chance of inclusion.
-func Served(chain chaininfo.Info, headSlot, epoch uint64) bool {
+func Available(chain chaininfo.Info, headSlot, epoch uint64) bool {
 	return epoch+2 <= chain.Epoch(headSlot)
 }
 
@@ -76,14 +76,14 @@ type rewardScanner struct {
 }
 
 // scan reads the rewards from next through the latest epoch whose rewards are
-// served, two before the head, and reports whether one satisfied match. A
+// available, two before the head, and reports whether one satisfied match. A
 // failed read leaves next at its epoch, so the retry does not skip it.
 func (scanner *rewardScanner) scan(ctx context.Context) (bool, error) {
 	head, err := scanner.client.HeadSlot(ctx)
 	if err != nil {
 		return false, err
 	}
-	for ; Served(scanner.chain, head, scanner.next); scanner.next++ {
+	for ; Available(scanner.chain, head, scanner.next); scanner.next++ {
 		reward, err := AttestationReward(ctx, scanner.client, scanner.next, scanner.index)
 		if err != nil {
 			return false, err
@@ -99,7 +99,7 @@ func (scanner *rewardScanner) scan(ctx context.Context) (bool, error) {
 // progress describes how far an unmatched scan got, for a failure message.
 func (scanner *rewardScanner) progress() string {
 	if scanner.last == nil {
-		return fmt.Sprintf("the rewards of epoch %d are not served yet", scanner.from)
+		return fmt.Sprintf("the rewards of epoch %d are not available yet", scanner.from)
 	}
 	last := *scanner.last
 	read := fmt.Sprintf("read epoch %d", scanner.from)

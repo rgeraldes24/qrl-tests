@@ -90,12 +90,12 @@ func anyReward(reward beacon.AttestationReward) bool {
 	return reward.Head > 0 || reward.Target > 0 || reward.Source > 0
 }
 
-func TestServed(t *testing.T) {
+func TestAvailable(t *testing.T) {
 	chain := chaininfo.Info{SlotsPerEpoch: 8}
 	// Slot 23 is in epoch 2, which serves epoch 0 only.
-	require.True(t, Served(chain, 23, 0))
-	require.False(t, Served(chain, 23, 1))
-	require.True(t, Served(chain, 24, 1))
+	require.True(t, Available(chain, 23, 0))
+	require.False(t, Available(chain, 23, 1))
+	require.True(t, Available(chain, 24, 1))
 }
 
 func TestRewardScanner(t *testing.T) {
@@ -114,7 +114,7 @@ func TestRewardScanner(t *testing.T) {
 		from:   1,
 	}
 
-	// The head is in epoch 3, so rewards are served through epoch 1.
+	// The head is in epoch 3, so rewards are available through epoch 1.
 	found, err := scanner.scan(t.Context())
 	require.NoError(t, err)
 	require.False(t, found)
@@ -149,7 +149,7 @@ func TestRewardScanner(t *testing.T) {
 
 func TestRewardScannerProgress(t *testing.T) {
 	scanner := &rewardScanner{next: 4, from: 4}
-	require.Equal(t, "the rewards of epoch 4 are not served yet", scanner.progress())
+	require.Equal(t, "the rewards of epoch 4 are not available yet", scanner.progress())
 
 	scanner.next = 5
 	scanner.last = &beacon.AttestationReward{Source: -351, Target: -652}

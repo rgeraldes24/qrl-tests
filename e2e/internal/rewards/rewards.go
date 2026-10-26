@@ -53,9 +53,9 @@ func AttestationReward(ctx context.Context, client *beacon.Client, epoch, index 
 	return rewards[0], nil
 }
 
-// Available reports whether Qrysm serves the attestation rewards of epoch
-// once the head is at headSlot: only two epochs later, so every attestation
-// has had a chance of inclusion.
+// Available reports whether the attestation rewards of epoch are available
+// once the head is at headSlot. Qrysm makes them available two epochs later,
+// so every attestation has had a chance of inclusion.
 func Available(chain chaininfo.Info, headSlot, epoch uint64) bool {
 	return epoch+2 <= chain.Epoch(headSlot)
 }

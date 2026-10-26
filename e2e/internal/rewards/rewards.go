@@ -28,11 +28,12 @@ func AwaitAttestationReward(
 	match func(beacon.AttestationReward) bool,
 ) uint64 {
 	ginkgo.GinkgoHelper()
-	scanner := &rewardScanner{client: client, chain: chain, index: index, match: match, next: from}
+	scanner := &rewardScanner{client: client, chain: chain, index: index, match: match, next: from, from: from}
 	gomega.Eventually(func(g gomega.Gomega) {
 		found, err := scanner.scan(ctx)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s", index, from, want)
+		g.Expect(found).To(gomega.BeTrue(), "validator %d has no epoch since %d with %s: %s",
+			index, from, want, scanner.progress())
 	}).WithContext(ctx).
 		WithTimeout(timeout).
 		WithPolling(PollInterval).
@@ -61,14 +62,17 @@ func Served(chain chaininfo.Info, headSlot, epoch uint64) bool {
 }
 
 // rewardScanner reads one validator's attestation rewards epoch by epoch, so
-// polling callers read each epoch once. next is the epoch it reads next, or
-// the one that satisfied match.
+// polling callers read each epoch once. It starts at epoch from; next is the
+// epoch it reads next, or the one that satisfied match, and last is the last
+// reward it read, if any.
 type rewardScanner struct {
 	client *beacon.Client
 	chain  chaininfo.Info
 	index  uint64
 	match  func(beacon.AttestationReward) bool
 	next   uint64
+	from   uint64
+	last   *beacon.AttestationReward
 }
 
 // scan reads the rewards from next through the latest epoch whose rewards are
@@ -84,9 +88,23 @@ func (scanner *rewardScanner) scan(ctx context.Context) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		scanner.last = &reward
 		if scanner.match(reward) {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+// progress describes how far an unmatched scan got, for a failure message.
+func (scanner *rewardScanner) progress() string {
+	if scanner.last == nil {
+		return fmt.Sprintf("the rewards of epoch %d are not served yet", scanner.from)
+	}
+	last := *scanner.last
+	read := fmt.Sprintf("read epoch %d", scanner.from)
+	if lastEpoch := scanner.next - 1; lastEpoch > scanner.from {
+		read = fmt.Sprintf("read epochs %d to %d", scanner.from, lastEpoch)
+	}
+	return fmt.Sprintf("%s, the last with head %d, source %d and target %d", read, last.Head, last.Source, last.Target)
 }

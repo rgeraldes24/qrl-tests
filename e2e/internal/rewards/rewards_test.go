@@ -111,7 +111,6 @@ func TestRewardScanner(t *testing.T) {
 		index:  validatorIndex,
 		match:  anyReward,
 		next:   1,
-		from:   1,
 	}
 
 	// The head is in epoch 3, so rewards are available through epoch 1.
@@ -145,17 +144,4 @@ func TestRewardScanner(t *testing.T) {
 	fake.set(func(fake *fakeBeacon) { fake.rewards[3] = reward(validatorIndex+1, 7, 7) })
 	_, err = scanner.scan(t.Context())
 	require.ErrorContains(t, err, "epoch 3 rewards do not cover validator 64")
-}
-
-func TestRewardScannerProgress(t *testing.T) {
-	scanner := &rewardScanner{next: 4, from: 4}
-	require.Equal(t, "the rewards of epoch 4 are not available yet", scanner.progress())
-
-	scanner.next = 5
-	scanner.last = &beacon.AttestationReward{Source: -351, Target: -652}
-	require.Equal(t, "read epoch 4, the last with head 0, source -351 and target -652", scanner.progress())
-
-	scanner.next = 7
-	scanner.last = &beacon.AttestationReward{Head: 3, Source: -351, Target: 652}
-	require.Equal(t, "read epochs 4 to 6, the last with head 3, source -351 and target 652", scanner.progress())
 }

@@ -26,6 +26,15 @@ func backendFlag() *cli.StringFlag {
 	}
 }
 
+func profileFlag() *cli.StringFlag {
+	return &cli.StringFlag{
+		Name:    "profile",
+		Usage:   "built-in network profile",
+		Value:   string(devnet.ProfileSingle),
+		EnvVars: []string{"DEVNET_PROFILE"},
+	}
+}
+
 func parametersFileFlag() *cli.PathFlag {
 	return &cli.PathFlag{
 		Name:    "params-file",

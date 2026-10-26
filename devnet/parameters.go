@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/cyyber/qrl-tests/internal/devwallet"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -66,6 +67,16 @@ type requiredParameters struct {
 	Network struct {
 		PrefundedAccounts map[string]any `yaml:"prefunded_accounts"`
 	} `yaml:"network_params"`
+}
+
+// ProfileParameters renders the qrl-package parameters Start passes for a
+// built-in profile, so that a network started outside qrl-tests, for example
+// from a qrl-package checkout, matches it.
+func ProfileParameters(profile Profile, images Images) (string, error) {
+	if _, exists := profileSpecs[profile]; !exists {
+		return "", fmt.Errorf("unknown development-network profile %q", profile)
+	}
+	return profileParameters(devwallet.Address, StartOptions{Profile: profile, Images: images})
 }
 
 func resolveParameters(address string, options StartOptions) (string, error) {

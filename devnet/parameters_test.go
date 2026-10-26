@@ -97,6 +97,19 @@ func TestRemoteSignerProfileParameters(t *testing.T) {
 	require.Equal(t, DefaultValidatorImage, participant["vc_image"])
 }
 
+func TestProfileParameters(t *testing.T) {
+	images := Images{Validator: "registry.example/qrysm-validator:test"}
+	rendered, err := ProfileParameters(ProfileRemoteSigner, images)
+	require.NoError(t, err)
+	started, err := resolveParameters(devwallet.Address, StartOptions{Images: images, Profile: ProfileRemoteSigner})
+	require.NoError(t, err)
+	require.Equal(t, started, rendered)
+	require.Contains(t, decodedParametersFile(t, rendered).Network.PrefundedAccounts, devwallet.Address)
+
+	_, err = ProfileParameters("unknown", images)
+	require.ErrorContains(t, err, "unknown development-network profile")
+}
+
 func TestFileParametersPassThroughUnchanged(t *testing.T) {
 	address := "Q" + strings.Repeat("b", 128)
 	custom := []byte(fmt.Sprintf(`participants:

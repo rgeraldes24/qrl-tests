@@ -23,7 +23,11 @@ const (
 	retryInterval              = 500 * time.Millisecond
 
 	// PackageLocator pins the qrl-package revision every network runs.
-	PackageLocator = "github.com/cyyber/qrl-package@514f0835097b60f2485b8a64f62fb6ecf8bae087"
+	PackageLocator = "github.com/theQRL/qrl-package@25d3a1c53009294f06644c5b49c1011cf86ad0a5"
+
+	// GenesisMnemonic is the pinned qrl-package's default
+	// preregistered_validator_keys_mnemonic.
+	GenesisMnemonic = "veto waiter rail aroma aunt chess fiend than sahara unwary punk dawn belong agent sane reefy loyal from judas clean paste rho madam poor pay convoy duty circa hybrid circus exempt splash"
 )
 
 // enclaveClient owns normal enclave and package operations through the
@@ -33,6 +37,8 @@ type enclaveClient interface {
 	CreateEnclave(ctx context.Context, name string) error
 	RunRemotePackage(ctx context.Context, enclaveName, locator, serializedParams string) error
 	Services(ctx context.Context, enclaveName string) (map[string]kurtosis.Service, error)
+	StopServices(ctx context.Context, enclaveName string, names []string) error
+	StartServices(ctx context.Context, enclaveName string, names []string) error
 	DestroyEnclave(ctx context.Context, name string) error
 }
 
@@ -74,6 +80,8 @@ func NewManager() *Manager {
 	}
 }
 
+// Inspect resolves the services of a running network. It does not wait for
+// the network; CheckReady checks that it is ready.
 func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, error) {
 	client, err := manager.newEnclaveClient()
 	if err != nil {
@@ -86,21 +94,17 @@ func (manager *Manager) Inspect(ctx context.Context, name string) (Environment, 
 	if !found {
 		return Environment{}, fmt.Errorf("network %q is not running", name)
 	}
+	return resolveEnvironment(ctx, client, name)
+}
 
-	environment, err := resolveEnvironment(ctx, client, name)
-	if err != nil {
-		return Environment{}, err
-	}
-
+// CheckReady checks that the chain of the network advances and that the
+// development wallet is funded.
+func (manager *Manager) CheckReady(ctx context.Context, environment Environment) error {
 	primary, err := environment.Primary()
 	if err != nil {
-		return Environment{}, err
+		return err
 	}
-	if err := manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address); err != nil {
-		return Environment{}, err
-	}
-
-	return environment, nil
+	return manager.probe(ctx, primary.Execution.RPCURL, devwallet.Address)
 }
 
 func (manager *Manager) Start(ctx context.Context, options StartOptions) (environment Environment, err error) {
@@ -200,6 +204,32 @@ func (manager *Manager) Stop(ctx context.Context, name string) error {
 		return nil
 	}
 	return manager.destroyAndConfirm(ctx, client, name)
+}
+
+// StopServices stops the named services of a running network, in order. They
+// keep their data and flags until StartServices starts them again.
+func (manager *Manager) StopServices(ctx context.Context, name string, services []string) error {
+	client, err := manager.newEnclaveClient()
+	if err != nil {
+		return err
+	}
+	if err := client.StopServices(ctx, name, services); err != nil {
+		return fmt.Errorf("stop services %v: %w", services, err)
+	}
+	return nil
+}
+
+// StartServices starts the named stopped services, in order. They come back
+// on new host ports, so the environment has to be inspected again.
+func (manager *Manager) StartServices(ctx context.Context, name string, services []string) error {
+	client, err := manager.newEnclaveClient()
+	if err != nil {
+		return err
+	}
+	if err := client.StartServices(ctx, name, services); err != nil {
+		return fmt.Errorf("start services %v: %w", services, err)
+	}
+	return nil
 }
 
 func (manager *Manager) destroyAndConfirm(ctx context.Context, client enclaveClient, name string) error {

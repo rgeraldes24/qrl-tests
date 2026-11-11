@@ -1,5 +1,5 @@
-// Package chaininfo resolves the genesis and fork values of a live network
-// that signing domains depend on.
+// Package chaininfo reads the deposit signing domain and the chain's timing
+// from a live beacon node.
 package chaininfo
 
 import (
@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/signing"
@@ -15,19 +16,23 @@ import (
 // Source is the subset of the beacon API the info is loaded from.
 type Source interface {
 	Genesis(context.Context) (beacon.Genesis, error)
-	Fork(context.Context) (beacon.Fork, error)
-	SpecUint(context.Context, string) (uint64, error)
+	Spec(context.Context) (beacon.Spec, error)
 }
 
-// Info carries the fork and genesis values that domains depend on.
+// Info describes a live chain: its genesis fork version and its timing.
 type Info struct {
+	GenesisTime   time.Time
 	SlotsPerEpoch uint64
+	SlotDuration  time.Duration
+	EpochDuration time.Duration
+	// ExecutionVotingPeriod is how long the beacon chain votes on one
+	// execution-data snapshot; deposits only count once a vote settles.
+	ExecutionVotingPeriod time.Duration
+	// ExecutionFollowDistance is how long before a voting period starts a
+	// deposit must land for that period's votes to cover it.
+	ExecutionFollowDistance time.Duration
 
-	genesisValidatorsRoot signing.Root
-	genesisForkVersion    signing.ForkVersion
-	previousVersion       signing.ForkVersion
-	currentVersion        signing.ForkVersion
-	forkEpoch             uint64
+	genesisForkVersion signing.ForkVersion
 }
 
 func Load(ctx context.Context, source Source) (Info, error) {
@@ -36,30 +41,39 @@ func Load(ctx context.Context, source Source) (Info, error) {
 		return Info{}, err
 	}
 
-	var chain Info
-	if err := decodeFixed("genesis validators root", genesis.ValidatorsRoot, chain.genesisValidatorsRoot[:]); err != nil {
-		return Info{}, err
-	}
+	chain := Info{GenesisTime: time.Unix(int64(genesis.Time), 0)}
 	if err := decodeFixed("genesis fork version", genesis.ForkVersion, chain.genesisForkVersion[:]); err != nil {
 		return Info{}, err
 	}
 
-	fork, err := source.Fork(ctx)
+	spec, err := source.Spec(ctx)
 	if err != nil {
 		return Info{}, err
 	}
-	if err := decodeFixed("previous fork version", fork.PreviousVersion, chain.previousVersion[:]); err != nil {
-		return Info{}, err
-	}
-	if err := decodeFixed("current fork version", fork.CurrentVersion, chain.currentVersion[:]); err != nil {
-		return Info{}, err
-	}
-	chain.forkEpoch = fork.Epoch
-
-	chain.SlotsPerEpoch, err = source.SpecUint(ctx, "SLOTS_PER_EPOCH")
+	chain.SlotsPerEpoch, err = spec.Uint("SLOTS_PER_EPOCH")
 	if err != nil {
 		return Info{}, err
 	}
+	secondsPerSlot, err := spec.Uint("SECONDS_PER_SLOT")
+	if err != nil {
+		return Info{}, err
+	}
+	votingEpochs, err := spec.Uint("EPOCHS_PER_EXECUTION_VOTING_PERIOD")
+	if err != nil {
+		return Info{}, err
+	}
+	followBlocks, err := spec.Uint("EXECUTION_FOLLOW_DISTANCE")
+	if err != nil {
+		return Info{}, err
+	}
+	secondsPerBlock, err := spec.Uint("SECONDS_PER_EXECUTION_BLOCK")
+	if err != nil {
+		return Info{}, err
+	}
+	chain.SlotDuration = time.Duration(secondsPerSlot) * time.Second
+	chain.EpochDuration = time.Duration(chain.SlotsPerEpoch) * chain.SlotDuration
+	chain.ExecutionVotingPeriod = time.Duration(votingEpochs) * chain.EpochDuration
+	chain.ExecutionFollowDistance = time.Duration(followBlocks*secondsPerBlock) * time.Second
 	return chain, nil
 }
 
@@ -67,14 +81,35 @@ func (chain Info) Epoch(slot uint64) uint64 {
 	return slot / chain.SlotsPerEpoch
 }
 
-// Domain returns the signing domain for an epoch, honouring the fork version
-// active at that epoch.
-func (chain Info) Domain(domainType signing.DomainType, epoch uint64) signing.Domain {
-	version := chain.currentVersion
-	if epoch < chain.forkEpoch {
-		version = chain.previousVersion
+// EpochAt is the epoch the wall clock is in at now, which the head can lag.
+func (chain Info) EpochAt(now time.Time) uint64 {
+	if now.Before(chain.GenesisTime) {
+		return 0
 	}
-	return signing.ComputeDomain(domainType, version, chain.genesisValidatorsRoot)
+	return uint64(now.Sub(chain.GenesisTime) / chain.EpochDuration)
+}
+
+// SlotStartTime is the wall-clock time slot starts at: genesis plus slot
+// slot durations.
+func (chain Info) SlotStartTime(slot uint64) time.Time {
+	return chain.GenesisTime.Add(time.Duration(slot) * chain.SlotDuration)
+}
+
+// DepositWait is how long a deposit takes to reach the beacon state on a
+// healthy chain. A voting period's votes cover deposits made at least the
+// follow distance before it began, and take effect once they hold a majority,
+// about halfway through. Four more epochs cover a few missed proposals,
+// inclusion and the effective balance update. It assumes the period starts at
+// least two follow distances after genesis; before that, votes keep the
+// genesis execution data.
+func (chain Info) DepositWait() time.Duration {
+	return chain.ExecutionFollowDistance + chain.ExecutionVotingPeriod*3/2 + 4*chain.EpochDuration
+}
+
+// GenesisForkVersion is the fork version deposits are signed for, as
+// 0x-prefixed hex.
+func (chain Info) GenesisForkVersion() string {
+	return "0x" + hex.EncodeToString(chain.genesisForkVersion[:])
 }
 
 // DepositDomain is fork-independent: the genesis fork version with a zero

@@ -25,6 +25,10 @@ import (
 
 const (
 	executionLaneName     = "execution"
+	consensusLaneName     = "consensus-staking-automated"
+	operatorLaneName      = "consensus-staking-operator"
+	restartLaneName       = "resilience-network-restart"
+	syncLaneName          = "sync"
 	executionABISuite     = "execution-abi"
 	executionConsoleSuite = "execution-console"
 )
@@ -33,10 +37,12 @@ type recordingNetworks struct {
 	mutex                     sync.Mutex
 	started                   devnet.StartOptions
 	inspected                 string
+	checked                   string
 	stopped                   []string
 	collected                 []string
 	events                    []string
 	startErr                  error
+	readyErr                  error
 	stopErr                   error
 	collectErr                error
 	observeStopContext        func(context.Context)
@@ -48,6 +54,15 @@ func newTestRunner(t *testing.T, configuration Config, stdout, stderr io.Writer)
 	runner := New(configuration, stdout, stderr)
 	runner.resolveExecutionImage = func(context.Context, devnet.Environment) (string, error) {
 		return "sha256:" + strings.Repeat("ab", 32), nil
+	}
+	runner.resolveConsensusImage = func(context.Context, devnet.Environment) (string, error) {
+		return "sha256:" + strings.Repeat("12", 32), nil
+	}
+	runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
+		return "sha256:" + strings.Repeat("cd", 32), nil
+	}
+	runner.resolveQrysmAlltoolsImage = func(context.Context, devnet.Environment) (string, error) {
+		return "sha256:" + strings.Repeat("ef", 32), nil
 	}
 	return runner
 }
@@ -67,6 +82,13 @@ func (networks *recordingNetworks) Inspect(_ context.Context, name string) (devn
 	defer networks.mutex.Unlock()
 	networks.inspected = name
 	return testEnvironment(name, ""), nil
+}
+
+func (networks *recordingNetworks) CheckReady(_ context.Context, environment devnet.Environment) error {
+	networks.mutex.Lock()
+	defer networks.mutex.Unlock()
+	networks.checked = environment.EnclaveName
+	return networks.readyErr
 }
 
 func (networks *recordingNetworks) Stop(ctx context.Context, name string) error {
@@ -143,54 +165,109 @@ func TestRunBuildsCommandAndCleansUp(t *testing.T) {
 }
 
 func TestRunRecordsResolvedImage(t *testing.T) {
-	reports := t.TempDir()
-	actualImage := "sha256:" + strings.Repeat("ab", 32)
-	runner := New(Config{
-		ReportDir:  reports,
-		Images:     devnet.Images{Execution: "registry.example/go-qrl:configured"},
-		Parameters: []byte("custom: true"),
-		Suites:     []string{executionConsoleSuite},
-	}, io.Discard, io.Discard)
-	runner.networks = new(recordingNetworks)
-	runner.resolveExecutionImage = func(ctx context.Context, _ devnet.Environment) (string, error) {
-		deadline, ok := ctx.Deadline()
-		require.True(t, ok)
-		require.WithinDuration(t, time.Now().Add(executionImageResolutionTimeout), deadline, time.Second)
-		return actualImage, nil
-	}
+	executionImage := "sha256:" + strings.Repeat("ab", 32)
+	validatorImage := "sha256:" + strings.Repeat("cd", 32)
+	qrysmAlltoolsImage := "sha256:" + strings.Repeat("ef", 32)
+	consensusImage := "sha256:" + strings.Repeat("12", 32)
+	for _, testCase := range []struct {
+		lane              string
+		suites            []string
+		wantExecution     string
+		wantConsensus     string
+		wantValidator     string
+		wantQrysmAlltools string
+	}{
+		{lane: executionLaneName, suites: []string{executionConsoleSuite}, wantExecution: executionImage},
+		{lane: syncLaneName, wantExecution: executionImage, wantConsensus: consensusImage},
+		{lane: consensusLaneName, wantValidator: validatorImage},
+		{lane: operatorLaneName, wantValidator: validatorImage, wantQrysmAlltools: qrysmAlltoolsImage},
+	} {
+		t.Run(testCase.lane, func(t *testing.T) {
+			reports := t.TempDir()
+			runner := New(Config{
+				ReportDir: reports,
+				Images: devnet.Images{
+					Execution: "registry.example/go-qrl:configured",
+					Validator: "registry.example/qrysm-validator:configured",
+				},
+				Parameters: []byte("custom: true"),
+				Suites:     testCase.suites,
+			}, io.Discard, io.Discard)
+			runner.networks = new(recordingNetworks)
+			resolved := func(image string) func(context.Context, devnet.Environment) (string, error) {
+				return func(ctx context.Context, _ devnet.Environment) (string, error) {
+					deadline, ok := ctx.Deadline()
+					require.True(t, ok)
+					require.WithinDuration(t, time.Now().Add(imageResolutionTimeout), deadline, time.Second)
+					return image, nil
+				}
+			}
+			runner.resolveExecutionImage = resolved(executionImage)
+			runner.resolveConsensusImage = resolved(consensusImage)
+			runner.resolveValidatorImage = resolved(validatorImage)
+			runner.resolveQrysmAlltoolsImage = resolved(qrysmAlltoolsImage)
+			runner.runCommand = func(context.Context, commandSpec) error {
+				writeGinkgoReport(t, filepath.Join(reports, "lanes", testCase.lane), types.SpecStatePassed)
+				return nil
+			}
 
-	runner.runCommand = func(context.Context, commandSpec) error {
-		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
-		return nil
+			require.NoError(t, runner.Run(t.Context(), testCase.lane))
+			configured, err := manifest.Read(filepath.Join(reports, "lanes", testCase.lane, manifest.FileName))
+			require.NoError(t, err)
+			require.Equal(t, testCase.wantExecution, configured.ExecutionImage)
+			require.Equal(t, testCase.wantConsensus, configured.ConsensusImage)
+			require.Equal(t, testCase.wantValidator, configured.ValidatorImage)
+			require.Equal(t, testCase.wantQrysmAlltools, configured.QrysmAlltoolsImage)
+		})
 	}
-
-	require.NoError(t, runner.Run(t.Context(), executionLaneName))
-	configured, err := manifest.Read(filepath.Join(reports, "lanes", executionLaneName, manifest.FileName))
-	require.NoError(t, err)
-	require.Equal(t, actualImage, configured.ExecutionImage)
 }
 
 func TestRunImageResolutionError(t *testing.T) {
-	reports := t.TempDir()
-	networks := new(recordingNetworks)
-	runner := New(Config{
-		ReportDir: reports,
-		Suites:    []string{executionConsoleSuite},
-	}, io.Discard, io.Discard)
-	runner.networks = networks
-	runner.resolveExecutionImage = func(context.Context, devnet.Environment) (string, error) {
-		return "", errors.New("inspect failed")
-	}
-	commandRan := false
-	runner.runCommand = func(context.Context, commandSpec) error {
-		commandRan = true
-		return nil
-	}
+	for _, testCase := range []struct {
+		lane              string
+		suites            []string
+		validatorResolves bool
+		executionResolves bool
+		wantErr           string
+	}{
+		{lane: executionLaneName, suites: []string{executionConsoleSuite}, wantErr: "resolve execution image: inspect failed"},
+		{lane: consensusLaneName, wantErr: "resolve validator image: inspect failed"},
+		{lane: operatorLaneName, validatorResolves: true, wantErr: "resolve Qrysm all-tools image: inspect failed"},
+		{lane: syncLaneName, executionResolves: true, wantErr: "resolve consensus image: inspect failed"},
+	} {
+		t.Run(testCase.lane, func(t *testing.T) {
+			networks := new(recordingNetworks)
+			runner := New(Config{ReportDir: t.TempDir(), Suites: testCase.suites}, io.Discard, io.Discard)
+			runner.networks = networks
+			failed := func(context.Context, devnet.Environment) (string, error) {
+				return "", errors.New("inspect failed")
+			}
+			runner.resolveExecutionImage = failed
+			runner.resolveConsensusImage = failed
+			runner.resolveValidatorImage = failed
+			runner.resolveQrysmAlltoolsImage = failed
+			if testCase.executionResolves {
+				runner.resolveExecutionImage = func(context.Context, devnet.Environment) (string, error) {
+					return "sha256:" + strings.Repeat("ab", 32), nil
+				}
+			}
+			if testCase.validatorResolves {
+				runner.resolveValidatorImage = func(context.Context, devnet.Environment) (string, error) {
+					return "sha256:" + strings.Repeat("cd", 32), nil
+				}
+			}
+			commandRan := false
+			runner.runCommand = func(context.Context, commandSpec) error {
+				commandRan = true
+				return nil
+			}
 
-	err := runner.Run(t.Context(), executionLaneName)
-	require.ErrorContains(t, err, "resolve execution image: inspect failed")
-	require.False(t, commandRan)
-	require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
+			err := runner.Run(t.Context(), testCase.lane)
+			require.ErrorContains(t, err, testCase.wantErr)
+			require.False(t, commandRan)
+			require.Equal(t, []string{"collect:go-qrl-devnet", "stop:go-qrl-devnet"}, networks.events)
+		})
+	}
 }
 
 func TestRunImageResolutionCanceled(t *testing.T) {
@@ -439,6 +516,10 @@ func TestNewResolvesConfigurationDefaults(t *testing.T) {
 	require.Equal(t, DefaultReportDir, runner.configuration.ReportDir)
 	require.Equal(t, devnet.BackendDocker, runner.configuration.Backend)
 	require.Equal(t, devnet.DefaultStartTimeout, runner.configuration.StartTimeout)
+	require.Equal(t, devnet.DefaultQrysmAlltoolsImage, runner.configuration.QrysmAlltoolsImage)
+
+	configured := New(Config{QrysmAlltoolsImage: " registry.example/qrysm-alltools:dev "}, io.Discard, io.Discard)
+	require.Equal(t, "registry.example/qrysm-alltools:dev", configured.configuration.QrysmAlltoolsImage)
 }
 
 func TestListDescribesLanesAndSuites(t *testing.T) {
@@ -465,7 +546,6 @@ func TestRunAllRejectsOverrides(t *testing.T) {
 
 func TestRunAllProvisionsPerLane(t *testing.T) {
 	networks := new(recordingNetworks)
-	var command commandSpec
 	reports := t.TempDir()
 	runner := newTestRunner(t, Config{
 		BaseName:     "qrl-tests",
@@ -474,19 +554,48 @@ func TestRunAllProvisionsPerLane(t *testing.T) {
 		StartTimeout: time.Minute,
 	}, io.Discard, io.Discard)
 	runner.networks = networks
+	var commands []commandSpec
 	runner.runCommand = func(_ context.Context, specification commandSpec) error {
-		writeGinkgoReport(t, filepath.Join(reports, "lanes", executionLaneName), types.SpecStatePassed)
-		command = specification
+		var outputDir string
+		for _, argument := range specification.Args {
+			if value, ok := strings.CutPrefix(argument, "--output-dir="); ok {
+				outputDir = value
+			}
+		}
+		require.NotEmpty(t, outputDir)
+		writeGinkgoReport(t, outputDir, types.SpecStatePassed)
+		commands = append(commands, specification)
 		return nil
 	}
 
 	require.NoError(t, runner.RunAll(t.Context()))
-	require.Equal(t, "qrl-tests-execution", networks.started.EnclaveName)
+	// Every registered lane provisions its own enclave and runs its own suites.
+	require.Equal(t, "qrl-tests-sync", networks.started.EnclaveName)
 	require.Equal(t, devnet.ProfileSingle, networks.started.Profile)
-	require.Equal(t, []string{"qrl-tests-execution"}, networks.stopped)
-	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
+	require.Equal(t, []string{
+		"qrl-tests-execution", "qrl-tests-consensus-staking-automated", "qrl-tests-consensus-staking-operator",
+		"qrl-tests-consensus-penalties", "qrl-tests-consensus-slashing-double-vote", "qrl-tests-consensus-slashing-double-proposal",
+		"qrl-tests-resilience-network-restart", "qrl-tests-sync",
+	}, networks.stopped)
+	require.Len(t, commands, 8)
+	require.Contains(t, commands[0].Args, "./e2e/suites/execution/abi")
+	require.Contains(t, commands[1].Args, "./e2e/suites/consensus/staking/automated")
+	require.Contains(t, commands[2].Args, "./e2e/suites/consensus/staking/operator")
+	require.Contains(t, commands[3].Args, "./e2e/suites/consensus/penalties")
+	require.Contains(t, commands[4].Args, "./e2e/suites/consensus/slashing/doublevote")
+	require.Contains(t, commands[5].Args, "./e2e/suites/consensus/slashing/doubleproposal")
+	require.Contains(t, commands[6].Args, "./e2e/suites/resilience/networkrestart")
+	require.Contains(t, commands[7].Args, "./e2e/suites/sync/genesis")
+	require.Contains(t, commands[7].Args, "./e2e/suites/sync/checkpoint")
 	record := testutil.ReadJSON[runmanifest.Manifest](t, filepath.Join(reports, runmanifest.FileName))
 	require.Equal(t, "qrl-tests-execution", record.Lanes[0].Enclave)
+	require.Equal(t, "qrl-tests-consensus-staking-automated", record.Lanes[1].Enclave)
+	require.Equal(t, "qrl-tests-consensus-staking-operator", record.Lanes[2].Enclave)
+	require.Equal(t, "qrl-tests-consensus-penalties", record.Lanes[3].Enclave)
+	require.Equal(t, "qrl-tests-consensus-slashing-double-vote", record.Lanes[4].Enclave)
+	require.Equal(t, "qrl-tests-consensus-slashing-double-proposal", record.Lanes[5].Enclave)
+	require.Equal(t, "qrl-tests-resilience-network-restart", record.Lanes[6].Enclave)
+	require.Equal(t, "qrl-tests-sync", record.Lanes[7].Enclave)
 }
 
 func TestRunReturnsCleanupFailure(t *testing.T) {
@@ -577,6 +686,7 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 
 	require.NoError(t, runner.Test(t.Context(), executionLaneName))
 	require.Equal(t, "qrl-tests", networks.inspected)
+	require.Equal(t, "qrl-tests", networks.checked)
 	require.Empty(t, networks.started.EnclaveName, "attaching must not provision")
 	require.Empty(t, networks.stopped, "attaching must not stop the network")
 	require.Contains(t, command.Args, "./e2e/suites/execution/abi")
@@ -584,11 +694,48 @@ func TestAttachBuildsCommandWithoutProvisioning(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, devnet.BackendDocker, written.Environment.Backend)
 	require.Empty(t, written.ExecutionImage)
+
+	networks.readyErr = errors.New("chain did not advance")
+	runner.runCommand = func(context.Context, commandSpec) error {
+		t.Fatal("a network that is not ready must not run suites")
+		return nil
+	}
+	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "network not ready: chain did not advance")
 }
 
-func TestAttachRejectsCustomParameters(t *testing.T) {
-	runner := New(Config{Parameters: []byte(`{}`)}, io.Discard, io.Discard)
-	require.ErrorContains(t, runner.Test(t.Context(), executionLaneName), "existing network")
+func TestRejectsUnsupportedNetworks(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		lane       string
+		attach     bool // Test attaches to a running network; Run provisions one.
+		parameters bool
+		want       string
+	}{
+		{"attach with parameters", executionLaneName, true, true,
+			"custom parameters cannot be used with an existing network"},
+		{"restart lane on an existing network", restartLaneName, true, false,
+			"needs a network provisioned from profile anchored, not an existing one"},
+		{"restart lane with parameters", restartLaneName, false, true,
+			"needs profile anchored, not custom parameters"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			configuration := Config{ReportDir: t.TempDir()}
+			if test.parameters {
+				configuration.Parameters = []byte(`{}`)
+			}
+			networks := new(recordingNetworks)
+			runner := New(configuration, io.Discard, io.Discard)
+			runner.networks = networks
+
+			run := runner.Run
+			if test.attach {
+				run = runner.Test
+			}
+			require.ErrorContains(t, run(t.Context(), test.lane), test.want)
+			require.Empty(t, networks.inspected)
+			require.Empty(t, networks.started.EnclaveName)
+		})
+	}
 }
 
 func testLaneRuns(t *testing.T, reports string, count int) runPlan {

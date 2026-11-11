@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +28,10 @@ const (
 	startScriptPath   = "/start-validator.sh"
 	authTokenPath     = walletDir + "/auth-token"
 	walletPassword    = validatorops.KeystorePassword
+
+	// failureLogLines is how much of the validator client's output a failed
+	// spec reports.
+	failureLogLines = 100
 )
 
 // startScript reads its settings from the environment set by containerEnv, so
@@ -45,6 +48,10 @@ if [ -d "${KEYS_DIR}" ]; then
     --account-password-file="${PASSWORD_FILE}"
 fi
 
+if [ -n "${GRAFFITI}" ]; then
+  set -- "$@" --graffiti="${GRAFFITI}"
+fi
+
 exec /validator "$@" \
   --chain-config-file="${CHAIN_CONFIG_FILE}" \
   --beacon-rpc-provider="${BEACON_RPC_PROVIDER}" \
@@ -54,7 +61,7 @@ exec /validator "$@" \
   --grpc-gateway-port="${GATEWAY_PORT}"
 `
 
-func containerEnv(beaconGRPC, beaconREST string) []string {
+func containerEnv(beaconGRPC, beaconREST, graffiti string) []string {
 	return []string{
 		"WALLET_DIR=" + walletDir,
 		"PASSWORD_FILE=" + passwordPath,
@@ -63,6 +70,7 @@ func containerEnv(beaconGRPC, beaconREST string) []string {
 		"BEACON_RPC_PROVIDER=" + beaconGRPC,
 		"BEACON_REST_API_PROVIDER=" + beaconREST,
 		"GATEWAY_PORT=" + strconv.Itoa(gatewayPort),
+		"GRAFFITI=" + graffiti,
 	}
 }
 
@@ -80,6 +88,9 @@ type Config struct {
 	// Keystores are imported at startup. They must be encrypted with
 	// validatorops.KeystorePassword, which also protects the wallet.
 	Keystores []sidecar.File
+	// Graffiti, when set, goes into every block the client proposes, so two
+	// clients that run the same key never propose the same block.
+	Graffiti string
 }
 
 // Sidecar is a running validator client that the caller must Close.
@@ -133,7 +144,7 @@ func start(ctx context.Context, config Config, client dockerClient) (*Sidecar, e
 		Name:       sidecarName,
 		Image:      config.Image,
 		Entrypoint: []string{"/bin/sh", startScriptPath},
-		Env:        containerEnv(beaconGRPC, beaconREST),
+		Env:        containerEnv(beaconGRPC, beaconREST, config.Graffiti),
 		Files:      files,
 		Port:       gatewayPort,
 	})
@@ -159,15 +170,21 @@ func (validator *Sidecar) Close() error {
 	return err
 }
 
+// Logs returns the end of the validator client's output, and nothing for a
+// sidecar that never started.
+func (validator *Sidecar) Logs() (string, error) {
+	if validator == nil {
+		return "", nil
+	}
+	return validator.container.Logs(failureLogLines)
+}
+
 // VoluntaryExit signs and submits an exit for publicKey, a key in the wallet,
 // through the validator binary's accounts command. That path dials the beacon
 // itself and does not use the keymanager HTTP API.
-//
-// The accounts command ignores --chain-config-file and computes the exit epoch
-// with mainnet timing, so on the devnet it signs an exit for an early epoch,
-// which the beacon node accepts.
 func (validator *Sidecar) VoluntaryExit(ctx context.Context, publicKey string) error {
 	output, err := validator.container.Exec(ctx, "/validator",
+		"--chain-config-file="+chainConfigPath,
 		"accounts", "voluntary-exit",
 		"--accept-terms-of-use",
 		"--wallet-dir="+walletDir,
@@ -197,14 +214,11 @@ func fixtureFiles(chainConfig []byte, keystores []sidecar.File) ([]sidecar.File,
 		{Name: passwordPath, Body: []byte(walletPassword)},
 		{Name: chainConfigPath, Body: chainConfig},
 	}
-	for _, keystore := range keystores {
-		name := path.Base(strings.TrimSpace(keystore.Name))
-		if name == "." || name == "/" {
-			return nil, errors.New("keystore name is empty")
-		}
-		files = append(files, sidecar.File{Name: path.Join(keysDir, name), Body: keystore.Body})
+	keys, err := sidecar.FilesIn(keysDir, keystores)
+	if err != nil {
+		return nil, err
 	}
-	return files, nil
+	return append(files, keys...), nil
 }
 
 func waitForKeymanager(ctx context.Context, container *sidecar.Container) (*keymanager.Client, error) {

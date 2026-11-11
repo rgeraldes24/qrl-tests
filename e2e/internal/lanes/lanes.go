@@ -16,26 +16,96 @@ type Lane struct {
 	Profile devnet.Profile
 	Suites  []SuiteID
 	Timeout time.Duration
+
+	RestartsServices bool
 }
 
 type SuiteID string
 
 const (
-	suiteExecutionABI     SuiteID = "execution-abi"
-	suiteExecutionConsole SuiteID = "execution-console"
+	suiteExecutionABI                    SuiteID = "execution-abi"
+	suiteExecutionConsole                SuiteID = "execution-console"
+	suiteExecutionTxpool                 SuiteID = "execution-txpool"
+	suiteConsensusStakingAutomated       SuiteID = "consensus-staking-automated"
+	suiteConsensusStakingOperator        SuiteID = "consensus-staking-operator"
+	suiteConsensusPenalties              SuiteID = "consensus-penalties"
+	suiteConsensusSlashingDoubleVote     SuiteID = "consensus-slashing-double-vote"
+	suiteConsensusSlashingDoubleProposal SuiteID = "consensus-slashing-double-proposal"
+	suiteResilienceNetworkRestart        SuiteID = "resilience-network-restart"
+	suiteSyncGenesis                     SuiteID = "sync-genesis"
+	suiteSyncCheckpoint                  SuiteID = "sync-checkpoint"
 )
 
 var suitePackages = map[SuiteID]string{
-	suiteExecutionABI:     "./e2e/suites/execution/abi",
-	suiteExecutionConsole: "./e2e/suites/execution/console",
+	suiteExecutionABI:                    "./e2e/suites/execution/abi",
+	suiteExecutionConsole:                "./e2e/suites/execution/console",
+	suiteExecutionTxpool:                 "./e2e/suites/execution/txpool",
+	suiteConsensusStakingAutomated:       "./e2e/suites/consensus/staking/automated",
+	suiteConsensusStakingOperator:        "./e2e/suites/consensus/staking/operator",
+	suiteConsensusPenalties:              "./e2e/suites/consensus/penalties",
+	suiteConsensusSlashingDoubleVote:     "./e2e/suites/consensus/slashing/doublevote",
+	suiteConsensusSlashingDoubleProposal: "./e2e/suites/consensus/slashing/doubleproposal",
+	suiteResilienceNetworkRestart:        "./e2e/suites/resilience/networkrestart",
+	suiteSyncGenesis:                     "./e2e/suites/sync/genesis",
+	suiteSyncCheckpoint:                  "./e2e/suites/sync/checkpoint",
 }
 
 var registry = []Lane{
 	{
 		Name:    "execution",
 		Profile: devnet.ProfileSingle,
-		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole},
+		Suites:  []SuiteID{suiteExecutionABI, suiteExecutionConsole, suiteExecutionTxpool},
+		Timeout: 20 * time.Minute,
+	},
+	{
+		// On the single profile a voting period is 512 five-second slots, so
+		// the deposit counts after about 65 minutes, before activation,
+		// attestation and exit.
+		Name:    "consensus-staking-automated",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteConsensusStakingAutomated},
+		Timeout: 95 * time.Minute,
+	},
+	{
+		// The deposit counts after about 65 minutes on the single profile,
+		// before activation, attestation and exit.
+		Name:    "consensus-staking-operator",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteConsensusStakingOperator},
+		Timeout: 95 * time.Minute,
+	},
+	{
+		Name:    "consensus-penalties",
+		Profile: devnet.ProfileSpareValidator,
+		Suites:  []SuiteID{suiteConsensusPenalties},
 		Timeout: 30 * time.Minute,
+	},
+	{
+		Name:    "consensus-slashing-double-vote",
+		Profile: devnet.ProfileDuplicateValidator,
+		Suites:  []SuiteID{suiteConsensusSlashingDoubleVote},
+		Timeout: 40 * time.Minute,
+	},
+	{
+		Name:    "consensus-slashing-double-proposal",
+		Profile: devnet.ProfileDoubleProposal,
+		Suites:  []SuiteID{suiteConsensusSlashingDoubleProposal},
+		Timeout: 30 * time.Minute,
+	},
+	{
+		// Finality, the outage and finality again take about a dozen
+		// 40-second epochs.
+		Name:             "resilience-network-restart",
+		Profile:          devnet.ProfileAnchored,
+		Suites:           []SuiteID{suiteResilienceNetworkRestart},
+		Timeout:          30 * time.Minute,
+		RestartsServices: true,
+	},
+	{
+		Name:    "sync",
+		Profile: devnet.ProfileSingle,
+		Suites:  []SuiteID{suiteSyncGenesis, suiteSyncCheckpoint},
+		Timeout: 60 * time.Minute,
 	},
 }
 
@@ -88,7 +158,29 @@ func (lane Lane) Packages() []string {
 }
 
 func (lane Lane) NeedsExecutionImage() bool {
-	return slices.Contains(lane.Suites, suiteExecutionConsole)
+	return slices.Contains(lane.Suites, suiteExecutionConsole) ||
+		slices.Contains(lane.Suites, suiteSyncGenesis) ||
+		slices.Contains(lane.Suites, suiteSyncCheckpoint)
+}
+
+func (lane Lane) NeedsConsensusImage() bool {
+	return slices.Contains(lane.Suites, suiteSyncGenesis) ||
+		slices.Contains(lane.Suites, suiteSyncCheckpoint)
+}
+
+func (lane Lane) NeedsValidatorImage() bool {
+	return slices.Contains(lane.Suites, suiteConsensusStakingAutomated) ||
+		slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
+		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
+}
+
+func (lane Lane) NeedsQrysmAlltoolsImage() bool {
+	return slices.Contains(lane.Suites, suiteConsensusStakingOperator) ||
+		slices.Contains(lane.Suites, suiteConsensusPenalties) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleVote) ||
+		slices.Contains(lane.Suites, suiteConsensusSlashingDoubleProposal)
 }
 
 func RegisteredSuites() []SuiteID {

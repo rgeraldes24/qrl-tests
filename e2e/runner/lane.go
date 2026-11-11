@@ -11,14 +11,15 @@ import (
 	"time"
 
 	"github.com/cyyber/qrl-tests/devnet"
+	"github.com/cyyber/qrl-tests/e2e/internal/lanes"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/results"
 )
 
 const (
-	laneCleanupTimeout              = 2 * time.Minute
-	laneDiagnosticsTimeout          = 2 * time.Minute
-	executionImageResolutionTimeout = 30 * time.Second
+	laneCleanupTimeout     = 2 * time.Minute
+	laneDiagnosticsTimeout = 2 * time.Minute
+	imageResolutionTimeout = 30 * time.Second
 
 	// laneReportSlack extends the lane context past ginkgo's own --timeout so
 	// it can report and clean up before the context interrupts the process.
@@ -42,6 +43,9 @@ func (runner *Runner) acquireLane(ctx context.Context, plan runPlan, lane laneRu
 		environment, err := runner.networks.Inspect(ctx, lane.enclaveName)
 		if err != nil {
 			return laneLease{}, fmt.Errorf("inspect network: %w", err)
+		}
+		if err := runner.networks.CheckReady(ctx, environment); err != nil {
+			return laneLease{}, fmt.Errorf("network not ready: %w", err)
 		}
 		if environment.Backend == "" {
 			environment.Backend = runner.configuration.Backend
@@ -138,27 +142,22 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	laneLog := &lockedWriter{lock: new(sync.Mutex), writer: logFile}
 	stdout := io.MultiWriter(runner.stdout, laneLog)
 	stderr := io.MultiWriter(runner.stderr, laneLog)
-	executionImage := ""
-	if definition.NeedsExecutionImage() {
-		resolveCtx, cancelResolve := context.WithTimeout(ctx, executionImageResolutionTimeout)
-		executionImage, err = runner.resolveExecutionImage(resolveCtx, lease.environment)
-		cancelResolve()
-		if err != nil {
-			outcome.ExecutionErr = ctx.Err()
-			outcome.Err = fmt.Errorf(
-				"test infrastructure failed: resolve execution image: %w",
-				errors.Join(err, outcome.ExecutionErr),
-			)
-			return outcome
-		}
+	images, err := runner.resolveImages(ctx, definition, lease.environment)
+	if err != nil {
+		outcome.ExecutionErr = ctx.Err()
+		outcome.Err = fmt.Errorf("test infrastructure failed: %w", errors.Join(err, outcome.ExecutionErr))
+		return outcome
 	}
 
 	manifestPath := lane.manifestPath()
 	if err := manifest.Write(manifestPath, manifest.Manifest{
-		Lane:           definition.Name,
-		Profile:        definition.Profile,
-		Environment:    lease.environment,
-		ExecutionImage: executionImage,
+		Lane:               definition.Name,
+		Profile:            definition.Profile,
+		Environment:        lease.environment,
+		ExecutionImage:     images.execution,
+		ConsensusImage:     images.consensus,
+		ValidatorImage:     images.validator,
+		QrysmAlltoolsImage: images.qrysmAlltools,
 	}); err != nil {
 		outcome.Err = fmt.Errorf("test infrastructure failed: %w", err)
 		return outcome
@@ -180,4 +179,58 @@ func (runner *Runner) executeLane(ctx context.Context, plan runPlan, lane laneRu
 	outcome.Err = outcome.ExecutionErr
 	outcome.CaptureReports(lane.reportDir)
 	return outcome
+}
+
+// sidecarImages are the images a lane's suites start sidecars from.
+type sidecarImages struct {
+	execution     string
+	consensus     string
+	validator     string
+	qrysmAlltools string
+}
+
+// resolveImages looks up the images the lane's suites start sidecars from.
+func (runner *Runner) resolveImages(
+	ctx context.Context,
+	definition lanes.Lane,
+	environment devnet.Environment,
+) (images sidecarImages, err error) {
+	if definition.NeedsExecutionImage() {
+		if images.execution, err = resolveImage(ctx, "execution", environment, runner.resolveExecutionImage); err != nil {
+			return sidecarImages{}, err
+		}
+	}
+	if definition.NeedsConsensusImage() {
+		if images.consensus, err = resolveImage(ctx, "consensus", environment, runner.resolveConsensusImage); err != nil {
+			return sidecarImages{}, err
+		}
+	}
+	if definition.NeedsValidatorImage() {
+		if images.validator, err = resolveImage(ctx, "validator", environment, runner.resolveValidatorImage); err != nil {
+			return sidecarImages{}, err
+		}
+	}
+	if definition.NeedsQrysmAlltoolsImage() {
+		if images.qrysmAlltools, err = resolveImage(ctx, "Qrysm all-tools", environment, runner.resolveQrysmAlltoolsImage); err != nil {
+			return sidecarImages{}, err
+		}
+	}
+	return images, nil
+}
+
+// resolveImage looks up an image by its immutable ID, so the lane's suites
+// start their sidecars from exactly that image.
+func resolveImage(
+	ctx context.Context,
+	name string,
+	environment devnet.Environment,
+	resolve func(context.Context, devnet.Environment) (string, error),
+) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, imageResolutionTimeout)
+	defer cancel()
+	image, err := resolve(ctx, environment)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s image: %w", name, err)
+	}
+	return image, nil
 }

@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/netip"
 	"strings"
 	"testing"
 
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
 	containertypes "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +27,22 @@ func TestResolveContainerImage(t *testing.T) {
 	require.Equal(t, dockerclient.Filters{
 		"label": {kurtosisServiceUUIDDockerLabel + "=primary-execution-service": true},
 	}, client.listed.Filters)
+}
+
+func TestResolveLocalImage(t *testing.T) {
+	imageID := "sha256:" + strings.Repeat("ef", 32)
+
+	resolved, err := resolveLocalImage(t.Context(), "local/qrysm-alltools:devnet", &fakeDocker{imageID: imageID})
+	require.NoError(t, err)
+	require.Equal(t, imageID, resolved)
+
+	missing := errors.New("no such image")
+	_, err = resolveLocalImage(t.Context(), "local/qrysm-alltools:devnet", &fakeDocker{inspectErr: missing})
+	require.ErrorIs(t, err, missing)
+	require.ErrorContains(t, err, `inspect image "local/qrysm-alltools:devnet"`)
+
+	_, err = resolveLocalImage(t.Context(), "local/qrysm-alltools:devnet", &fakeDocker{imageID: "not-an-id"})
+	require.ErrorContains(t, err, `invalid Docker image ID "not-an-id"`)
 }
 
 func TestResolveContainerImageErrors(t *testing.T) {
@@ -82,13 +100,6 @@ func TestPrimaryServiceIDs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "primary-validator-service", serviceID)
 
-	environment.Backend = BackendKubernetes
-	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
-		return participant.Validator.ID
-	})
-	require.ErrorContains(t, err, "is not Docker")
-
-	environment.Backend = BackendDocker
 	environment.Participants[0].Validator.ID = ""
 	_, err = primaryServiceID(environment, "validator", func(participant Participant) string {
 		return participant.Validator.ID
@@ -133,16 +144,59 @@ func TestReadServiceFileErrors(t *testing.T) {
 	}
 }
 
+func TestServiceNetwork(t *testing.T) {
+	service := ServiceInfo{Name: "cl-1-qrysm-gqrl", ID: "consensus-service", PrivateIP: "172.16.0.12"}
+	withNetworks := func(networks map[string]*network.EndpointSettings) *fakeDocker {
+		return &fakeDocker{containers: []containertypes.Summary{{
+			ID:              "consensus-container",
+			NetworkSettings: &containertypes.NetworkSettingsSummary{Networks: networks},
+		}}}
+	}
+
+	client := withNetworks(map[string]*network.EndpointSettings{
+		"bridge":    {IPAddress: netip.MustParseAddr("172.17.0.3")},
+		"kt-devnet": {IPAddress: netip.MustParseAddr("172.16.0.12")},
+	})
+	name, err := ServiceNetwork(t.Context(), client, service)
+	require.NoError(t, err)
+	require.Equal(t, "kt-devnet", name)
+	require.Equal(t, dockerclient.Filters{
+		"label": {kurtosisServiceUUIDDockerLabel + "=consensus-service": true},
+	}, client.listed.Filters)
+
+	client = withNetworks(map[string]*network.EndpointSettings{
+		"bridge": {IPAddress: netip.MustParseAddr("172.17.0.3")},
+	})
+	_, err = ServiceNetwork(t.Context(), client, service)
+	require.EqualError(t, err, `service "cl-1-qrysm-gqrl" has no Docker network with its private IP 172.16.0.12`)
+
+	_, err = ServiceNetwork(t.Context(), &fakeDocker{}, service)
+	require.ErrorContains(t, err, "find container: expected one running Docker container")
+
+	service.PrivateIP = ""
+	_, err = ServiceNetwork(t.Context(), client, service)
+	require.ErrorContains(t, err, `service "cl-1-qrysm-gqrl" private IP`)
+}
+
 // fakeDocker serves ContainerList and CopyFromContainer from memory.
 type fakeDocker struct {
 	containers []containertypes.Summary
 	listErr    error
+	// imageID and inspectErr are what ImageInspect returns.
+	imageID    string
+	inspectErr error
 	// entries are the archive entries CopyFromContainer returns, by name.
 	entries map[string]string
 
 	listed     dockerclient.ContainerListOptions
 	copiedFrom string
 	copiedPath string
+}
+
+func (client *fakeDocker) ImageInspect(context.Context, string, ...dockerclient.ImageInspectOption) (dockerclient.ImageInspectResult, error) {
+	var inspected dockerclient.ImageInspectResult
+	inspected.ID = client.imageID
+	return inspected, client.inspectErr
 }
 
 func (client *fakeDocker) ContainerList(_ context.Context, options dockerclient.ContainerListOptions) (dockerclient.ContainerListResult, error) {

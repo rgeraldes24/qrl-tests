@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,10 +53,64 @@ func TestLaneWithSuites(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []SuiteID{suiteExecutionABI, suiteExecutionConsole}, selected.Suites)
 	require.True(t, selected.NeedsExecutionImage())
+	require.False(t, selected.NeedsValidatorImage())
+	require.False(t, selected.NeedsConsensusImage())
 
 	selected, err = execution.WithSuites([]string{string(suiteExecutionABI)})
 	require.NoError(t, err)
 	require.False(t, selected.NeedsExecutionImage())
+	require.False(t, selected.NeedsValidatorImage())
+
+	automated, err := Named("consensus-staking-automated")
+	require.NoError(t, err)
+	require.True(t, automated.NeedsValidatorImage())
+	require.False(t, automated.NeedsExecutionImage())
+	require.False(t, automated.NeedsQrysmAlltoolsImage())
+
+	operator, err := Named("consensus-staking-operator")
+	require.NoError(t, err)
+	require.True(t, operator.NeedsValidatorImage())
+	require.True(t, operator.NeedsQrysmAlltoolsImage())
+	require.False(t, operator.NeedsExecutionImage())
+
+	penalties, err := Named("consensus-penalties")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileSpareValidator, penalties.Profile)
+	require.True(t, penalties.NeedsValidatorImage())
+	require.True(t, penalties.NeedsQrysmAlltoolsImage())
+	require.False(t, penalties.NeedsExecutionImage())
+
+	slashing, err := Named("consensus-slashing-double-vote")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileDuplicateValidator, slashing.Profile)
+	require.True(t, slashing.NeedsValidatorImage())
+	require.True(t, slashing.NeedsQrysmAlltoolsImage())
+	require.False(t, slashing.NeedsExecutionImage())
+	require.False(t, slashing.RestartsServices)
+
+	proposal, err := Named("consensus-slashing-double-proposal")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileDoubleProposal, proposal.Profile)
+	require.Equal(t, []SuiteID{suiteConsensusSlashingDoubleProposal}, proposal.Suites)
+	require.True(t, proposal.NeedsValidatorImage())
+	require.True(t, proposal.NeedsQrysmAlltoolsImage())
+	require.False(t, proposal.NeedsExecutionImage())
+	require.False(t, proposal.RestartsServices)
+
+	restart, err := Named("resilience-network-restart")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileAnchored, restart.Profile)
+	require.False(t, restart.NeedsValidatorImage())
+	require.False(t, restart.NeedsExecutionImage())
+	require.True(t, restart.RestartsServices)
+	require.False(t, execution.RestartsServices)
+
+	sync, err := Named("sync")
+	require.NoError(t, err)
+	require.Equal(t, devnet.ProfileSingle, sync.Profile)
+	require.True(t, sync.NeedsExecutionImage())
+	require.True(t, sync.NeedsConsensusImage())
+	require.False(t, sync.NeedsValidatorImage())
 
 	_, err = execution.WithSuites([]string{"unknown"})
 	require.ErrorContains(t, err, "unknown E2E suite")

@@ -2,6 +2,7 @@ package validatorops
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"net/http"
@@ -99,7 +100,7 @@ func TestDepositInput(t *testing.T) {
 	require.Equal(t, dataRoot, root)
 }
 
-func TestVerifyDepositEvent(t *testing.T) {
+func TestDepositEvent(t *testing.T) {
 	parsed, err := abi.JSON(strings.NewReader(depositContractABI))
 	require.NoError(t, err)
 	address := common.Address{1}
@@ -191,4 +192,46 @@ func TestVerifyDepositEvent(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("find by public key", func(t *testing.T) {
+		other := eventLog(address, changed(data.PublicKey), data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, amount)
+		match := eventLog(address, data.PublicKey, data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, amount)
+
+		found, ok, err := depositor.findDeposit([]types.Log{*other, *match}, data.PublicKey)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, data.Amount, found)
+
+		_, ok, err = depositor.findDeposit([]types.Log{*other}, data.PublicKey)
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		short := eventLog(address, data.PublicKey, data.WithdrawalRecipient, data.RandaoCommitment, data.Signature, make([]byte, 7))
+		_, ok, err = depositor.findDeposit([]types.Log{*short}, data.PublicKey)
+		require.EqualError(t, err, "deposit event amount must be 8 bytes, got 7")
+		require.False(t, ok)
+	})
+}
+
+type chainSource struct{}
+
+func (chainSource) Genesis(context.Context) (beacon.Genesis, error) {
+	return beacon.Genesis{ForkVersion: "0x10000020"}, nil
+}
+
+func (chainSource) Spec(context.Context) (beacon.Spec, error) {
+	return beacon.Spec{
+		"SLOTS_PER_EPOCH":                    "8",
+		"SECONDS_PER_SLOT":                   "5",
+		"EPOCHS_PER_EXECUTION_VOTING_PERIOD": "64",
+		"EXECUTION_FOLLOW_DISTANCE":          "8",
+		"SECONDS_PER_EXECUTION_BLOCK":        "5",
+	}, nil
+}
+
+func loadChainInfo(t *testing.T) chaininfo.Info {
+	t.Helper()
+	chain, err := chaininfo.Load(t.Context(), chainSource{})
+	require.NoError(t, err)
+	return chain
 }

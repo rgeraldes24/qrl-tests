@@ -5,20 +5,27 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/cyyber/qrl-tests/devnet"
 	"github.com/cyyber/qrl-tests/e2e/internal/beacon"
 	"github.com/cyyber/qrl-tests/e2e/internal/manifest"
 	"github.com/cyyber/qrl-tests/internal/devwallet"
+	"github.com/theQRL/go-qrl/common"
 	qrlwallet "github.com/theQRL/go-qrl/crypto/pqcrypto/wallet"
 	"github.com/theQRL/go-qrl/qrlclient"
 )
 
 // Runtime owns the network metadata and shared resources for one live suite.
 type Runtime struct {
-	Wallet         qrlwallet.Wallet
-	ChainID        *big.Int
-	ExecutionImage string
+	Wallet             qrlwallet.Wallet
+	Address            common.Address
+	ChainID            *big.Int
+	ExecutionImage     string
+	ConsensusImage     string
+	ValidatorImage     string
+	QrysmAlltoolsImage string
+	Profile            devnet.Profile
 
 	environment devnet.Environment
 	nodes       []*Node
@@ -28,11 +35,14 @@ type Runtime struct {
 // beacon clients plus the shared suite Runtime.
 type Node struct {
 	*Runtime
+	Participant           devnet.Participant
 	ExecutionRPCURL       string
 	ExecutionWebSocketURL string
 	Execution             *qrlclient.Client
 	ExecutionWebSocket    *qrlclient.Client
 	BeaconURL             string
+	BeaconGRPC            string
+	ConsensusServiceID    string
 	Beacon                *beacon.Client
 }
 
@@ -50,9 +60,14 @@ func Load() (*Runtime, error) {
 	}
 
 	runtime := &Runtime{
-		Wallet:         wallet,
-		ExecutionImage: suiteManifest.ExecutionImage,
-		environment:    suiteManifest.Environment,
+		Wallet:             wallet,
+		Address:            common.Address(wallet.GetAddress()),
+		ExecutionImage:     suiteManifest.ExecutionImage,
+		ConsensusImage:     suiteManifest.ConsensusImage,
+		ValidatorImage:     suiteManifest.ValidatorImage,
+		QrysmAlltoolsImage: suiteManifest.QrysmAlltoolsImage,
+		Profile:            suiteManifest.Profile,
+		environment:        suiteManifest.Environment,
 	}
 	return runtime, nil
 }
@@ -63,6 +78,19 @@ func (runtime *Runtime) PrimaryNode(ctx context.Context) (*Node, error) {
 		return nil, err
 	}
 	return runtime.open(ctx, participant, false)
+}
+
+// Nodes opens every participant, lowest index first.
+func (runtime *Runtime) Nodes(ctx context.Context) ([]*Node, error) {
+	nodes := make([]*Node, len(runtime.environment.Participants))
+	for index, participant := range runtime.environment.Participants {
+		node, err := runtime.open(ctx, participant, false)
+		if err != nil {
+			return nil, err
+		}
+		nodes[index] = node
+	}
+	return nodes, nil
 }
 
 func (runtime *Runtime) PrimaryWithWebSocket(ctx context.Context) (*Node, error) {
@@ -95,10 +123,13 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 
 	node := &Node{
 		Runtime:               runtime,
+		Participant:           participant,
 		ExecutionRPCURL:       participant.Execution.RPCURL,
 		ExecutionWebSocketURL: participant.Execution.WebSocketURL,
 		Execution:             client,
 		BeaconURL:             participant.Consensus.URL,
+		BeaconGRPC:            participant.Consensus.GRPC,
+		ConsensusServiceID:    participant.Consensus.ID,
 		Beacon:                beaconClient,
 	}
 	if withWebSocket {
@@ -111,6 +142,60 @@ func (runtime *Runtime) open(ctx context.Context, participant devnet.Participant
 
 	runtime.nodes = append(runtime.nodes, node)
 	return node, nil
+}
+
+// StopValidators stops every validator client, so no block or attestation
+// is signed after it returns.
+func (runtime *Runtime) StopValidators(ctx context.Context) error {
+	validators, _, _ := runtime.services()
+	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, validators)
+}
+
+// StopNodes stops every beacon node, then every execution client. They keep
+// their data.
+func (runtime *Runtime) StopNodes(ctx context.Context) error {
+	_, beacons, executions := runtime.services()
+	return devnet.NewManager().StopServices(ctx, runtime.environment.EnclaveName, slices.Concat(beacons, executions))
+}
+
+// StartParticipants starts the services that StopValidators and StopNodes
+// stopped, in the order of a full-outage recovery: every execution client,
+// the beacon nodes from the first participant on, then every validator
+// client. A started service is published on other host ports, so the
+// environment is read again and the nodes opened before the restart are
+// closed. Only this runtime sees the new ports: the lane manifest keeps the
+// old ones, so a lane that restarts services runs a single suite.
+func (runtime *Runtime) StartParticipants(ctx context.Context) error {
+	validators, beacons, executions := runtime.services()
+	services := slices.Concat(executions, beacons, validators)
+	manager := devnet.NewManager()
+	name := runtime.environment.EnclaveName
+	if err := manager.StartServices(ctx, name, services); err != nil {
+		return err
+	}
+
+	environment, err := manager.Inspect(ctx, name)
+	if err != nil {
+		return err
+	}
+	environment.Backend = runtime.environment.Backend
+	runtime.Close()
+	runtime.environment = environment
+	return nil
+}
+
+// services lists the participants' services by kind, lowest participant
+// first, without the ones a participant does not run.
+func (runtime *Runtime) services() (validators, beacons, executions []string) {
+	for _, participant := range runtime.environment.Participants {
+		validators = append(validators, participant.Validator.Name)
+		beacons = append(beacons, participant.Consensus.Name)
+		executions = append(executions, participant.Execution.Name)
+	}
+	named := func(names []string) []string {
+		return slices.DeleteFunc(names, func(name string) bool { return name == "" })
+	}
+	return named(validators), named(beacons), named(executions)
 }
 
 func (runtime *Runtime) Close() {

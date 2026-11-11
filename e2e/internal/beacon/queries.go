@@ -2,29 +2,41 @@ package beacon
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 )
 
 func (client *Client) Genesis(ctx context.Context) (Genesis, error) {
 	return getData[Genesis](ctx, client, "/qrl/v1/beacon/genesis")
 }
 
-func (client *Client) Fork(ctx context.Context) (Fork, error) {
-	return getData[Fork](ctx, client, "/qrl/v1/beacon/states/head/fork")
-}
-
 func (client *Client) DepositContract(ctx context.Context) (DepositContract, error) {
 	return getData[DepositContract](ctx, client, "/qrl/v1/config/deposit_contract")
 }
 
+// Spec returns the node's consensus constants. A caller that needs several
+// reads them all in one request.
+func (client *Client) Spec(ctx context.Context) (Spec, error) {
+	return getData[Spec](ctx, client, "/qrl/v1/config/spec")
+}
+
+// SpecUint returns one numeric consensus constant.
 func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error) {
-	values, err := getData[map[string]string](ctx, client, "/qrl/v1/config/spec")
+	spec, err := client.Spec(ctx)
 	if err != nil {
 		return 0, err
 	}
-	value, ok := values[name]
+	return spec.Uint(name)
+}
+
+// Uint parses the numeric constant name.
+func (spec Spec) Uint(name string) (uint64, error) {
+	value, ok := spec[name]
 	if !ok {
 		return 0, fmt.Errorf("consensus spec does not define %s", name)
 	}
@@ -35,15 +47,76 @@ func (client *Client) SpecUint(ctx context.Context, name string) (uint64, error)
 	return parsed, nil
 }
 
+// Uints parses each named numeric constant into its field, in name order.
+func (spec Spec) Uints(fields map[string]*uint64) error {
+	for _, name := range slices.Sorted(maps.Keys(fields)) {
+		value, err := spec.Uint(name)
+		if err != nil {
+			return err
+		}
+		*fields[name] = value
+	}
+	return nil
+}
+
+// SyncStatus reports how far the node is from the head of the chain.
+func (client *Client) SyncStatus(ctx context.Context) (SyncStatus, error) {
+	return getData[SyncStatus](ctx, client, "/qrl/v1/node/syncing")
+}
+
+// Identity returns the node's libp2p peer ID and the addresses it listens on.
+func (client *Client) Identity(ctx context.Context) (Identity, error) {
+	return getData[Identity](ctx, client, "/qrl/v1/node/identity")
+}
+
 func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
-	head, err := getData[struct {
+	head, err := client.BlockHeader(ctx, "head")
+	return head.Slot, err
+}
+
+// BlockHeader returns the slot and root of a canonical block. blockID is
+// "head", "finalized", a slot or a 0x-prefixed root. A slot without a block
+// is reported through IsNotFound.
+func (client *Client) BlockHeader(ctx context.Context, blockID string) (BlockHeader, error) {
+	header, err := getData[struct {
+		Root   string `json:"root"`
 		Header struct {
 			Message struct {
 				Slot uint64 `json:"slot,string"`
 			} `json:"message"`
 		} `json:"header"`
-	}](ctx, client, "/qrl/v1/beacon/headers/head")
-	return head.Header.Message.Slot, err
+	}](ctx, client, "/qrl/v1/beacon/headers/"+url.PathEscape(blockID))
+	return BlockHeader{Slot: header.Header.Message.Slot, Root: header.Root}, err
+}
+
+// FinalityCheckpoints returns the justified and finalized checkpoints of the
+// head state.
+func (client *Client) FinalityCheckpoints(ctx context.Context) (FinalityCheckpoints, error) {
+	return client.FinalityCheckpointsAt(ctx, "head")
+}
+
+// FinalityCheckpointsAt returns the justified and finalized checkpoints of
+// the state at stateID: "head", "finalized" or a slot.
+func (client *Client) FinalityCheckpointsAt(ctx context.Context, stateID string) (FinalityCheckpoints, error) {
+	return getData[FinalityCheckpoints](
+		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/finality_checkpoints",
+	)
+}
+
+// SlashedValidators returns the validators of the head state that have been
+// slashed.
+func (client *Client) SlashedValidators(ctx context.Context) ([]Validator, error) {
+	records, err := getData[[]validatorWire](
+		ctx, client, "/qrl/v1/beacon/states/head/validators?status=active_slashed&status=exited_slashed",
+	)
+	if err != nil {
+		return nil, err
+	}
+	validators := make([]Validator, len(records))
+	for index, record := range records {
+		validators[index] = record.validator()
+	}
+	return validators, nil
 }
 
 type validatorWire struct {
@@ -65,12 +138,43 @@ type validatorWire struct {
 // Validator looks a validator up by index or 0x-prefixed public key in the
 // head state. An unknown validator is reported through IsNotFound.
 func (client *Client) Validator(ctx context.Context, validatorID string) (Validator, error) {
+	return client.ValidatorAt(ctx, "head", validatorID)
+}
+
+// ValidatorAt looks a validator up in the state at stateID, which is "head",
+// "finalized" or a slot. The state at a slot includes its block, if it has
+// one; for an empty slot it is the earlier state advanced to that slot.
+func (client *Client) ValidatorAt(ctx context.Context, stateID, validatorID string) (Validator, error) {
 	record, err := getData[validatorWire](
-		ctx, client, "/qrl/v1/beacon/states/head/validators/"+url.PathEscape(validatorID),
+		ctx, client, "/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/validators/"+url.PathEscape(validatorID),
 	)
 	if err != nil {
 		return Validator{}, err
 	}
+	return record.validator(), nil
+}
+
+// TotalActiveBalance sums the effective balances of the validators that the
+// state at stateID holds as active in its current epoch, slashed ones
+// included: the total that state's epoch processing uses for base rewards.
+// It reads every active validator, which suits a devnet, not a large network.
+func (client *Client) TotalActiveBalance(ctx context.Context, stateID string) (uint64, error) {
+	records, err := getData[[]validatorWire](
+		ctx, client,
+		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+
+			"/validators?status=active_ongoing&status=active_exiting&status=active_slashed",
+	)
+	if err != nil {
+		return 0, err
+	}
+	var total uint64
+	for _, record := range records {
+		total += record.Validator.EffectiveBalance
+	}
+	return total, nil
+}
+
+func (record validatorWire) validator() Validator {
 	return Validator{
 		Index:               record.Index,
 		Balance:             record.Balance,
@@ -83,54 +187,200 @@ func (client *Client) Validator(ctx context.Context, validatorID string) (Valida
 		ActivationEpoch:     record.Validator.ActivationEpoch,
 		ExitEpoch:           record.Validator.ExitEpoch,
 		WithdrawableEpoch:   record.Validator.WithdrawableEpoch,
-	}, nil
+	}
 }
 
 type blockWire struct {
 	Message struct {
-		Slot uint64 `json:"slot,string"`
-		Body struct {
-			VoluntaryExits []SignedVoluntaryExit `json:"voluntary_exits"`
-			Payload        struct {
+		Slot          uint64 `json:"slot,string"`
+		ProposerIndex uint64 `json:"proposer_index,string"`
+		Body          struct {
+			VoluntaryExits    []SignedVoluntaryExit  `json:"voluntary_exits"`
+			ProposerSlashings []proposerSlashingWire `json:"proposer_slashings"`
+			AttesterSlashings []attesterSlashingWire `json:"attester_slashings"`
+			Attestations      []attestationWire      `json:"attestations"`
+			Payload           struct {
+				BlockNumber uint64       `json:"block_number,string"`
 				Withdrawals []Withdrawal `json:"withdrawals"`
 			} `json:"execution_payload"`
 		} `json:"body"`
 	} `json:"message"`
 }
 
-// BlockOperations returns the exits and withdrawals in one block. A slot
-// without a block is reported through IsNotFound.
+type attestationWire struct {
+	AggregationBits string          `json:"aggregation_bits"`
+	Data            AttestationData `json:"data"`
+}
+
+type proposerSlashingWire struct {
+	Header1 struct {
+		Message BeaconBlockHeaderMessage `json:"message"`
+	} `json:"signed_header_1"`
+	Header2 struct {
+		Message BeaconBlockHeaderMessage `json:"message"`
+	} `json:"signed_header_2"`
+}
+
+type attesterSlashingWire struct {
+	Attestation1 indexedAttestationWire `json:"attestation_1"`
+	Attestation2 indexedAttestationWire `json:"attestation_2"`
+}
+
+type indexedAttestationWire struct {
+	AttestingIndices []string        `json:"attesting_indices"`
+	Data             AttestationData `json:"data"`
+}
+
+func (wire indexedAttestationWire) indexed() (IndexedAttestation, error) {
+	attestation := IndexedAttestation{Data: wire.Data}
+	for _, raw := range wire.AttestingIndices {
+		index, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			return IndexedAttestation{}, fmt.Errorf("attesting index %q: %w", raw, err)
+		}
+		attestation.AttestingIndices = append(attestation.AttestingIndices, index)
+	}
+	return attestation, nil
+}
+
+// BlockOperations returns the proposer, exits, withdrawals, attestations and
+// slashings of one block. A slot without a block is reported through
+// IsNotFound.
 func (client *Client) BlockOperations(ctx context.Context, blockID string) (BlockOperations, error) {
 	block, err := getData[blockWire](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
 	if err != nil {
 		return BlockOperations{}, err
 	}
 
-	operations := BlockOperations{Slot: block.Message.Slot, Withdrawals: block.Message.Body.Payload.Withdrawals}
+	operations := BlockOperations{
+		Slot:                 block.Message.Slot,
+		ProposerIndex:        block.Message.ProposerIndex,
+		ExecutionBlockNumber: block.Message.Body.Payload.BlockNumber,
+		Withdrawals:          block.Message.Body.Payload.Withdrawals,
+	}
 	for _, exit := range block.Message.Body.VoluntaryExits {
 		operations.VoluntaryExits = append(operations.VoluntaryExits, exit.Message.ValidatorIndex)
+	}
+	for _, attestation := range block.Message.Body.Attestations {
+		aggregation, err := hex.DecodeString(strings.TrimPrefix(attestation.AggregationBits, "0x"))
+		if err != nil {
+			return BlockOperations{}, fmt.Errorf("aggregation bits %q: %w", attestation.AggregationBits, err)
+		}
+		operations.Attestations = append(operations.Attestations, Attestation{
+			AggregationBits: aggregation,
+			Data:            attestation.Data,
+		})
+	}
+	for _, slashing := range block.Message.Body.ProposerSlashings {
+		operations.ProposerSlashings = append(operations.ProposerSlashings, ProposerSlashing{
+			Header1: slashing.Header1.Message,
+			Header2: slashing.Header2.Message,
+		})
+	}
+	for _, slashing := range block.Message.Body.AttesterSlashings {
+		first, err := slashing.Attestation1.indexed()
+		if err != nil {
+			return BlockOperations{}, err
+		}
+		second, err := slashing.Attestation2.indexed()
+		if err != nil {
+			return BlockOperations{}, err
+		}
+		operations.AttesterSlashings = append(operations.AttesterSlashings, AttesterSlashing{
+			Attestation1: first,
+			Attestation2: second,
+		})
 	}
 	return operations, nil
 }
 
+type committeeWire struct {
+	Index      uint64   `json:"index,string"`
+	Slot       uint64   `json:"slot,string"`
+	Validators []string `json:"validators"`
+}
+
+// Committees returns the attestation committees of epoch, as the state at
+// stateID assigns them.
+func (client *Client) Committees(ctx context.Context, stateID string, epoch uint64) ([]Committee, error) {
+	records, err := getData[[]committeeWire](
+		ctx, client,
+		"/qrl/v1/beacon/states/"+url.PathEscape(stateID)+"/committees?epoch="+strconv.FormatUint(epoch, 10),
+	)
+	if err != nil {
+		return nil, err
+	}
+	committees := make([]Committee, len(records))
+	for position, record := range records {
+		committee := Committee{Index: record.Index, Slot: record.Slot}
+		for _, raw := range record.Validators {
+			index, err := strconv.ParseUint(raw, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("committee validator %q: %w", raw, err)
+			}
+			committee.Validators = append(committee.Validators, index)
+		}
+		committees[position] = committee
+	}
+	return committees, nil
+}
+
+// AttesterDuties returns the slot each of the given validators attests in
+// during epoch. Qrysm serves the current epoch and the next.
 func (client *Client) AttesterDuties(ctx context.Context, epoch uint64, indices []uint64) ([]AttesterDuty, error) {
 	path := "/qrl/v1/validator/duties/attester/" + strconv.FormatUint(epoch, 10)
 	return postData[[]AttesterDuty](ctx, client, path, formatIndices(indices))
+}
+
+// ProposerDuties returns who proposes each slot of epoch. Qrysm serves the
+// current epoch and the next.
+func (client *Client) ProposerDuties(ctx context.Context, epoch uint64) ([]ProposerDuty, error) {
+	return getData[[]ProposerDuty](ctx, client, "/qrl/v1/validator/duties/proposer/"+strconv.FormatUint(epoch, 10))
 }
 
 func (client *Client) SubmitVoluntaryExit(ctx context.Context, exit SignedVoluntaryExit) error {
 	return client.postJSON(ctx, "/qrl/v1/beacon/pool/voluntary_exits", exit, nil)
 }
 
-// AttestationRewards returns the attestation scores for the given validators
-// in a completed epoch. Qrysm serves an epoch only after two later epochs
-// have elapsed so every attestation has a chance of inclusion.
+// AttestationRewards returns the given validators' attestation rewards for a
+// completed epoch: their head, source and target rewards in shor, negative
+// for a penalty. Qrysm serves an epoch only after two later epochs have
+// elapsed so every attestation has a chance of inclusion.
 func (client *Client) AttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]AttestationReward, error) {
-	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
-	rewards, err := postData[struct {
-		TotalRewards []AttestationReward `json:"total_rewards"`
-	}](ctx, client, path, formatIndices(indices))
+	rewards, err := client.attestationRewards(ctx, epoch, indices)
 	return rewards.TotalRewards, err
+}
+
+// IdealAttestationRewards returns, for each effective balance among the
+// validators, what timely head, source and target votes earn in a completed
+// epoch, in shor. Qrysm computes the given validators' own rewards alongside,
+// and everyone's when none are given, so pass only the ones needed.
+func (client *Client) IdealAttestationRewards(ctx context.Context, epoch uint64, indices []uint64) ([]IdealAttestationReward, error) {
+	rewards, err := client.attestationRewards(ctx, epoch, indices)
+	return rewards.IdealRewards, err
+}
+
+type attestationRewardsWire struct {
+	IdealRewards []IdealAttestationReward `json:"ideal_rewards"`
+	TotalRewards []AttestationReward      `json:"total_rewards"`
+}
+
+func (client *Client) attestationRewards(ctx context.Context, epoch uint64, indices []uint64) (attestationRewardsWire, error) {
+	path := "/qrl/v1/beacon/rewards/attestations/" + strconv.FormatUint(epoch, 10)
+	return postData[attestationRewardsWire](ctx, client, path, formatIndices(indices))
+}
+
+// BlockRewards returns what one block paid its proposer, in shor.
+func (client *Client) BlockRewards(ctx context.Context, blockID string) (BlockRewards, error) {
+	return getData[BlockRewards](ctx, client, "/qrl/v1/beacon/rewards/blocks/"+url.PathEscape(blockID))
+}
+
+// SyncCommitteeRewards returns what the sync aggregate of one block paid the
+// given validators, negative for a missed duty. A validator outside the sync
+// committee is left out.
+func (client *Client) SyncCommitteeRewards(ctx context.Context, blockID string, indices []uint64) ([]SyncCommitteeReward, error) {
+	path := "/qrl/v1/beacon/rewards/sync_committee/" + url.PathEscape(blockID)
+	return postData[[]SyncCommitteeReward](ctx, client, path, formatIndices(indices))
 }
 
 func formatIndices(indices []uint64) []string {

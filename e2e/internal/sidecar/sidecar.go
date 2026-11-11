@@ -1,5 +1,6 @@
 // Package sidecar runs helper containers next to the Kurtosis devnet.
-// Sidecars reach the devnet through its host-published ports. They are not
+// Sidecars reach the devnet through its host-published ports, or join the
+// enclave's Docker network to reach its services directly. They are not
 // Kurtosis services, so the lane diagnostics don't collect their logs; errors
 // include the end of a sidecar's output instead.
 package sidecar
@@ -9,11 +10,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/netip"
+	"path"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cyyber/qrl-tests/internal/containerfiles"
+	"github.com/cyyber/qrl-tests/internal/dockerapi"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	containertypes "github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -23,18 +30,21 @@ import (
 const (
 	cleanupTimeout = 30 * time.Second
 	logTimeout     = 10 * time.Second
-	exitLogTail    = "50"
+	exitLogLines   = 50
 	// labelKey tags every sidecar container, so containers left behind by an
 	// interrupted test run can be found with a label filter.
 	labelKey = "qrl-tests.sidecar"
 )
 
+// Client is the part of the Docker client that sidecars use.
 type Client interface {
+	ContainerAttach(context.Context, string, dockerclient.ContainerAttachOptions) (dockerclient.ContainerAttachResult, error)
 	ContainerCreate(context.Context, dockerclient.ContainerCreateOptions) (dockerclient.ContainerCreateResult, error)
 	ContainerInspect(context.Context, string, dockerclient.ContainerInspectOptions) (dockerclient.ContainerInspectResult, error)
 	ContainerLogs(context.Context, string, dockerclient.ContainerLogsOptions) (dockerclient.ContainerLogsResult, error)
 	ContainerRemove(context.Context, string, dockerclient.ContainerRemoveOptions) (dockerclient.ContainerRemoveResult, error)
 	ContainerStart(context.Context, string, dockerclient.ContainerStartOptions) (dockerclient.ContainerStartResult, error)
+	ContainerStop(context.Context, string, dockerclient.ContainerStopOptions) (dockerclient.ContainerStopResult, error)
 	ContainerWait(context.Context, string, dockerclient.ContainerWaitOptions) dockerclient.ContainerWaitResult
 	CopyFromContainer(context.Context, string, dockerclient.CopyFromContainerOptions) (dockerclient.CopyFromContainerResult, error)
 	CopyToContainer(context.Context, string, dockerclient.CopyToContainerOptions) (dockerclient.CopyToContainerResult, error)
@@ -46,18 +56,41 @@ type Client interface {
 // File is a file a sidecar copies into its container or reads out of it.
 type File = containerfiles.File
 
+// FilesIn places files in dir under their base names.
+func FilesIn(dir string, files []File) ([]File, error) {
+	placed := make([]File, len(files))
+	for index, file := range files {
+		name := path.Base(strings.TrimSpace(file.Name))
+		if name == "." || name == "/" {
+			return nil, errors.New("file name is empty")
+		}
+		file.Name = path.Join(dir, name)
+		placed[index] = file
+	}
+	return placed, nil
+}
+
+// Spec describes a sidecar container.
 type Spec struct {
 	// Name identifies the sidecar in errors, such as "validator sidecar".
 	Name       string
 	Image      string
 	Entrypoint []string
+	Cmd        []string
 	Env        []string
 	Files      []File
-	// Port, when set, is published on 127.0.0.1 at a host port Docker picks.
+	// Stdin keeps the container's standard input open for Attach.
+	Stdin bool
+	// Port, when set, is published on 127.0.0.1 at a free host port.
 	Port uint16
+	// Network, when set, is the Docker network the container joins instead of
+	// the default bridge, such as a Kurtosis enclave's network. Aliases are its
+	// DNS names there.
+	Network string
+	Aliases []string
 }
 
-// Container is a sidecar container this process created and must Close.
+// Container is a sidecar container. Close removes it.
 type Container struct {
 	client Client
 	id     string
@@ -67,12 +100,12 @@ type Container struct {
 
 // Start creates and starts the container, removing it again on any failure.
 func Start(ctx context.Context, client Client, spec Spec) (*Container, error) {
-	container, err := create(ctx, client, spec)
+	container, err := create(ctx, client, spec, false)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := client.ContainerStart(ctx, container.id, dockerclient.ContainerStartOptions{}); err != nil {
-		return nil, container.abort(fmt.Errorf("start %s container: %w", spec.Name, err))
+	if err := container.Start(ctx); err != nil {
+		return nil, container.abort(err)
 	}
 	return container, nil
 }
@@ -81,52 +114,137 @@ func Start(ctx context.Context, client Client, spec Spec) (*Container, error) {
 // *ExitError and removes the container; on success the container stays so its
 // output can be read, and the caller must Close it.
 func Run(ctx context.Context, client Client, spec Spec) (*Container, error) {
-	container, err := create(ctx, client, spec)
+	container, err := create(ctx, client, spec, false)
 	if err != nil {
 		return nil, err
 	}
-	// Register the waiter before starting, so a fast exit is not missed.
-	waiter := client.ContainerWait(ctx, container.id, dockerclient.ContainerWaitOptions{
-		Condition: containertypes.WaitConditionNextExit,
-	})
-	if _, err := client.ContainerStart(ctx, container.id, dockerclient.ContainerStartOptions{}); err != nil {
-		return nil, container.abort(fmt.Errorf("start %s container: %w", spec.Name, err))
+	waiter, err := container.startWatched(ctx)
+	if err != nil {
+		return nil, container.abort(err)
 	}
+	if err := container.waitForExit(ctx, waiter); err != nil {
+		return nil, container.abort(container.WithLogs(err))
+	}
+	return container, nil
+}
 
+// waitForExit reports a non-zero exit as an *ExitError.
+func (container *Container) waitForExit(ctx context.Context, waiter dockerclient.ContainerWaitResult) error {
 	select {
 	case status := <-waiter.Result:
 		if status.Error != nil {
-			return nil, container.abort(fmt.Errorf("wait for %s: %s", spec.Name, status.Error.Message))
+			return fmt.Errorf("wait for %s: %s", container.name, status.Error.Message)
 		}
 		if status.StatusCode != 0 {
-			return nil, container.abort(container.WithLogs(&ExitError{
-				name:   spec.Name,
-				status: fmt.Sprintf("exited with code %d", status.StatusCode),
-			}))
+			return &ExitError{name: container.name, status: fmt.Sprintf("exited with code %d", status.StatusCode)}
 		}
-		return container, nil
+		return nil
 	case err := <-waiter.Error:
 		// The waiter reads with ctx, so it fails as well once ctx ends; report
 		// that as the cancellation it is.
 		if ctx.Err() == nil {
-			return nil, container.abort(fmt.Errorf("wait for %s: %w", spec.Name, err))
+			return fmt.Errorf("wait for %s: %w", container.name, err)
 		}
 	case <-ctx.Done():
 	}
-	return nil, container.abort(container.WithLogs(fmt.Errorf("wait for %s: %w", spec.Name, context.Cause(ctx))))
+	return fmt.Errorf("wait for %s: %w", container.name, context.Cause(ctx))
 }
 
-func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
+// AttachDocker is Attach with its own Docker client, closed by Close.
+func AttachDocker(ctx context.Context, spec Spec) (*Process, error) {
+	client, err := dockerapi.New()
+	if err != nil {
+		return nil, fmt.Errorf("create Docker client: %w", err)
+	}
+	process, err := Attach(ctx, client, spec)
+	if err != nil {
+		return nil, errors.Join(err, client.Close())
+	}
+	process.closeClient = client.Close
+	return process, nil
+}
+
+// Attach starts the container attached to its output, and to its stdin if
+// spec.Stdin is set. On failure, the container is removed.
+func Attach(ctx context.Context, client Client, spec Spec) (*Process, error) {
+	container, err := create(ctx, client, spec, true)
+	if err != nil {
+		return nil, err
+	}
+	processCtx, cancel := context.WithCancel(ctx)
+	attached, err := client.ContainerAttach(processCtx, container.id, dockerclient.ContainerAttachOptions{
+		Stream: true,
+		Stdin:  spec.Stdin,
+		Stdout: true,
+		Stderr: true,
+	})
+	if err != nil {
+		cancel()
+		return nil, container.abort(fmt.Errorf("attach to %s container: %w", spec.Name, err))
+	}
+	process := &Process{Container: container, ctx: processCtx, cancel: cancel, attach: attached}
+	if process.waiter, err = container.startWatched(processCtx); err != nil {
+		return nil, errors.Join(err, process.Close())
+	}
+	return process, nil
+}
+
+// startWatched registers an exit waiter, then starts the container, so a fast
+// exit is not missed.
+func (container *Container) startWatched(ctx context.Context) (dockerclient.ContainerWaitResult, error) {
+	waiter := container.client.ContainerWait(ctx, container.id, dockerclient.ContainerWaitOptions{
+		Condition: containertypes.WaitConditionNextExit,
+	})
+	select {
+	case err := <-waiter.Error:
+		if err != nil {
+			if ctx.Err() != nil {
+				err = context.Cause(ctx)
+			}
+			return waiter, fmt.Errorf("register %s exit waiter: %w", container.name, err)
+		}
+	default:
+	}
+	return waiter, container.Start(ctx)
+}
+
+// Start starts the container, or starts it again after Stop. A restarted
+// container keeps its files and its published host port.
+func (container *Container) Start(ctx context.Context) error {
+	if _, err := container.client.ContainerStart(ctx, container.id, dockerclient.ContainerStartOptions{}); err != nil {
+		return fmt.Errorf("start %s container: %w", container.name, err)
+	}
+	return nil
+}
+
+// Stop sends the container's process SIGTERM and kills it once timeout has
+// passed; a zero timeout kills it at once. The container and its files stay
+// until Close.
+func (container *Container) Stop(ctx context.Context, timeout time.Duration) error {
+	seconds := int(timeout / time.Second)
+	if _, err := container.client.ContainerStop(ctx, container.id, dockerclient.ContainerStopOptions{Timeout: &seconds}); err != nil {
+		return fmt.Errorf("stop %s container: %w", container.name, err)
+	}
+	return nil
+}
+
+func create(ctx context.Context, client Client, spec Spec, attached bool) (*Container, error) {
 	archive, err := containerfiles.Archive(spec.Files)
 	if err != nil {
 		return nil, fmt.Errorf("archive %s files: %w", spec.Name, err)
 	}
 
 	config := &containertypes.Config{
-		Image:      spec.Image,
-		Entrypoint: spec.Entrypoint,
-		Env:        spec.Env,
-		Labels:     map[string]string{labelKey: spec.Name},
+		Image:        spec.Image,
+		Entrypoint:   spec.Entrypoint,
+		Cmd:          spec.Cmd,
+		Env:          spec.Env,
+		Labels:       map[string]string{labelKey: spec.Name},
+		AttachStdin:  spec.Stdin,
+		AttachStdout: attached,
+		AttachStderr: attached,
+		OpenStdin:    spec.Stdin,
+		StdinOnce:    spec.Stdin,
 	}
 	hostConfig := &containertypes.HostConfig{ExtraHosts: []string{containerHost + ":host-gateway"}}
 	var port network.Port
@@ -136,11 +254,27 @@ func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s port %d is invalid", spec.Name, spec.Port)
 		}
+		hostPort, err := freeHostPort()
+		if err != nil {
+			return nil, fmt.Errorf("find a host port for %s: %w", spec.Name, err)
+		}
 		config.ExposedPorts = network.PortSet{port: {}}
-		hostConfig.PortBindings = network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1")}}}
+		hostConfig.PortBindings = network.PortMap{port: {{HostIP: netip.MustParseAddr("127.0.0.1"), HostPort: hostPort}}}
 	}
 
-	created, err := client.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{Config: config, HostConfig: hostConfig})
+	var networking *network.NetworkingConfig
+	if spec.Network != "" {
+		hostConfig.NetworkMode = containertypes.NetworkMode(spec.Network)
+		networking = &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{
+			spec.Network: {Aliases: spec.Aliases},
+		}}
+	}
+
+	created, err := client.ContainerCreate(ctx, dockerclient.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: networking,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create %s container: %w", spec.Name, err)
 	}
@@ -156,6 +290,19 @@ func create(ctx context.Context, client Client, spec Spec) (*Container, error) {
 		return nil, container.abort(fmt.Errorf("copy %s files: %w", spec.Name, err))
 	}
 	return container, nil
+}
+
+// freeHostPort returns a TCP port that is free on 127.0.0.1. Docker 28 gives up
+// on a port it picks itself after ten taken ports in a row, and a devnet's
+// published ports fill the start of the range it picks from.
+func freeHostPort() (string, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
+	defer listener.Close()
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	return port, err
 }
 
 func (container *Container) abort(err error) error {
@@ -224,7 +371,7 @@ func (container *Container) ReadDir(ctx context.Context, dir string) ([]File, er
 // WithLogs appends the end of the container's output to err, for failures the
 // sidecar's own logs explain.
 func (container *Container) WithLogs(err error) error {
-	logs, logsErr := container.logs()
+	logs, logsErr := container.Logs(exitLogLines)
 	switch {
 	case logsErr != nil:
 		return fmt.Errorf("%w\n(logs unavailable: %v)", err, logsErr)
@@ -235,15 +382,20 @@ func (container *Container) WithLogs(err error) error {
 	}
 }
 
-// logs reads the end of the container's output on its own deadline, since
-// logs matter most once the caller's context has run out.
-func (container *Container) logs() (string, error) {
+// Logs returns the last lines of the container's output, or all of it when
+// lines is not positive. It reads on its own deadline, since logs matter most
+// once the caller's context has run out.
+func (container *Container) Logs(lines int) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), logTimeout)
 	defer cancel()
+	tail := "all"
+	if lines > 0 {
+		tail = strconv.Itoa(lines)
+	}
 	logs, err := container.client.ContainerLogs(ctx, container.id, dockerclient.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Tail:       exitLogTail,
+		Tail:       tail,
 	})
 	if err != nil {
 		return "", err
@@ -296,6 +448,78 @@ func (container *Container) Exec(ctx context.Context, command ...string) (string
 	return output.String(), nil
 }
 
+// Process is a sidecar container started by Attach, with its standard streams
+// attached. Close detaches and removes it.
+type Process struct {
+	*Container
+	ctx        context.Context
+	cancel     context.CancelFunc
+	attach     dockerclient.ContainerAttachResult
+	waiter     dockerclient.ContainerWaitResult
+	detachOnce sync.Once
+	// closeClient is set by AttachDocker.
+	closeClient func() error
+}
+
+// Output copies the container's stdout and stderr to destination until the
+// streams close.
+func (process *Process) Output(destination io.Writer) error {
+	_, err := stdcopy.StdCopy(destination, destination, process.attach.Reader)
+	return err
+}
+
+// CloseInput writes final to the container's stdin and closes it. If ctx ends
+// first, the process is detached so the blocked write is released.
+func (process *Process) CloseInput(ctx context.Context, final string) error {
+	done := make(chan error, 1)
+	go func() {
+		_, writeErr := io.WriteString(process.attach.Conn, final)
+		if writeErr != nil {
+			writeErr = fmt.Errorf("write %s input: %w", process.name, writeErr)
+		}
+		closeErr := process.attach.CloseWrite()
+		if closeErr != nil {
+			closeErr = fmt.Errorf("close %s input: %w", process.name, closeErr)
+		}
+		done <- errors.Join(writeErr, closeErr)
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		process.Detach()
+		return context.Cause(ctx)
+	}
+}
+
+// Wait blocks until the container exits. A non-zero exit is an *ExitError.
+func (process *Process) Wait() error {
+	return process.waitForExit(process.ctx, process.waiter)
+}
+
+// Detach releases the attached streams and the exit waiter, leaving the
+// container in place.
+func (process *Process) Detach() {
+	process.detachOnce.Do(func() {
+		process.cancel()
+		process.attach.Close()
+	})
+}
+
+// Close detaches the process and removes its container.
+func (process *Process) Close() error {
+	if process == nil {
+		return nil
+	}
+	process.Detach()
+	err := process.Container.Close()
+	if process.closeClient != nil {
+		err = errors.Join(err, process.closeClient())
+	}
+	return err
+}
+
+// ExitError reports a sidecar container that stopped.
 type ExitError struct {
 	name   string
 	status string

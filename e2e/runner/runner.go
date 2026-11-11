@@ -24,15 +24,18 @@ import (
 const DefaultReportDir = "reports"
 
 type Config struct {
-	TestsDir     string
-	BaseName     string
-	ReportDir    string
-	Backend      devnet.Backend
-	Images       devnet.Images
-	Parameters   []byte
-	Suites       []string
-	StartTimeout time.Duration
-	MaxParallel  int
+	TestsDir  string
+	BaseName  string
+	ReportDir string
+	Backend   devnet.Backend
+	Images    devnet.Images
+	// QrysmAlltoolsImage is the image the lanes that run Qrysm's command-line
+	// tools start their sidecars from. It must already be on the Docker host.
+	QrysmAlltoolsImage string
+	Parameters         []byte
+	Suites             []string
+	StartTimeout       time.Duration
+	MaxParallel        int
 	// Seed fixes ginkgo's spec ordering for every lane; zero draws a fresh
 	// seed per lane, and the run manifest records whichever was used.
 	Seed int64
@@ -44,12 +47,15 @@ func (configuration Config) withDefaults() Config {
 	configuration.ReportDir = cmp.Or(configuration.ReportDir, DefaultReportDir)
 	configuration.Backend = cmp.Or(configuration.Backend, devnet.BackendDocker)
 	configuration.StartTimeout = cmp.Or(configuration.StartTimeout, devnet.DefaultStartTimeout)
+	configuration.QrysmAlltoolsImage = cmp.Or(
+		strings.TrimSpace(configuration.QrysmAlltoolsImage), devnet.DefaultQrysmAlltoolsImage)
 	return configuration
 }
 
 type networkManager interface {
 	Start(ctx context.Context, options devnet.StartOptions) (devnet.Environment, error)
 	Inspect(ctx context.Context, name string) (devnet.Environment, error)
+	CheckReady(ctx context.Context, environment devnet.Environment) error
 	Stop(ctx context.Context, name string) error
 	CollectDiagnostics(ctx context.Context, enclaveName, outputDir string) error
 }
@@ -80,23 +86,32 @@ func (mode runMode) suffixesEnclave() bool {
 }
 
 type Runner struct {
-	configuration         Config
-	networks              networkManager
-	resolveExecutionImage func(context.Context, devnet.Environment) (string, error)
-	runCommand            func(context.Context, commandSpec) error
-	stdout                io.Writer
-	stderr                io.Writer
+	configuration             Config
+	networks                  networkManager
+	resolveExecutionImage     func(context.Context, devnet.Environment) (string, error)
+	resolveConsensusImage     func(context.Context, devnet.Environment) (string, error)
+	resolveValidatorImage     func(context.Context, devnet.Environment) (string, error)
+	resolveQrysmAlltoolsImage func(context.Context, devnet.Environment) (string, error)
+	runCommand                func(context.Context, commandSpec) error
+	stdout                    io.Writer
+	stderr                    io.Writer
 }
 
 func New(configuration Config, stdout, stderr io.Writer) *Runner {
 	outputLock := new(sync.Mutex)
+	configuration = configuration.withDefaults()
 	return &Runner{
-		configuration:         configuration.withDefaults(),
+		configuration:         configuration,
 		networks:              devnet.NewManager(),
 		resolveExecutionImage: devnet.ResolveExecutionImage,
-		runCommand:            execute,
-		stdout:                &lockedWriter{lock: outputLock, writer: stdout},
-		stderr:                &lockedWriter{lock: outputLock, writer: stderr},
+		resolveConsensusImage: devnet.ResolveConsensusImage,
+		resolveValidatorImage: devnet.ResolveValidatorImage,
+		resolveQrysmAlltoolsImage: func(ctx context.Context, environment devnet.Environment) (string, error) {
+			return devnet.ResolveLocalImage(ctx, environment, configuration.QrysmAlltoolsImage)
+		},
+		runCommand: execute,
+		stdout:     &lockedWriter{lock: outputLock, writer: stdout},
+		stderr:     &lockedWriter{lock: outputLock, writer: stderr},
 	}
 }
 

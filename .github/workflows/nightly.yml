@@ -48,7 +48,7 @@ jobs:
             echo "$sha"
           }
           go_qrl_sha=$(resolve "${GO_QRL_REPOSITORY}")
-          qrysm_sha=$(resolve "${QRYSM_REPOSITORY}")
+          qrysm_sha=$(git ls-remote "https://github.com/${QRYSM_REPOSITORY}" refs/heads/fix/attestation-rewards-epoch-processing | cut -f1)
           generator_sha=$(resolve "${GENERATOR_REPOSITORY}")
           {
             echo "go-qrl-sha=${go_qrl_sha}"

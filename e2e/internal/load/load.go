@@ -31,6 +31,8 @@ const (
 
 var defaultRPCTxFeeCap = big.NewInt(params.Quanta)
 
+var recipient = common.BytesToAddress(crypto.Keccak256([]byte("qrl-tests load recipient")))
+
 var ErrFeeCap = errors.New("the fill needs a fee above the node's transaction fee cap")
 
 // Block is the summary of a block that Fill reads from the chain.
@@ -72,29 +74,23 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 }
 
 type filler struct {
-	client    *qrlclient.Client
-	wallet    qrlwallet.Wallet
-	signer    types.Signer
-	chainID   *big.Int
-	sender    common.Address
-	recipient common.Address
-	tip       *big.Int
-	feeCap    *big.Int
-	blocks    int
-	ticker    *time.Ticker
+	client *qrlclient.Client
+	wallet qrlwallet.Wallet
+	signer types.Signer
+	tip    *big.Int
+	feeCap *big.Int
+	blocks int
+	ticker *time.Ticker
 
 	transfersPerBlock uint64
-	transferBudget    uint64
-	transfersSent     uint64
+	transfersLeft     uint64
 	nextNonce         uint64
-	firstBlock        uint64
 	lastBlockRead     uint64
 	run               []Block
 	runEnded          bool
 }
 
 func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, blocks int) (*filler, error) {
-	sender := common.Address(wallet.GetAddress())
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read chain ID: %w", err)
@@ -112,7 +108,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	if err != nil {
 		return nil, err
 	}
-	next, err := client.PendingNonceAt(ctx, sender)
+	next, err := client.PendingNonceAt(ctx, wallet.GetAddress())
 	if err != nil {
 		return nil, fmt.Errorf("read sender nonce: %w", err)
 	}
@@ -121,16 +117,12 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		client:            client,
 		wallet:            wallet,
 		signer:            types.NewZondSigner(chainID),
-		chainID:           chainID,
-		sender:            sender,
-		recipient:         common.BytesToAddress(crypto.Keccak256([]byte("qrl-tests load recipient"))),
 		tip:               tip,
 		feeCap:            feeCap,
 		blocks:            blocks,
 		transfersPerBlock: perBlock,
-		transferBudget:    uint64(budgetBlocks) * perBlock,
+		transfersLeft:     uint64(budgetBlocks) * perBlock,
 		nextNonce:         next,
-		firstBlock:        head.Number.Uint64() + 1,
 		lastBlockRead:     head.Number.Uint64(),
 	}, nil
 }
@@ -202,7 +194,7 @@ func (filler *filler) updateRun(ctx context.Context) error {
 }
 
 func (filler *filler) pendingTransfers(ctx context.Context) (uint64, error) {
-	mined, err := filler.client.NonceAt(ctx, filler.sender, nil)
+	mined, err := filler.client.NonceAt(ctx, filler.wallet.GetAddress(), nil)
 	if err != nil {
 		return 0, fmt.Errorf("read sender nonce: %w", err)
 	}
@@ -219,8 +211,8 @@ func (filler *filler) refillPool(ctx context.Context) error {
 		return nil
 	}
 	count := want - pending
-	if filler.transfersSent+count > filler.transferBudget {
-		return fmt.Errorf("no run of %d full blocks after %d transfers, from block %d to %d", filler.blocks, filler.transfersSent, filler.firstBlock, filler.lastBlockRead)
+	if count > filler.transfersLeft {
+		return fmt.Errorf("no run of %d full blocks by block %d", filler.blocks, filler.lastBlockRead)
 	}
 	transfers, err := filler.sign(count)
 	if err != nil {
@@ -230,7 +222,7 @@ func (filler *filler) refillPool(ctx context.Context) error {
 		return err
 	}
 	filler.nextNonce += count
-	filler.transfersSent += count
+	filler.transfersLeft -= count
 	return nil
 }
 
@@ -271,12 +263,12 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 			for index := uint64(worker); index < count; index += uint64(len(failures)) {
 				nonce := filler.nextNonce + index
 				tx, err := types.SignNewTx(filler.wallet, filler.signer, &types.DynamicFeeTx{
-					ChainID:   filler.chainID,
+					ChainID:   filler.signer.ChainID(),
 					Nonce:     nonce,
 					GasTipCap: filler.tip,
 					GasFeeCap: filler.feeCap,
 					Gas:       params.TxGas,
-					To:        &filler.recipient,
+					To:        &recipient,
 					Value:     big.NewInt(1),
 				})
 				if err != nil {

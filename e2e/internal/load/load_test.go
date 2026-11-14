@@ -344,8 +344,6 @@ func TestSign(t *testing.T) {
 	filler := &filler{
 		wallet:    wallet,
 		signer:    types.NewZondSigner(fakeChainID),
-		chainID:   fakeChainID,
-		recipient: common.Address{1},
 		tip:       big.NewInt(1),
 		feeCap:    big.NewInt(100),
 		nextNonce: nonce,

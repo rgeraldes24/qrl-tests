@@ -59,44 +59,16 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 	if err != nil {
 		return nil, err
 	}
-	ticker := time.NewTicker(poll)
-	defer ticker.Stop()
-	wait := func() error {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", blocks, len(filler.run), ctx.Err())
-		case <-ticker.C:
-			return nil
-		}
-	}
+	filler.ticker = time.NewTicker(poll)
+	defer filler.ticker.Stop()
 
-	for !filler.runComplete() {
-		if err := filler.topUp(ctx); err != nil {
-			return nil, err
-		}
-		if err := wait(); err != nil {
-			return nil, err
-		}
-		if err := filler.readNewBlocks(ctx); err != nil {
-			return nil, err
-		}
+	if err := filler.fillBlocks(ctx); err != nil {
+		return nil, err
 	}
-	for {
-		pooled, err := filler.pooled(ctx)
-		if err != nil {
-			return nil, err
-		}
-		// Read after the pool, so that the block that emptied it is in the run.
-		if err := filler.readNewBlocks(ctx); err != nil {
-			return nil, err
-		}
-		if pooled == 0 {
-			return filler.run, nil
-		}
-		if err := wait(); err != nil {
-			return nil, err
-		}
+	if err := filler.drainPool(ctx); err != nil {
+		return nil, err
 	}
+	return filler.run, nil
 }
 
 type filler struct {
@@ -109,6 +81,7 @@ type filler struct {
 	tip       *big.Int
 	feeCap    *big.Int
 	blocks    int
+	ticker    *time.Ticker
 
 	transfersPerBlock uint64
 	transferBudget    uint64
@@ -162,11 +135,54 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	}, nil
 }
 
+func (filler *filler) fillBlocks(ctx context.Context) error {
+	for !filler.runComplete() {
+		if err := filler.refillPool(ctx); err != nil {
+			return err
+		}
+		if err := filler.waitForNextPoll(ctx); err != nil {
+			return err
+		}
+		if err := filler.updateRun(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (filler *filler) drainPool(ctx context.Context) error {
+	for {
+		pending, err := filler.pendingTransfers(ctx)
+		if err != nil {
+			return err
+		}
+		// Update after counting, so that the block that emptied the pool is in the run.
+		if err := filler.updateRun(ctx); err != nil {
+			return err
+		}
+		if pending == 0 {
+			return nil
+		}
+		if err := filler.waitForNextPoll(ctx); err != nil {
+			return err
+		}
+	}
+}
+
+func (filler *filler) waitForNextPoll(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("waiting for %d full blocks and an empty pool, %d full blocks so far: %w", filler.blocks, len(filler.run), ctx.Err())
+	case <-filler.ticker.C:
+		return nil
+	}
+}
+
 func (filler *filler) runComplete() bool {
 	return len(filler.run) >= filler.blocks
 }
 
-func (filler *filler) readNewBlocks(ctx context.Context) error {
+func (filler *filler) updateRun(ctx context.Context) error {
 	latest, err := filler.client.BlockNumber(ctx)
 	if err != nil {
 		return fmt.Errorf("read block number: %w", err)
@@ -185,7 +201,7 @@ func (filler *filler) readNewBlocks(ctx context.Context) error {
 	return nil
 }
 
-func (filler *filler) pooled(ctx context.Context) (uint64, error) {
+func (filler *filler) pendingTransfers(ctx context.Context) (uint64, error) {
 	mined, err := filler.client.NonceAt(ctx, filler.sender, nil)
 	if err != nil {
 		return 0, fmt.Errorf("read sender nonce: %w", err)
@@ -193,16 +209,16 @@ func (filler *filler) pooled(ctx context.Context) (uint64, error) {
 	return filler.nextNonce - mined, nil
 }
 
-func (filler *filler) topUp(ctx context.Context) error {
-	pooled, err := filler.pooled(ctx)
+func (filler *filler) refillPool(ctx context.Context) error {
+	pending, err := filler.pendingTransfers(ctx)
 	if err != nil {
 		return err
 	}
 	want := poolBlocksAhead * filler.transfersPerBlock
-	if pooled >= want {
+	if pending >= want {
 		return nil
 	}
-	count := want - pooled
+	count := want - pending
 	if filler.transfersSent+count > filler.transferBudget {
 		return fmt.Errorf("no run of %d full blocks after %d transfers, from block %d to %d", filler.blocks, filler.transfersSent, filler.firstBlock, filler.lastBlockRead)
 	}

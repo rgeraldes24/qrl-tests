@@ -129,6 +129,9 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	}, nil
 }
 
+// fillBlocks repeats until enough consecutive blocks are full. The node builds
+// a block every slot and each one takes transfers out of the pool, so every
+// pass refills the pool, waits, and reads the blocks built in the meantime.
 func (filler *filler) fillBlocks(ctx context.Context) error {
 	for !filler.runComplete() {
 		if err := filler.refillPool(ctx); err != nil {
@@ -144,6 +147,8 @@ func (filler *filler) fillBlocks(ctx context.Context) error {
 	return nil
 }
 
+// drainPool repeats until every transfer sent is in a block, reading the
+// blocks that the transfers left in the pool go on to fill.
 func (filler *filler) drainPool(ctx context.Context) error {
 	for {
 		pending, err := filler.pendingTransfers(ctx)

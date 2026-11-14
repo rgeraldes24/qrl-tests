@@ -1,0 +1,97 @@
+// Package health watches nodes for signs of trouble while a suite runs.
+package health
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/theQRL/go-qrl/p2p"
+	"github.com/theQRL/go-qrl/p2p/qnode"
+	"github.com/theQRL/go-qrl/rpc"
+)
+
+// PeerDrop is a peer that a node disconnected from.
+type PeerDrop struct {
+	Time time.Time
+	Peer qnode.ID
+	// Reason is the node's error for the disconnection.
+	Reason string
+}
+
+// PeerWatch records the peers an execution node drops.
+type PeerWatch struct {
+	client       *rpc.Client
+	subscription *rpc.ClientSubscription
+	stopped      chan struct{}
+
+	mutex sync.Mutex
+	drops []PeerDrop
+	err   error
+}
+
+// WatchPeers starts recording the peers dropped by the node at url, a
+// WebSocket endpoint that serves the admin API.
+func WatchPeers(ctx context.Context, url string) (*PeerWatch, error) {
+	client, err := rpc.DialContext(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("dial %s: %w", url, err)
+	}
+	events := make(chan *p2p.PeerEvent, 64)
+	subscription, err := client.Subscribe(ctx, "admin", events, "peerEvents")
+	if err != nil {
+		client.Close()
+		return nil, fmt.Errorf("subscribe to the peer events of %s: %w", url, err)
+	}
+	watch := &PeerWatch{client: client, subscription: subscription, stopped: make(chan struct{})}
+	go watch.record(events)
+	return watch, nil
+}
+
+func (watch *PeerWatch) record(events <-chan *p2p.PeerEvent) {
+	defer close(watch.stopped)
+	for {
+		select {
+		case event := <-events:
+			watch.add(event)
+		case err := <-watch.subscription.Err():
+			for len(events) > 0 {
+				watch.add(<-events)
+			}
+			watch.mutex.Lock()
+			watch.err = err
+			watch.mutex.Unlock()
+			return
+		}
+	}
+}
+
+func (watch *PeerWatch) add(event *p2p.PeerEvent) {
+	if event.Type != p2p.PeerEventTypeDrop {
+		return
+	}
+	watch.mutex.Lock()
+	defer watch.mutex.Unlock()
+	watch.drops = append(watch.drops, PeerDrop{Time: time.Now(), Peer: event.Peer, Reason: event.Error})
+}
+
+// Drops returns the peers dropped since the watch began, oldest first. It
+// fails once the watch has lost its subscription: after that, no drops says
+// nothing about the node.
+func (watch *PeerWatch) Drops() ([]PeerDrop, error) {
+	watch.mutex.Lock()
+	defer watch.mutex.Unlock()
+	if watch.err != nil {
+		return nil, fmt.Errorf("peer watch lost its subscription: %w", watch.err)
+	}
+	return slices.Clone(watch.drops), nil
+}
+
+// Close ends the watch. Drops still returns what it recorded.
+func (watch *PeerWatch) Close() {
+	watch.subscription.Unsubscribe()
+	<-watch.stopped
+	watch.client.Close()
+}

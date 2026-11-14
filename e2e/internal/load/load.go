@@ -99,20 +99,22 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	if err != nil {
 		return nil, fmt.Errorf("read head: %w", err)
 	}
+	nextNonce, err := client.PendingNonceAt(ctx, wallet.GetAddress())
+	if err != nil {
+		return nil, fmt.Errorf("read sender nonce: %w", err)
+	}
 	tip, err := client.SuggestGasTipCap(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("suggest tip: %w", err)
 	}
+
 	maxFullBlocks := blocks + warmUpBlocks + poolBlocksAhead
 	feeCap, err := feeCapFor(head.BaseFee, tip, maxFullBlocks)
 	if err != nil {
 		return nil, err
 	}
-	next, err := client.PendingNonceAt(ctx, wallet.GetAddress())
-	if err != nil {
-		return nil, fmt.Errorf("read sender nonce: %w", err)
-	}
-	perBlock := head.GasLimit / params.TxGas
+	transfersPerBlock := head.GasLimit / params.TxGas
+
 	return &filler{
 		client:            client,
 		wallet:            wallet,
@@ -120,9 +122,9 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		tip:               tip,
 		feeCap:            feeCap,
 		blocks:            blocks,
-		transfersPerBlock: perBlock,
-		transfersLeft:     uint64(maxFullBlocks) * perBlock,
-		nextNonce:         next,
+		transfersPerBlock: transfersPerBlock,
+		transfersLeft:     uint64(maxFullBlocks) * transfersPerBlock,
+		nextNonce:         nextNonce,
 		lastBlockRead:     head.Number.Uint64(),
 	}, nil
 }

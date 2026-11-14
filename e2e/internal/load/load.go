@@ -103,8 +103,8 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	if err != nil {
 		return nil, fmt.Errorf("suggest tip: %w", err)
 	}
-	budgetBlocks := blocks + warmUpBlocks + poolBlocksAhead
-	feeCap, err := feeCapFor(head.BaseFee, tip, budgetBlocks)
+	maxFullBlocks := blocks + warmUpBlocks + poolBlocksAhead
+	feeCap, err := feeCapFor(head.BaseFee, tip, maxFullBlocks)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		feeCap:            feeCap,
 		blocks:            blocks,
 		transfersPerBlock: perBlock,
-		transfersLeft:     uint64(budgetBlocks) * perBlock,
+		transfersLeft:     uint64(maxFullBlocks) * perBlock,
 		nextNonce:         next,
 		lastBlockRead:     head.Number.Uint64(),
 	}, nil

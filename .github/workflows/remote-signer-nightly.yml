@@ -60,7 +60,7 @@ env:
   GO_REMOTESIGNER_REPOSITORY: ${{ inputs.go-remotesigner-repository || vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REPOSITORY || 'rgeraldes24/go-remotesigner' }}
   GO_REMOTESIGNER_GIT_REF: ${{ inputs.go-remotesigner-ref || vars.E2E_REMOTE_SIGNER_GO_REMOTESIGNER_REF || '652f6ca11d52714f1e948a88cff0837190ffa3c1' }}
   QRYSM_REPOSITORY: ${{ inputs.qrysm-repository || vars.E2E_REMOTE_SIGNER_QRYSM_REPOSITORY || 'rgeraldes24/qrysm' }}
-  QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || 'd026800cb2337ac1c7564968730e0587f5bc1161' }}
+  QRYSM_GIT_REF: ${{ inputs.qrysm-ref || vars.E2E_REMOTE_SIGNER_QRYSM_REF || '538bb4874f84ac28f16e0ebddf3387cc445bac47' }}
   QRL_PACKAGE_REPOSITORY: ${{ inputs.qrl-package-repository || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REPOSITORY || 'rgeraldes24/qrl-package' }}
   QRL_PACKAGE_GIT_REF: ${{ inputs.qrl-package-ref || vars.E2E_REMOTE_SIGNER_QRL_PACKAGE_REF || 'f68c0523e2b46f8afeaed4943361afed2f075df3' }}
   # The execution client and the genesis generator, from the nightly's

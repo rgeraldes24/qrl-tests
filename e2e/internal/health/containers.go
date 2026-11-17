@@ -122,6 +122,11 @@ func (watch *ContainerWatch) Problems(ctx context.Context) ([]string, error) {
 func (watch *ContainerWatch) problems(ctx context.Context, entry *watched) ([]string, error) {
 	inspected, err := watch.docker.ContainerInspect(ctx, entry.Name, dockerclient.ContainerInspectOptions{})
 	if err != nil {
+		// A container that was removed is trouble to report, not a failure
+		// to watch it.
+		if strings.Contains(err.Error(), "No such container") {
+			return []string{"no longer exists"}, nil
+		}
 		return nil, err
 	}
 	var problems []string

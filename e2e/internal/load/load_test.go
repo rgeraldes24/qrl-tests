@@ -42,13 +42,13 @@ func TestTransferFeeCap(t *testing.T) {
 	baseFee, tip := big.NewInt(1_000_000_000), big.NewInt(1)
 	const fullBlocks = 10
 
-	feeCap, err := transferFeeCap(baseFee, tip, fullBlocks)
+	feeCap, err := transferFeeCap(baseFee, tip, params.TxGas, fullBlocks)
 	require.NoError(t, err)
 	want := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
 	require.Equal(t, want.Add(want, tip), feeCap)
 
 	// A transfer cannot pay more than the node accepts over the API.
-	_, err = transferFeeCap(baseFee, tip, 200)
+	_, err = transferFeeCap(baseFee, tip, params.TxGas, 200)
 	require.ErrorIs(t, err, ErrFeeCap)
 }
 
@@ -219,6 +219,7 @@ func signingFiller(t *testing.T, nonce uint64) *filler {
 		tip:       fakeTip,
 		feeCap:    big.NewInt(100),
 		nextNonce: nonce,
+		shape:     Transfers,
 	}
 }
 
@@ -341,4 +342,46 @@ func TestSendSplitsTheTransfersAcrossRequests(t *testing.T) {
 	require.EqualValues(t, 3, node.requests.Load())
 	// The fake pool takes a transfer only in nonce order.
 	require.EqualValues(t, count, node.pooled)
+}
+
+func TestSignWithAShape(t *testing.T) {
+	filler := signingFiller(t, 0)
+	filler.shape = Shape{Gas: 90_000, Data: []byte{0x60, 0x00}}
+	transfers, err := filler.sign(2)
+	require.NoError(t, err)
+	for _, tx := range transfers {
+		require.Equal(t, uint64(90_000), tx.Gas())
+		require.Nil(t, tx.To(), "a shape without a recipient creates a contract")
+		require.Equal(t, []byte{0x60, 0x00}, tx.Data())
+	}
+}
+
+func TestFillWithRefusesTooLittleGas(t *testing.T) {
+	_, err := FillWith(t.Context(), nil, nil, time.Millisecond, 1, Shape{Gas: params.TxGas - 1})
+	require.ErrorContains(t, err, "at least 21000 gas")
+}
+
+func TestSteady(t *testing.T) {
+	const blocks, percent = 6, 50
+	node := new(fakeNode)
+	client := startFakeNode(t, node)
+	loaded, err := Steady(t.Context(), client, newWallet(t), time.Millisecond, blocks, percent)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(loaded), blocks)
+	for index, block := range loaded {
+		require.LessOrEqual(t, block.Transactions, fakeBlockTransfers*percent/100, "block %d", block.Number)
+		if index > 0 {
+			require.Equal(t, loaded[index-1].Number+1, block.Number)
+		}
+	}
+	// The pool never holds more than the load of one block.
+	require.LessOrEqual(t, node.pooled, uint64(fakeBlockTransfers*percent/100))
+	require.Positive(t, node.mined)
+}
+
+func TestSteadyRefusesMoreThanHalfABlock(t *testing.T) {
+	_, err := Steady(t.Context(), nil, nil, time.Millisecond, 1, 51)
+	require.ErrorContains(t, err, "at most half of a block")
+	_, err = Steady(t.Context(), nil, nil, time.Millisecond, 0, 50)
+	require.ErrorContains(t, err, "cannot load 0 blocks")
 }

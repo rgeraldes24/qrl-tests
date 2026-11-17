@@ -36,6 +36,10 @@ var recipient = common.BytesToAddress(crypto.Keccak256([]byte("qrl-tests load re
 
 var ErrFeeCap = errors.New("the fill needs a fee above the node's transaction fee cap")
 
+// ErrBudget is Fill's error when its transfers run out before the chain has
+// the requested run of full blocks.
+var ErrBudget = errors.New("transfer budget spent")
+
 // Block is the summary of a block that Fill reads from the chain.
 type Block struct {
 	Number       uint64
@@ -316,7 +320,7 @@ func (filler *filler) refillPool(ctx context.Context) error {
 	count := want - pending
 	// The blocks are not filling.
 	if count > filler.transfersLeft {
-		return fmt.Errorf("transfer budget spent without %d consecutive full blocks, at block %d", filler.requestedBlocks, filler.lastBlockRead)
+		return fmt.Errorf("%w without %d consecutive full blocks, at block %d", ErrBudget, filler.requestedBlocks, filler.lastBlockRead)
 	}
 	transfers, err := filler.sign(count)
 	if err != nil {

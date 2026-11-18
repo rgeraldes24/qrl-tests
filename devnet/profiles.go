@@ -1,6 +1,7 @@
 package devnet
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -53,7 +54,29 @@ const (
 	// slots, and 256 validators for a full committee of 32 in every slot.
 	// Epochs keep the 8 slots of every profile, not mainnet's 128.
 	ProfileMainnetSlotTime Profile = "mainnet-slot-time"
+	// ProfileMainnetSlotTimePair is ProfileMainnetSlotTime with the validators
+	// split evenly between two participants, so that each one's blocks and
+	// votes reach the other over gossip.
+	ProfileMainnetSlotTimePair Profile = "mainnet-slot-time-pair"
+	// ProfileValidatorCap is the single profile with 255 validators, one
+	// short of a committee of 32 in each of an epoch's 8 slots. Its slots are
+	// six seconds, like those of the profiles below.
+	ProfileValidatorCap Profile = "validator-cap"
+	// ProfileOperationsPair is ProfileMainnetSlotTimePair at six-second
+	// slots: full committees and a sync committee drawn from 256 validators.
+	// At six-second slots, a deposit counts within about an hour and a
+	// quarter.
+	ProfileOperationsPair Profile = "operations-pair"
+	// ProfileSixSecondSlots is the single profile at six-second slots.
+	ProfileSixSecondSlots Profile = "six-second-slots"
 )
+
+// fullBlockSecondsPerSlot is the slot time of the profiles for full blocks.
+// A third of a slot is the window for a block to count as on time, and qrysm
+// counts it in whole seconds: five-second slots give one second, less than a
+// full block takes to import, so the next proposer builds on its parent and
+// one of the two blocks is orphaned. Six seconds gives two.
+const fullBlockSecondsPerSlot = 6
 
 const defaultSecondsPerSlot = 5
 
@@ -102,6 +125,25 @@ var profileSpecs = map[Profile]profileSpec{
 		secondsPerSlot: 60,
 		startTimeout:   10 * time.Minute,
 	},
+	ProfileMainnetSlotTimePair: {
+		participants:   []participantSpec{{validatorCount: 128}, {validatorCount: 128}},
+		secondsPerSlot: 60,
+		startTimeout:   10 * time.Minute,
+	},
+	ProfileValidatorCap: {
+		participants:   []participantSpec{{validatorCount: 255}},
+		secondsPerSlot: fullBlockSecondsPerSlot,
+		startTimeout:   10 * time.Minute,
+	},
+	ProfileOperationsPair: {
+		participants:   []participantSpec{{validatorCount: 128}, {validatorCount: 128}},
+		secondsPerSlot: fullBlockSecondsPerSlot,
+		startTimeout:   10 * time.Minute,
+	},
+	ProfileSixSecondSlots: {
+		participants:   []participantSpec{{validatorCount: 64}},
+		secondsPerSlot: fullBlockSecondsPerSlot,
+	},
 }
 
 // ParseProfile validates the raw value, resolving the empty value to the
@@ -117,6 +159,11 @@ func ParseProfile(value string) (Profile, error) {
 		return "", fmt.Errorf("unknown development-network profile %q", value)
 	}
 	return profile, nil
+}
+
+// SlotDuration is the length of the profile's slots.
+func (profile Profile) SlotDuration() time.Duration {
+	return time.Duration(cmp.Or(profileSpecs[profile].secondsPerSlot, defaultSecondsPerSlot)) * time.Second
 }
 
 // ParticipantValidators returns the genesis indices of the validators run by

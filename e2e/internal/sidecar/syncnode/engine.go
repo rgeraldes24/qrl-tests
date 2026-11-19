@@ -2,6 +2,7 @@ package syncnode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/theQRL/go-qrl/common"
@@ -60,6 +61,22 @@ func (node *Node) syncTo(ctx context.Context, head *types.Block) error {
 		return fmt.Errorf("the execution client finds head block %d invalid", head.NumberU64())
 	}
 	return nil
+}
+
+// PayloadRequestSize returns the length of the engine_newPayloadV2 request
+// that carries block, as a beacon node sends it.
+func PayloadRequestSize(block *types.Block) (int, error) {
+	payload, err := executionPayload(block)
+	if err != nil {
+		return 0, err
+	}
+	request, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "engine_newPayloadV2",
+		"params":  []any{payload},
+	})
+	return len(request), err
 }
 
 // executionPayload encodes block as the payload of engine_newPayloadV2.

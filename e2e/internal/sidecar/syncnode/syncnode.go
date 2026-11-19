@@ -3,6 +3,7 @@
 package syncnode
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -48,6 +49,8 @@ const (
 	beaconStopTimeout    = 30 * time.Second
 
 	failureLogLines = 100
+
+	defaultMaxPeers = 50
 )
 
 const startScript = `#!/bin/sh
@@ -59,6 +62,7 @@ exec gqrl \
   --datadir="${DATA_DIR}" \
   --networkid="${NETWORK_ID}" \
   --syncmode="${SYNC_MODE}" \
+  --maxpeers="${MAX_PEERS}" \
   --cache=512 \
   --nodiscover \
   --http \
@@ -90,6 +94,7 @@ type Config struct {
 	BeaconOrigin  BeaconOrigin
 	Source        devnet.Participant
 	ExecutionOnly bool
+	MaxPeers      int
 }
 
 // BeaconOrigin is where the sync node's beacon node starts from: genesis, or
@@ -175,7 +180,7 @@ func start(ctx context.Context, config Config, client dockerClient, querySource 
 		Name:       config.Name + " execution client",
 		Image:      config.ExecutionImage,
 		Entrypoint: []string{"/bin/sh", startScriptPath},
-		Env:        executionEnv(endpoints.networkID, config.SyncMode),
+		Env:        executionEnv(endpoints.networkID, config.SyncMode, cmp.Or(config.MaxPeers, defaultMaxPeers)),
 		Files: []sidecar.File{
 			{Name: startScriptPath, Body: []byte(startScript), Mode: 0o755},
 			{Name: genesisPath, Body: files.genesis},
@@ -229,6 +234,9 @@ func validate(config Config) error {
 	if config.SyncMode != "snap" && config.SyncMode != "full" {
 		return fmt.Errorf("sync mode %q is not snap or full", config.SyncMode)
 	}
+	if config.MaxPeers < 0 {
+		return fmt.Errorf("max peers %d is negative", config.MaxPeers)
+	}
 	if config.BeaconOrigin != Genesis && config.BeaconOrigin != Checkpoint {
 		return fmt.Errorf("beacon origin %q is not genesis or checkpoint", config.BeaconOrigin)
 	}
@@ -238,8 +246,9 @@ func validate(config Config) error {
 	return nil
 }
 
-func executionEnv(networkID, syncMode string) []string {
+func executionEnv(networkID, syncMode string, maxPeers int) []string {
 	return []string{
+		"MAX_PEERS=" + strconv.Itoa(maxPeers),
 		"DATA_DIR=" + executionDataDir,
 		"GENESIS_FILE=" + genesisPath,
 		"JWT_FILE=" + jwtPath,
@@ -519,6 +528,36 @@ func (node *Node) Peer(ctx context.Context) (string, qnode.ID, error) {
 		return "", qnode.ID{}, fmt.Errorf("execution node ID: %w", err)
 	}
 	return address, id, nil
+}
+
+// AddPeer makes peerURL a static peer of the execution client, which dials it
+// again after a disconnect but forgets it when the client restarts.
+func (node *Node) AddPeer(ctx context.Context, peerURL string) error {
+	var added bool
+	if err := node.Execution.Client().CallContext(ctx, &added, "admin_addPeer", peerURL); err != nil {
+		return fmt.Errorf("add peer %s: %w", peerURL, err)
+	}
+	if !added {
+		return fmt.Errorf("execution client did not add peer %s", peerURL)
+	}
+	return nil
+}
+
+// Peers returns the IDs of the execution client's peers.
+func (node *Node) Peers(ctx context.Context) ([]qnode.ID, error) {
+	var peers []p2p.PeerInfo
+	if err := node.Execution.Client().CallContext(ctx, &peers, "admin_peers"); err != nil {
+		return nil, fmt.Errorf("read execution peers: %w", err)
+	}
+	ids := make([]qnode.ID, len(peers))
+	for index, peer := range peers {
+		id, err := qnode.ParseID(peer.ID)
+		if err != nil {
+			return nil, fmt.Errorf("peer ID: %w", err)
+		}
+		ids[index] = id
+	}
+	return ids, nil
 }
 
 // ExecutionLog returns the execution client's whole output.

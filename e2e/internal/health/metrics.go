@@ -57,3 +57,34 @@ func readMetrics(ctx context.Context, url string) (map[string]float64, error) {
 	}
 	return values, nil
 }
+
+// Gauge reads an unlabelled value, such as "txpool_slots", from a metrics
+// page in the Prometheus text format.
+func Gauge(ctx context.Context, metricsURL, name string) (float64, error) {
+	values, err := readMetrics(ctx, metricsURL)
+	if err != nil {
+		return 0, err
+	}
+	value, found := values[name]
+	if !found {
+		return 0, fmt.Errorf("the metrics have no %s", name)
+	}
+	return value, nil
+}
+
+// SummaryMean returns the mean observation of a Prometheus summary or
+// histogram, or zero for one without observations.
+func SummaryMean(ctx context.Context, metricsURL, name string) (float64, error) {
+	values, err := readMetrics(ctx, metricsURL)
+	if err != nil {
+		return 0, err
+	}
+	count, found := values[name+"_count"]
+	if !found {
+		return 0, fmt.Errorf("the metrics have no %s", name)
+	}
+	if count == 0 {
+		return 0, nil
+	}
+	return values[name+"_sum"] / count, nil
+}

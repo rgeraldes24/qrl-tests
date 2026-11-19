@@ -128,3 +128,16 @@ func TestSyncToInvalidBlock(t *testing.T) {
 	require.ErrorContains(t, err, "finds head block 42 invalid")
 	require.Equal(t, []string{"newPayload", "forkchoiceUpdated"}, engine.calls)
 }
+
+func TestPayloadRequestSize(t *testing.T) {
+	block := testBlock()
+	size, err := PayloadRequestSize(block)
+	require.NoError(t, err)
+
+	payload, err := executionPayload(block)
+	require.NoError(t, err)
+	encoded, err := json.Marshal(payload)
+	require.NoError(t, err)
+	require.Greater(t, size, len(encoded), "the request wraps the payload")
+	require.Less(t, size, len(encoded)+100, "the request adds only its envelope")
+}

@@ -17,12 +17,14 @@ import (
 // Monitor watches a devnet participant for the length of a suite: its
 // containers, the peers its execution node drops, and its chain.
 type Monitor struct {
-	Containers *ContainerWatch
+	Containers          *ContainerWatch
+	ExecutionMetricsURL string
 
 	docker    dockerclient.APIClient
 	peers     *PeerWatch
 	beacon    *beacon.Client
 	chain     chaininfo.Info
+	execution string
 	firstSlot uint64
 }
 
@@ -46,6 +48,8 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 	if err != nil {
 		return err
 	}
+	monitor.execution, monitor.ExecutionMetricsURL = containers[0].Name, containers[0].MetricsURL
+
 	if err := monitor.Containers.Watch(ctx, containers...); err != nil {
 		return err
 	}
@@ -64,6 +68,13 @@ func (monitor *Monitor) Close() {
 		monitor.peers.Close()
 	}
 	_ = monitor.docker.Close()
+}
+
+// MeterRise is the problem the container watch reports when one of the
+// execution node's meters rises by count, for a suite that causes the rise
+// itself.
+func (monitor *Monitor) MeterRise(meter string, count int) string {
+	return fmt.Sprintf("%s: %s rose by %d", monitor.execution, meter, count)
 }
 
 // Report is what a monitor has seen since it started.

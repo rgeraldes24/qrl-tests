@@ -31,6 +31,8 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"data":{"peer_id":"16Uiu2","qnr":"qnr:-","p2p_addresses":["/ip4/172.16.0.12/tcp/13000/p2p/16Uiu2"],"discovery_addresses":[],"metadata":{"seq_number":"1","attnets":"0x00"}}}`))
 		case "/qrl/v1/beacon/headers/head":
 			_, _ = writer.Write([]byte(`{"data":{"root":"0xab","header":{"message":{"slot":"17"}}}}`))
+		case "/qrl/v1/node/peer_count":
+			_, _ = writer.Write([]byte(`{"data":{"disconnected":"2","connecting":"0","connected":"3","disconnecting":"0"}}`))
 		case "/qrl/v1/beacon/states/head/validators/64":
 			_, _ = writer.Write([]byte(`{"execution_optimistic":false,"finalized":false,"data":{"index":"64","balance":"40000000000000","status":"active_ongoing","validator":{"pubkey":"0xab","withdrawal_recipient":"0xcd","effective_balance":"40000000000000","slashed":false,"activation_eligibility_epoch":"3","activation_epoch":"8","exit_epoch":"18446744073709551615","withdrawable_epoch":"18446744073709551615","randao_commitment":"0xef"}}}`))
 		case "/qrl/v1/beacon/states/95/validators/64":
@@ -39,7 +41,7 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 			assert.Equal(t, []string{"active_ongoing", "active_exiting", "active_slashed"}, request.URL.Query()["status"])
 			_, _ = writer.Write([]byte(`{"data":[{"index":"0","validator":{"effective_balance":"40000000000000"}},{"index":"64","validator":{"effective_balance":"39998000000000"}}]}`))
 		case "/qrl/v1/beacon/blocks/9":
-			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","proposer_index":"12","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
+			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"9","proposer_index":"12","body":{"voluntary_exits":[{"message":{"epoch":"1","validator_index":"64"},"signature":"0x00"}],"execution_payload":{"block_number":"42","block_hash":"0x42","withdrawals":[{"index":"0","validator_index":"64","address":"0xcd","amount":"40000000000000"}]}}}}}`))
 		case "/qrl/v1/beacon/blocks/21":
 			_, _ = writer.Write([]byte(`{"data":{"message":{"slot":"21","proposer_index":"3","body":{` +
 				`"proposer_slashings":[{"signed_header_1":{"message":{"slot":"19","proposer_index":"64","parent_root":"0x01","state_root":"0x02","body_root":"0x03"},"signature":"0x00"},` +
@@ -134,6 +136,14 @@ func TestClientDecodesQrysmResponses(t *testing.T) {
 	totalActive, err := client.TotalActiveBalance(t.Context(), "95")
 	require.NoError(t, err)
 	require.Equal(t, uint64(79998000000000), totalActive)
+
+	peers, err := client.PeerCount(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), peers)
+
+	executionBlock, err := client.ExecutionBlock(t.Context(), "9")
+	require.NoError(t, err)
+	require.Equal(t, ExecutionBlock{Number: 42, Hash: "0x42"}, executionBlock)
 
 	operations, err := client.BlockOperations(t.Context(), "9")
 	require.NoError(t, err)

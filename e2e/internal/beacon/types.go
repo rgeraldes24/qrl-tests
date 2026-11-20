@@ -21,6 +21,11 @@ type BlockHeader struct {
 	Root string
 }
 
+type ExecutionBlock struct {
+	Number uint64
+	Hash   string
+}
+
 type SyncStatus struct {
 	HeadSlot     uint64 `json:"head_slot,string"`
 	SyncDistance uint64 `json:"sync_distance,string"`

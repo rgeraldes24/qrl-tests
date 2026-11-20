@@ -69,6 +69,14 @@ func (client *Client) Identity(ctx context.Context) (Identity, error) {
 	return getData[Identity](ctx, client, "/qrl/v1/node/identity")
 }
 
+// PeerCount returns how many peers the node is connected to.
+func (client *Client) PeerCount(ctx context.Context) (uint64, error) {
+	count, err := getData[struct {
+		Connected uint64 `json:"connected,string"`
+	}](ctx, client, "/qrl/v1/node/peer_count")
+	return count.Connected, err
+}
+
 func (client *Client) HeadSlot(ctx context.Context) (uint64, error) {
 	head, err := client.BlockHeader(ctx, "head")
 	return head.Slot, err
@@ -245,6 +253,7 @@ type blockWire struct {
 			Attestations      []attestationWire      `json:"attestations"`
 			Payload           struct {
 				BlockNumber uint64       `json:"block_number,string"`
+				BlockHash   string       `json:"block_hash"`
 				Withdrawals []Withdrawal `json:"withdrawals"`
 			} `json:"execution_payload"`
 		} `json:"body"`
@@ -285,6 +294,13 @@ func (wire indexedAttestationWire) indexed() (IndexedAttestation, error) {
 		attestation.AttestingIndices = append(attestation.AttestingIndices, index)
 	}
 	return attestation, nil
+}
+
+// ExecutionBlock returns the execution block in a block's payload.
+func (client *Client) ExecutionBlock(ctx context.Context, blockID string) (ExecutionBlock, error) {
+	block, err := getData[blockWire](ctx, client, "/qrl/v1/beacon/blocks/"+url.PathEscape(blockID))
+	payload := block.Message.Body.Payload
+	return ExecutionBlock{Number: payload.BlockNumber, Hash: payload.BlockHash}, err
 }
 
 // BlockOperations returns the proposer, exits, withdrawals, attestations and

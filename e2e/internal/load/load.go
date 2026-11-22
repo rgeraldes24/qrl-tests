@@ -36,6 +36,10 @@ var recipient = common.BytesToAddress(crypto.Keccak256([]byte("qrl-tests load re
 
 var ErrFeeCap = errors.New("the fill needs a fee above the node's transaction fee cap")
 
+// ErrBudget is Fill's error when its transfers run out before the chain has
+// the requested run of full blocks.
+var ErrBudget = errors.New("transfer budget spent")
+
 // Block is the summary of a block that Fill reads from the chain.
 type Block struct {
 	Number       uint64
@@ -51,15 +55,36 @@ func (block Block) Full() bool {
 	return block.GasUsed*100 >= block.GasLimit*fullPercent
 }
 
+// Shape is the transaction a fill sends.
+type Shape struct {
+	// Gas is what the transaction uses. A block counts as full by the gas
+	// its transactions use, so this has to be what they use, not more.
+	Gas uint64
+	// To is nil for a transaction that creates a contract.
+	To   *common.Address
+	Data []byte
+}
+
+// Transfers is the shape Fill sends: a plain transfer.
+var Transfers = Shape{Gas: params.TxGas, To: &recipient}
+
 // Fill sends transfers from wallet until the chain has the requested number
 // of consecutive full blocks, then waits for the transaction pool to empty. It
 // returns a summary of each full block; there can be more of them than
 // requested.
 func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) ([]Block, error) {
+	return FillWith(ctx, client, wallet, poll, blocks, Transfers)
+}
+
+// FillWith is Fill with transactions of the given shape.
+func FillWith(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int, shape Shape) ([]Block, error) {
 	if blocks <= 0 {
 		return nil, fmt.Errorf("cannot fill %d blocks", blocks)
 	}
-	filler, err := newFiller(ctx, client, wallet, poll, blocks)
+	if shape.Gas < params.TxGas {
+		return nil, fmt.Errorf("a transaction uses at least %d gas, not %d", params.TxGas, shape.Gas)
+	}
+	filler, err := newFiller(ctx, client, wallet, poll, blocks, shape)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +99,64 @@ func Fill(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet
 	return filler.fullBlocks, nil
 }
 
+// Steady sends transfers from wallet for the given number of blocks so that
+// each block takes about percent of what a full block holds, and returns a
+// summary of each of them. A load of at most half of a block leaves the base
+// fee where it is, so it can last: full blocks raise the base fee by an eighth
+// each, and price themselves out within dozens of blocks.
+func Steady(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks, percent int) ([]Block, error) {
+	if blocks <= 0 {
+		return nil, fmt.Errorf("cannot load %d blocks", blocks)
+	}
+	if percent <= 0 || percent > 50 {
+		return nil, fmt.Errorf("a steady load is at most half of a block, not %d%%", percent)
+	}
+	filler, err := newFiller(ctx, client, wallet, poll, 1, Transfers)
+	if err != nil {
+		return nil, err
+	}
+	defer filler.stop()
+
+	var (
+		perBlock = filler.transfersPerBlock * uint64(percent) / 100
+		loaded   []Block
+	)
+	for len(loaded) < blocks {
+		// A block takes what is in the pool when it is built.
+		pending, err := filler.pendingTransfers(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if pending < perBlock {
+			transfers, err := filler.sign(perBlock - pending)
+			if err != nil {
+				return nil, err
+			}
+			if err := send(ctx, client, transfers); err != nil {
+				return nil, err
+			}
+			filler.nextNonce += perBlock - pending
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("loading %d blocks, %d so far: %w", blocks, len(loaded), ctx.Err())
+		case <-filler.ticker.C:
+		}
+		latest, err := client.BlockNumber(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("read block number: %w", err)
+		}
+		for ; filler.lastBlockRead < latest; filler.lastBlockRead++ {
+			block, err := readBlock(ctx, client, filler.lastBlockRead+1)
+			if err != nil {
+				return nil, err
+			}
+			loaded = append(loaded, block)
+		}
+	}
+	return loaded, nil
+}
+
 type filler struct {
 	client          *qrlclient.Client
 	wallet          qrlwallet.Wallet
@@ -81,6 +164,7 @@ type filler struct {
 	tip             *big.Int
 	feeCap          *big.Int
 	requestedBlocks int
+	shape           Shape
 	ticker          *time.Ticker
 
 	transfersPerBlock uint64
@@ -91,7 +175,7 @@ type filler struct {
 	runEnded          bool
 }
 
-func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int) (*filler, error) {
+func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.Wallet, poll time.Duration, blocks int, shape Shape) (*filler, error) {
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read chain ID: %w", err)
@@ -110,11 +194,11 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 	}
 
 	maxFullBlocks := blocks + warmUpBlocks + poolBlocksAhead
-	feeCap, err := transferFeeCap(head.BaseFee, tip, maxFullBlocks)
+	feeCap, err := transferFeeCap(head.BaseFee, tip, shape.Gas, maxFullBlocks)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fill %d blocks: %w", blocks, err)
 	}
-	transfersPerBlock := head.GasLimit / params.TxGas
+	transfersPerBlock := head.GasLimit / shape.Gas
 
 	return &filler{
 		client:            client,
@@ -123,6 +207,7 @@ func newFiller(ctx context.Context, client *qrlclient.Client, wallet qrlwallet.W
 		tip:               tip,
 		feeCap:            feeCap,
 		requestedBlocks:   blocks,
+		shape:             shape,
 		ticker:            time.NewTicker(poll),
 		transfersPerBlock: transfersPerBlock,
 		transfersLeft:     uint64(maxFullBlocks) * transfersPerBlock,
@@ -235,7 +320,7 @@ func (filler *filler) refillPool(ctx context.Context) error {
 	count := want - pending
 	// The blocks are not filling.
 	if count > filler.transfersLeft {
-		return fmt.Errorf("transfer budget spent without %d consecutive full blocks, at block %d", filler.requestedBlocks, filler.lastBlockRead)
+		return fmt.Errorf("%w without %d consecutive full blocks, at block %d", ErrBudget, filler.requestedBlocks, filler.lastBlockRead)
 	}
 	transfers, err := filler.sign(count)
 	if err != nil {
@@ -261,9 +346,10 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 				Nonce:     nonce,
 				GasTipCap: filler.tip,
 				GasFeeCap: filler.feeCap,
-				Gas:       params.TxGas,
-				To:        &recipient,
+				Gas:       filler.shape.Gas,
+				To:        filler.shape.To,
 				Value:     big.NewInt(1),
+				Data:      filler.shape.Data,
 			})
 			if err != nil {
 				return fmt.Errorf("sign transfer %d: %w", nonce, err)
@@ -278,13 +364,14 @@ func (filler *filler) sign(count uint64) ([]*types.Transaction, error) {
 	return transfers, nil
 }
 
-// transferFeeCap returns a fee cap high enough for the transfers to stay
-// payable after the given number of full blocks has raised the base fee.
-func transferFeeCap(baseFee, tip *big.Int, fullBlocks int) (*big.Int, error) {
+// transferFeeCap returns a fee cap high enough for transfers of the given gas
+// to stay payable after the given number of full blocks has raised the base
+// fee.
+func transferFeeCap(baseFee, tip *big.Int, gas uint64, fullBlocks int) (*big.Int, error) {
 	feeCap := baseFeeAfter(baseFee, fullBlocks+feeCapMarginBlocks)
 	feeCap.Add(feeCap, tip)
 	// A node refuses a transaction that could pay more than its own limit.
-	maxFee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(params.TxGas))
+	maxFee := new(big.Int).Mul(feeCap, new(big.Int).SetUint64(gas))
 	if maxFee.Cmp(defaultRPCTxFeeCap) > 0 {
 		return nil, fmt.Errorf("%w: from a base fee of %s, a transfer's fee would reach %s planck", ErrFeeCap, baseFee, maxFee)
 	}

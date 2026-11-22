@@ -27,6 +27,10 @@ var _ = ginkgo.Describe(
 
 		ginkgo.It("has the full blocks",
 			suite.hasFullBlocks, ginkgo.SpecTimeout(10*time.Minute))
+		ginkgo.It("closes the connection of a subscriber that stopped reading, or still answers on it",
+			suite.handlesStalledSubscriber, ginkgo.SpecTimeout(10*time.Minute))
+		ginkgo.It("answers a GraphQL query for full blocks with their transactions' bytes",
+			suite.answersGraphQLQuery, ginkgo.SpecTimeout(5*time.Minute))
 		ginkgo.It("syncs a new node without being dropped as its peer",
 			suite.syncsNewNode, ginkgo.SpecTimeout(20*time.Minute))
 		ginkgo.It("leaves the network healthy",

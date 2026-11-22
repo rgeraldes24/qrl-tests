@@ -10,6 +10,7 @@ import (
 	"github.com/cyyber/qrl-tests/e2e/internal/live"
 	"github.com/cyyber/qrl-tests/e2e/internal/load"
 	"github.com/cyyber/qrl-tests/e2e/internal/testsuite"
+	"github.com/gorilla/websocket"
 	ginkgo "github.com/onsi/ginkgo/v2"
 	gomega "github.com/onsi/gomega"
 	"github.com/theQRL/go-qrl/p2p/qnode"
@@ -17,7 +18,9 @@ import (
 
 const (
 	downloaderBlockCache = 256 << 20
-	fullBlocks           = 48
+	// Enough for more transactions than the 20,000 notifications a node
+	// buffers for a subscriber.
+	fullBlocks = 48
 )
 
 type fullBlocksSuite struct {
@@ -25,6 +28,7 @@ type fullBlocksSuite struct {
 	chain      chaininfo.Info
 	monitor    *health.Monitor
 	blocks     []load.Block
+	stalled    *websocket.Conn
 	syncNodeID qnode.ID
 }
 
@@ -34,6 +38,7 @@ func (suite *fullBlocksSuite) setUp(ctx ginkgo.SpecContext) {
 	suite.chain = testsuite.MustSucceed(chaininfo.Load(ctx, suite.source.Beacon))
 	suite.monitor = testsuite.MustSucceed(health.StartMonitor(ctx, suite.source.Participant, suite.source.Beacon, suite.chain))
 	ginkgo.DeferCleanup(suite.monitor.Close)
+	suite.subscribeAndStall(ctx)
 }
 
 func (suite *fullBlocksSuite) hasFullBlocks(ctx ginkgo.SpecContext) {

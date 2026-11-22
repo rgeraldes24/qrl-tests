@@ -18,12 +18,15 @@ import (
 
 // Monitor follows a participant's containers, peers and chain during a suite.
 type Monitor struct {
-	containers *containerStates
-	docker     dockerclient.APIClient
-	peers      *PeerWatch
-	beacon     *beacon.Client
-	chain      chaininfo.Info
-	firstSlot  uint64
+	containers          *containerStates
+	ExecutionMetricsURL string
+
+	docker    dockerclient.APIClient
+	peers     *PeerWatch
+	beacon    *beacon.Client
+	chain     chaininfo.Info
+	execution string
+	firstSlot uint64
 }
 
 // StartMonitor starts monitoring participant.
@@ -46,6 +49,8 @@ func (monitor *Monitor) start(ctx context.Context, participant devnet.Participan
 	if err != nil {
 		return err
 	}
+	monitor.execution, monitor.ExecutionMetricsURL = containers[0].Name, containers[0].MetricsURL
+
 	if err := monitor.containers.record(ctx, containers...); err != nil {
 		return err
 	}
@@ -76,6 +81,13 @@ func (monitor *Monitor) Close() {
 		monitor.peers.Close()
 	}
 	_ = monitor.docker.Close()
+}
+
+// MeterRise is the container problem a report lists when one of the
+// execution node's meters rises by count, for a suite that causes the rise
+// itself.
+func (monitor *Monitor) MeterRise(meter string, count int) string {
+	return fmt.Sprintf("%s: %s rose by %d", monitor.execution, meter, count)
 }
 
 // Report is what a monitor has seen since it started.

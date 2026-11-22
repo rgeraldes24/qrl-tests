@@ -17,11 +17,9 @@ import (
 )
 
 const (
-	// A syncing node keeps up to 256 MB of downloaded blocks; the full blocks
-	// must be more.
-	keptBlockBytes = 256 << 20
-	// Also more transactions than the 20,000 notifications a node buffers for
-	// a subscriber.
+	downloaderBlockCache = 256 << 20
+	// Enough for more transactions than the 20,000 notifications a node
+	// buffers for a subscriber.
 	fullBlocks = 48
 )
 
@@ -52,7 +50,7 @@ func (suite *fullBlocksSuite) hasFullBlocks(ctx ginkgo.SpecContext) {
 	}
 	ginkgo.AddReportEntry("full blocks", fmt.Sprintf("%d, from block %d to %d, %d MB in all",
 		len(suite.blocks), suite.blocks[0].Number, suite.blocks[len(suite.blocks)-1].Number, size>>20))
-	gomega.Expect(size).To(gomega.BeNumerically(">", keptBlockBytes), "the full blocks fit in what a syncing node keeps")
+	gomega.Expect(size).To(gomega.BeNumerically(">", downloaderBlockCache), "the full blocks fit in the downloader's block cache")
 }
 
 func (suite *fullBlocksSuite) leavesNetworkHealthy(ctx ginkgo.SpecContext) {

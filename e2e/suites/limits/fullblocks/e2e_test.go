@@ -31,8 +31,8 @@ var _ = ginkgo.Describe(
 			suite.handlesStalledSubscriber, ginkgo.SpecTimeout(10*time.Minute))
 		ginkgo.It("answers a GraphQL query for full blocks with their transactions' bytes",
 			suite.answersGraphQLQuery, ginkgo.SpecTimeout(5*time.Minute))
-		ginkgo.It("is synced by a new node without it dropping its peer",
-			suite.isSyncedByNewNode, ginkgo.SpecTimeout(20*time.Minute))
+		ginkgo.It("syncs a new node without being dropped as its peer",
+			suite.syncsNewNode, ginkgo.SpecTimeout(20*time.Minute))
 		ginkgo.It("leaves the network healthy",
 			suite.leavesNetworkHealthy, ginkgo.SpecTimeout(5*time.Minute))
 	},

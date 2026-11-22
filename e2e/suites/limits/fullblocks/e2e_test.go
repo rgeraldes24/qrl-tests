@@ -29,7 +29,7 @@ const (
 	keptBlockBytes = 256 << 20
 	// Also more transactions than the 20,000 notifications a node buffers for
 	// a subscriber.
-	fullBlocks = 40
+	fullBlocks = 48
 	// The blocks one GraphQL query asks for, with every transaction's bytes.
 	queriedBlocks = 8
 	// The largest reply the suite reads into memory.
@@ -142,11 +142,12 @@ var _ = ginkgo.Describe(
 				ExecutionOnly:  true,
 			}))
 			execution := health.Container{Name: node.Containers()[0], MetricsURL: node.ExecutionMetricsURL}
-			ginkgo.DeferCleanup(func(ctx ginkgo.SpecContext) {
+			ginkgo.DeferCleanup(func() {
 				testsuite.ReportLogsOnFailure("execution-only node", node)
-				gomega.Expect(errors.Join(monitor.RetireContainer(ctx, execution.Name), node.Close())).To(gomega.Succeed())
-			}, ginkgo.NodeTimeout(time.Minute))
+				gomega.Expect(node.Close()).To(gomega.Succeed())
+			})
 			gomega.Expect(monitor.AddContainers(ctx, execution)).To(gomega.Succeed())
+			ginkgo.DeferCleanup(monitor.RetireContainer, execution.Name, ginkgo.NodeTimeout(time.Minute))
 			_, id, err := node.Peer(ctx)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			syncNodeID = id
